@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/buildinfo"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
 )
 
@@ -40,7 +41,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	p := s.position()
 	writeJSON(w, 200, map[string]any{
 		"exe": s.exePath(), "dataDir": s.lib.Dir(), "addr": s.listenAddr(), "serverURL": s.serverURL(),
-		"efbVersion": setup.EFBVersion, "installs": installs,
+		"efbVersion": setup.EFBVersion, "program": buildinfo.Get(setup.EFBVersion), "installs": installs,
 		"sim": map[string]any{"source": p.Source, "connected": p.Connected || p.Valid, "receiving": p.Valid, "detail": p.Detail},
 	})
 }

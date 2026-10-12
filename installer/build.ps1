@@ -19,7 +19,7 @@ try {
   $env:CGO_ENABLED = '0'
   go test ./... | Out-Host
   if ($LASTEXITCODE -ne 0) { throw 'tests failed' }
-  go build -trimpath -ldflags '-s -w -H windowsgui' -o (Join-Path $build 'opencharts.exe') ./cmd/opencharts
+  go build -trimpath -ldflags '-s -w -H windowsgui -X github.com/RCCSilva/msfs-efb-open-charts/core/internal/buildinfo.Release=1' -o (Join-Path $build 'opencharts.exe') ./cmd/opencharts
   if ($LASTEXITCODE -ne 0) { throw 'go build failed' }
 } finally { Pop-Location }
 

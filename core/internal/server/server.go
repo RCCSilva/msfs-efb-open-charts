@@ -16,9 +16,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/buildinfo"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/jobs"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/web"
 )
@@ -70,8 +72,12 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		p := s.position()
 		writeJSON(w, 200, map[string]any{"ok": true, "app": "open-charts", "local": isLocalRequest(r),
-			"charts": s.lib.Count(), "importer": s.canImport(),
+			"version": buildinfo.Display(setup.EFBVersion),
+			"charts":  s.lib.Count(), "importer": s.canImport(),
 			"simConnected": p.Connected || p.Valid, "simulated": p.Source == "fixed"})
+	})
+	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, buildinfo.Get(setup.EFBVersion))
 	})
 	mux.HandleFunc("GET /api/position", s.handlePosition)
 	mux.HandleFunc("GET /api/viewer-state", s.handleViewerState)

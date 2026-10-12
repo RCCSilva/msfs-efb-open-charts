@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/buildinfo"
 )
 
 //go:embed efbpkg/*
@@ -49,6 +51,7 @@ type EFB struct {
 	ServerURL   string `json:"serverURL,omitempty"`
 	URLMismatch bool   `json:"urlMismatch"`
 	Version     string `json:"version,omitempty"`
+	Build       string `json:"build,omitempty"` // what the installed app says it is: "0.1.1" or "0.1.1-8fa9b5b"
 	UpToDate    bool   `json:"upToDate"`
 	Path        string `json:"path"`
 }
@@ -109,7 +112,10 @@ func EFBState(community string) EFB {
 	}
 	_ = json.Unmarshal(b, &m)
 	st.Version = m.Version
-	st.UpToDate = m.Version == EFBVersion
+	st.Build = readBuild(dir)
+	// The manifest holds the package version; the build also has to match, so a development
+	// build (0.1.1-8fa9b5b) is told apart from the one installed before it.
+	st.UpToDate = m.Version == EFBVersion && st.Build == buildinfo.Display(EFBVersion)
 	return st
 }
 
@@ -143,6 +149,7 @@ func InstallEFB(community, serverURL string) error {
 		return errors.New("embedded app has no SERVER_URL")
 	}
 	src = re.ReplaceAllLiteralString(src, "var SERVER_URL = '"+serverURL+"';")
+	src = efbVersionRe.ReplaceAllLiteralString(src, "var VERSION = '"+buildinfo.Display(EFBVersion)+"';")
 	icon, _ := efbFiles.ReadFile("efbpkg/app-icon.svg")
 	thumb, _ := efbFiles.ReadFile("efbpkg/Thumbnail.jpg")
 
@@ -286,6 +293,22 @@ func SetAutoStart(exeXML, exePath string, args []string, enable bool) error {
 		return err
 	}
 	return os.Rename(tmp, exeXML)
+}
+
+var efbVersionRe = regexp.MustCompile(`var VERSION = '[^']*';`)
+
+// readBuild returns the build written into the installed EFB app ("0.1.1-8fa9b5b"), "" if unreadable.
+func readBuild(packageDir string) string {
+	b, err := os.ReadFile(filepath.Join(packageDir, filepath.FromSlash(efbAppDir), "OpenCharts.js"))
+	if err != nil {
+		return ""
+	}
+	if m := efbVersionRe.FindSubmatch(b); m != nil {
+		v := string(m[0])
+		v = strings.TrimPrefix(v, "var VERSION = '")
+		return strings.TrimSuffix(v, "';")
+	}
+	return ""
 }
 
 var serverURLRe = regexp.MustCompile(`var SERVER_URL = '([^']*)';`)

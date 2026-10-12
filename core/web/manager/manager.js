@@ -149,7 +149,7 @@
   try { lang = localStorage.getItem('oc.lang') || ((navigator.language || 'en').toLowerCase().startsWith('pt') ? 'pt' : 'en'); } catch (e) { /* ignore */ }
   const qLang = new URLSearchParams(location.search).get('lang');
   if (qLang === 'pt' || qLang === 'en') lang = qLang;
-  const VERSION = '0.1.1 Open Beta';
+  let VERSION = '0.1.1 Open Beta';   // replaced by what the running program reports (/api/version): '0.1.1-8fa9b5b' while developing
   const REPO = 'https://github.com/RCCSilva/msfs-efb-open-charts';
   const t = (k) => STR[lang][k] || STR.en[k] || k;
   const tx = (o) => (o && (o[lang] || o.en)) || '';
@@ -929,8 +929,8 @@
       const efb = inst.efb;
       const efbText = !efb.installed ? warn(efb.legacy ? t('stEfbLegacy') : t('stEfbNo')) :
         efb.urlMismatch ? warn(t('stEfbUrl') + ': ' + efb.serverURL + ' → ' + st.serverURL) :
-        efb.upToDate ? ok(t('stEfbOk') + ' (' + efb.version + ')') :
-          warn(t('stEfbOld') + ' (' + efb.version + ' \u2192 ' + st.efbVersion + ')');
+        efb.upToDate ? ok(t('stEfbOk') + ' (' + (efb.build || efb.version) + ')') :
+          warn(t('stEfbOld') + ' (' + (efb.build || efb.version || '?') + ' \u2192 ' + ((st.program && st.program.display) || st.efbVersion) + ')');
       const efbBtns = h('span', null,
         h('button', { class: 'btn sm primary', onclick: () => act(() => api('POST', '/api/setup/efb', { community: inst.community }), t('stRestart')) },
           efb.installed ? t('btnUpdate') : t('btnInstall')), ' ',
@@ -938,6 +938,7 @@
       cards.push(h('div', { class: 'card' },
         h('h3', null, t('stInstall') + ' \u2014 ' + (inst.edition === 'store' ? t('edStore') : t('edSteam'))),
         h('div', { class: 'muted', style: 'margin-bottom:6px' }, inst.community),
+        h('div', { class: 'muted', style: 'margin-bottom:6px' }, t('version') + ': ' + ((st.program && st.program.display) || '?') + '  ·  EFB: ' + (efb.build || efb.version || '-')),
         row(t('stEfb'), efbText, efbBtns),
         row(t('stAuto'), h('span', null, inst.autoStart ? ok(t('stEfbOk')) : h('span', { class: 'muted' }, t('stAutoHelp'))),
           h('button', { class: 'btn sm' + (inst.autoStart ? '' : ' primary'),
@@ -998,4 +999,9 @@
   document.documentElement.lang = lang;
   window.addEventListener('hashchange', render);
   render();
+  api('GET', '/api/version').then((v) => {
+    if (!v || !v.display) return;
+    VERSION = v.display + ' Open Beta';
+    drawFooter();
+  }).catch(() => { /* keep the built-in label */ });
 })();

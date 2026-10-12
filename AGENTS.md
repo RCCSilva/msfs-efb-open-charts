@@ -83,6 +83,11 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
 - **EFB app (`core/internal/setup/efbpkg/OpenCharts.js`):** the folder, the JS file name and
   `INTERNAL_NAME` must match (`OpenCharts`). Never use the name `TemplateApp`. The sim loads the JS
   only at start, so changes need a simulator restart.
+- **Build identity:** a plain `go build` shows `0.1.1-<commit>` (and `-dirty` with uncommitted
+  changes), taken from the build info Go stamps into the executable (`internal/buildinfo`); only
+  `installeruild.ps1` links `buildinfo.Release=1` and shows the bare version. The manager (footer, About,
+  Setup) and `/api/version` show it, the EFB app is stamped with it at install time, and Setup tells
+  whether the installed EFB app is the same build as the running program.
 - **Names and text:** repository files (docs, issue templates, commit messages, code comments) are
   in English. The product UI is bilingual (pt-BR and en).
 - **Versions:** the single user-facing version is `0.1.1 Open Beta`, stored in the `VERSION` file.
