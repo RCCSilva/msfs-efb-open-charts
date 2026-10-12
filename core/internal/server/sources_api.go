@@ -23,6 +23,8 @@ func (s *Server) registerSourceRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/sources/{id}/package/import", s.handlePackageImport)
 	mux.HandleFunc("GET /api/jobs/{id}", s.handleJob)
 	mux.HandleFunc("POST /api/packages/upload", s.handlePackageUpload)
+	mux.HandleFunc("GET /api/sources/faa-us/metadata", s.handleFAAStatus)
+	mux.HandleFunc("POST /api/sources/faa-us/metadata", s.handleFAAMetadata)
 }
 
 // catalogRow is a catalog item plus whether it is already in the library.
@@ -106,8 +108,16 @@ func (s *Server) handlePackageInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, err := pk.OpenPackage(strings.TrimSpace(r.URL.Query().Get("path")))
+	if errors.Is(err, sources.ErrFAAMetadataArchive) {
+		// not charts: the metadata of the cycle. The UI hands it to the metadata endpoint.
+		writeJSON(w, 200, map[string]any{"kind": "metadata", "path": strings.TrimSpace(r.URL.Query().Get("path"))})
+		return
+	}
 	if err != nil {
 		status := 400
+		if errors.Is(err, sources.ErrNeedsFAAMetadata) {
+			status = 409
+		}
 		if errors.Is(err, os.ErrNotExist) {
 			status = 404
 		}

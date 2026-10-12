@@ -29,6 +29,9 @@
       selN: '{n} selected', selPage: 'All {n} on this page are selected.', selAll: 'Select all {n} matching charts', selClear: 'Clear selection',
       delSelected: 'Delete selected', confirmDelN: 'Delete {n} charts from the library? This cannot be undone.', deletedN: '{n} charts deleted',
       backAirports: '< Airports', openAirport: 'Open', selectAllPage: 'Select all on this page',
+      faaMetaTitle: 'd-TPP metadata (names of the files)', faaMetaNone: 'Not loaded: the FAA PDFs are named by number, and without the metadata of the cycle they cannot be told apart.',
+      faaMetaOk: 'Loaded: cycle {cycle} ({from} to {to}), {charts} charts of {airports} airports.', faaMetaAdd: 'Add the metadata (.xml, or the "E" zip)',
+      faaMetaDone: 'Metadata loaded', faaMetaWhy: 'Download it once per cycle (28 days): it is inside DDTPPE_<date>.zip (about 130 MB).',
       pkgEta: 'left', pkgDuration: { s: 'a few seconds', m: '{n} min', h: '{h} h {m} min' },
       inbox: 'Inbox folder', inboxHelp: 'What you add here stays in this folder, on this computer. PDFs are imported when you click the button; for a .zip, read it and choose the aerodromes.',
       importInbox: 'Import the PDFs of the inbox', noInbox: 'The inbox is empty.',
@@ -119,6 +122,9 @@
       selN: '{n} selecionadas', selPage: 'Todas as {n} desta página estão selecionadas.', selAll: 'Selecionar todas as {n} cartas da busca', selClear: 'Limpar seleção',
       delSelected: 'Excluir selecionadas', confirmDelN: 'Excluir {n} cartas da biblioteca? Isso não pode ser desfeito.', deletedN: '{n} cartas excluídas',
       backAirports: '< Aeródromos', openAirport: 'Abrir', selectAllPage: 'Selecionar todas desta página',
+      faaMetaTitle: 'Metadados do d-TPP (nomes dos arquivos)', faaMetaNone: 'Não carregado: os PDFs da FAA têm nome numérico, e sem os metadados do ciclo não dá para distingui-los.',
+      faaMetaOk: 'Carregado: ciclo {cycle} ({from} a {to}), {charts} cartas de {airports} aeroportos.', faaMetaAdd: 'Adicionar os metadados (.xml, ou o zip "E")',
+      faaMetaDone: 'Metadados carregados', faaMetaWhy: 'Baixe uma vez por ciclo (28 dias): fica dentro do DDTPPE_<data>.zip (cerca de 130 MB).',
       pkgEta: 'restantes', pkgDuration: { s: 'alguns segundos', m: '{n} min', h: '{h} h {m} min' },
       inbox: 'Pasta de entrada', inboxHelp: 'O que você adiciona aqui fica nesta pasta, no seu computador. Os PDFs são importados quando você clicar no botão; de um .zip, leia o pacote e escolha os aeródromos.',
       importInbox: 'Importar os PDFs da pasta de entrada', noInbox: 'A pasta de entrada está vazia.',
@@ -618,13 +624,18 @@
       ? api('GET', '/api/sources/' + s.id + '/catalog?limit=1&type=' + kind).then((r) =>
         r.items.map((it) => linkRow(t('exVisual') + ' ' + it.type + ': ' + it.name, it.url, it.file))).catch(none)
       : Promise.resolve([]);
-    const groups = await Promise.all([visual('REA'), visual('WAC')]);
+    const located = caps.includes('locate')
+      ? api('GET', '/api/sources/' + s.id + '/locate').then((r) =>
+        r.locations.filter((l) => l.verified).map((l) => linkRow(tx(l.label), l.url, l.file))).catch(none)
+      : Promise.resolve([]);
+    const groups = await Promise.all([located, visual('REA'), visual('WAC')]);
     const rows = groups.flat();
     rows.forEach((r) => links.appendChild(r));
     const linksShown = !!s.homepage || rows.length > 0;
 
     // 3. what the user downloaded goes here, PDFs and packages alike
-    view.replaceChildren(head, ...(s.id === 'manual' ? [await patternCard()] : []), ...(linksShown ? [links] : []), filesPanel(s));
+    view.replaceChildren(head, ...(s.id === 'manual' ? [await patternCard()] : []), ...(linksShown ? [links] : []),
+      ...(s.id === 'faa-us' ? [await faaMetadataCard()] : []), filesPanel(s));
   }
 
   // Upload PDFs on behalf of a source (recognition and naming use that source's rules).
@@ -756,6 +767,50 @@
     return card;
   }
 
+  // The FAA names its PDFs by number; the metadata of the cycle says what each one is.
+  async function faaMetadataCard() {
+    const card = h('div', { class: 'card' });
+    const file = h('input', { type: 'file', accept: '.xml,.zip', hidden: true });
+    const status = h('div', { class: 'muted' });
+    const msg = h('div', { style: 'margin-top:6px' });
+
+    async function refresh() {
+      let st = { loaded: false };
+      try { st = await api('GET', '/api/sources/faa-us/metadata'); } catch (e) { /* shown as not loaded */ }
+      status.replaceChildren(st.loaded
+        ? h('span', { class: 'badge ok' }, fill(t('faaMetaOk'), st))
+        : h('span', { class: 'badge warn' }, t('faaMetaNone')));
+    }
+
+    async function add(f) {
+      msg.replaceChildren(h('span', { class: 'muted' }, '...'));
+      try {
+        if (/\.xml$/i.test(f.name)) {
+          const fd = new FormData();
+          fd.append('file', f);
+          await xhrPost('/api/sources/faa-us/metadata', fd);
+        } else {
+          const fd = new FormData();
+          fd.append('file', f);
+          const saved = await xhrPost('/api/packages/upload', fd);
+          await api('POST', '/api/sources/faa-us/metadata', { path: saved.path });
+        }
+        msg.replaceChildren(h('span', { class: 'badge ok' }, t('faaMetaDone')));
+        await refresh();
+      } catch (e) {
+        msg.replaceChildren(h('span', { class: 'badge bad' }, e.message));
+      }
+    }
+    file.addEventListener('change', () => { if (file.files[0]) add(file.files[0]); file.value = ''; });
+    await refresh();
+    card.append(h('h3', null, t('faaMetaTitle')), status,
+      h('div', { class: 'muted', style: 'margin-top:6px' }, t('faaMetaWhy')),
+      h('div', { class: 'row', style: 'margin-top:8px' },
+        h('button', { class: 'btn', onclick: () => file.click() }, t('faaMetaAdd'))),
+      msg, file);
+    return card;
+  }
+
   // The file-name patterns of the user's own PDFs: written once, used for every file dropped.
   async function patternCard() {
     let cur;
@@ -814,6 +869,21 @@
     drop.append(t('dropPdf') + ' ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); file.click(); } }, t('choose')));
     const cards = [];
     const isZip = (name) => /\.zip$/i.test(name);
+    const isXml = (name) => /\.xml$/i.test(name);
+
+    // The d-TPP metafile itself (an .xml): it only names the files of the cycle.
+    async function addMetadataFile(f) {
+      const row = progressRow(f.name);
+      reviews.appendChild(row.el);
+      const fd = new FormData();
+      fd.append('file', f);
+      try {
+        await xhrPost('/api/sources/faa-us/metadata', fd, (p) => row.update(t('sUploading'), p), () => row.update(t('sAnalyzing'), null));
+        row.ok(t('faaMetaDone'));
+      } catch (e) {
+        row.fail(f.name + ': ' + e.message);
+      }
+    }
 
     // A package is kept by the program (importing an aerodrome reads it again) and shown right here.
     async function addPackage(f) {
@@ -833,6 +903,7 @@
 
     async function inspectFiles(files) {
       for (const f of files) {
+        if (isXml(f.name) && s.id === 'faa-us') { await addMetadataFile(f); continue; }
         if (isZip(f.name)) { await addPackage(f); continue; }
         const row = progressRow(f.name);
         reviews.appendChild(row.el);
@@ -904,6 +975,11 @@
     }
 
     api('GET', `/api/sources/${s.id}/package?path=${encodeURIComponent(path)}`).then((p) => {
+      if (p.kind === 'metadata') { // the "E" zip: not charts, the names of the cycle's files
+        return api('POST', '/api/sources/faa-us/metadata', { path: p.path }).then((st) => {
+          out.replaceChildren(h('span', { class: 'badge ok' }, t('faaMetaDone') + ': ' + fill(t('faaMetaOk'), st)));
+        });
+      }
       if (!p.airports || !p.airports.length) { out.replaceChildren(h('span', { class: 'badge warn' }, t('pkgNone'))); return; }
       const newBy = p.newByAirport || {};
       const filter = h('input', { type: 'text', placeholder: 'ICAO' });

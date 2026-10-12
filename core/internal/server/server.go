@@ -59,8 +59,10 @@ type Server struct {
 
 // New builds a server. newRenderer may be nil (import then returns 503).
 func New(lib *store.Library, newRenderer RendererFactory, pos PositionSource, addr string) *Server {
-	return &Server{lib: lib, newRenderer: newRenderer, position: pos, addr: addr,
+	s := &Server{lib: lib, newRenderer: newRenderer, position: pos, addr: addr,
 		tiles: newTileCache(filepath.Join(lib.Dir(), "tiles")), jobs: jobs.NewManager(50)}
+	s.loadFAAMetadata()
+	return s
 }
 
 // Handler returns the HTTP handler.

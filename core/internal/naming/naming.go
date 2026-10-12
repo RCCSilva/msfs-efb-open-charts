@@ -112,6 +112,14 @@ func TypeWords(typ string) string {
 		return "carta aeronautica mundial world aeronautical"
 	case "CNAV", "CINAV":
 		return "navegacao visual visual navigation"
+	case "ODP":
+		return "saida obstaculos obstacle departure procedure"
+	case "HOT":
+		return "ponto critico hot spot airport movement"
+	case "LAH":
+		return "pouso espera land and hold short lahso"
+	case "MIN":
+		return "minimos minimums alternate takeoff"
 	}
 	return ""
 }
