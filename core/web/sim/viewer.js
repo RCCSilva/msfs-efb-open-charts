@@ -254,6 +254,13 @@
       L.GridLayer.prototype.initialize.call(this, options);
       this._meta = meta;
       this._img = img;
+      // The chart's opacity is baked into each tile (not a CSS opacity on the layer): in the
+      // simulator a translucent container made the tiles flicker and turn black.
+      this._alpha = options.chartAlpha === undefined ? 1 : options.chartAlpha;
+    },
+    setAlpha: function (a) {
+      this._alpha = a;
+      this.redraw();
     },
     createTile: function (coords, done) {
       bump('chartTileDrawn');
@@ -287,7 +294,15 @@
       }
       var inside = !(maxX < frame.left || minX > frame.right || maxY < frame.top || minY > frame.bottom);
       if (inside) {
-        var ctx = tile.getContext('2d');
+        var out = tile.getContext('2d');
+        var ctx = out;
+        var work = null;
+        if (this._alpha < 1) {
+          work = document.createElement('canvas');   // drawn opaque, then blended once
+          work.width = tile.width;
+          work.height = tile.height;
+          ctx = work.getContext('2d');
+        }
         ctx.imageSmoothingEnabled = true;
         if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
         for (j = 0; j < MESH; j++) {
@@ -299,6 +314,10 @@
             drawTriangle(ctx, img, src[j][i], src[j][i + 1], src[j + 1][i + 1], p00, p10, p11, frame);
             drawTriangle(ctx, img, src[j][i], src[j + 1][i + 1], src[j + 1][i], p00, p11, p01, frame);
           }
+        }
+        if (work) {
+          out.globalAlpha = this._alpha;
+          out.drawImage(work, 0, 0);
         }
       }
       window.setTimeout(function () { done(null, tile); }, 0);
@@ -406,7 +425,7 @@
       map.setMaxBounds(b.pad(0.5));
     } else {
       chartLayer = new WarpLayer(meta, active.img, {
-        tileSize: TILE, opacity: OPACITY_STEPS[opacityIdx], minZoom: OVERLAY_MIN_ZOOM,
+        tileSize: TILE, chartAlpha: OPACITY_STEPS[opacityIdx], minZoom: OVERLAY_MIN_ZOOM,
         maxZoom: OVERLAY_MAX_ZOOM, updateWhenIdle: false, keepBuffer: 1, zIndex: 10
       }).addTo(map);
     }
@@ -693,7 +712,7 @@
     if (idx < 0 || idx >= OPACITY_STEPS.length) return;
     opacityIdx = idx;
     store('blend2', String(idx));
-    if (chartLayer && chartLayer.setOpacity && mode === 'overlay') chartLayer.setOpacity(OPACITY_STEPS[opacityIdx]);
+    if (chartLayer && chartLayer.setAlpha && mode === 'overlay') chartLayer.setAlpha(OPACITY_STEPS[opacityIdx]);
     updateDisplayPanel();
   }
 
