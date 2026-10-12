@@ -905,7 +905,8 @@
   function updateDisplayPanel() {
     viewOverlayBtn.className = mode === 'overlay' ? 'active' : '';
     viewChartBtn.className = mode === 'chart' ? 'active' : '';
-    blendBtn.style.display = mode === 'overlay' ? '' : 'none';
+    // visibility, not display: the slot stays, so the buttons above never move when the mode changes
+    blendBtn.style.visibility = mode === 'overlay' ? '' : 'hidden';
     var lvl = blendBtn.querySelector('.lvl');
     if (lvl) lvl.setAttribute('fill-opacity', String(OPACITY_STEPS[opacityIdx]));
     blendBtn.title = t('blendTitle') + ': ' + Math.round(OPACITY_STEPS[opacityIdx] * 100) + '%';
@@ -1034,7 +1035,7 @@
   }
 
   function updateCloseButton() {
-    closeBtn.style.display = active ? '' : 'none';
+    closeBtn.style.visibility = active ? '' : 'hidden';   // keeps its slot (see updateDisplayPanel)
   }
 
   // The star pins/unpins the chart on screen for the current group.
