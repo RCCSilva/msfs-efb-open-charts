@@ -249,6 +249,8 @@
     ctx.restore();
   }
 
+  var BLANK_TILE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
   var WarpLayer = L.GridLayer.extend({
     initialize: function (meta, img, options) {
       L.GridLayer.prototype.initialize.call(this, options);
@@ -320,8 +322,23 @@
           out.drawImage(work, 0, 0);
         }
       }
-      window.setTimeout(function () { done(null, tile); }, 0);
-      return tile;
+      // The finished canvas is turned into a plain image. A canvas keeps its pixels in graphics
+      // memory, and the simulator's browser loses them (tiles flicker and turn black while the
+      // aircraft is parked); an image is decoded again by the browser whenever it is needed.
+      var tileImg = document.createElement('img');
+      tileImg.className = 'leaflet-tile chart-tile';
+      tileImg.alt = '';
+      var settled = false;
+      function finish(err) { if (!settled) { settled = true; done(err || null, tileImg); } }
+      tileImg.onload = function () { finish(null); };
+      tileImg.onerror = function () { finish(null); };
+      var url = BLANK_TILE;
+      if (inside) {
+        try { url = tile.toDataURL('image/png'); } catch (e) { url = BLANK_TILE; }
+      }
+      tileImg.src = url;
+      window.setTimeout(function () { finish(null); }, 1500);   // never leave a tile pending
+      return tileImg;
     }
   });
 
