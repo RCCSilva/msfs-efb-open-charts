@@ -56,7 +56,7 @@ func (t *tileCache) handle(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data, err := t.truecolor(z, x, y)
+	data, err := t.original(z, x, y)
 	if err != nil {
 		// Do not let the browser cache the failure; Retry-After lets a client try again soon.
 		w.Header().Set("Cache-Control", "no-store")
@@ -95,7 +95,6 @@ func (t *tileCache) original(z, x, y int) ([]byte, error) {
 
 func sendTile(w http.ResponseWriter, data []byte) {
 	w.Header().Set("Content-Type", "image/png")
-	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.Header().Set("Cache-Control", "public, max-age=604800")
 	_, _ = w.Write(data)
 }

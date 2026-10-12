@@ -160,7 +160,7 @@ html, body, button, input, select, textarea, .status, .attribution {
 .kbd button.k-wide { width: 24%; }
 
 /* The status line moves to the bottom so it never hides the bar. */
-.status { top: auto; bottom: 34px; left: 70px; pointer-events: auto; } /* +24px: the EFB app no longer has its own bottom bar; tapping it marks the map as dark in the perf log */
+.status { top: auto; bottom: 34px; left: 70px; } /* +24px: the EFB app no longer has its own bottom bar */
 .controls { z-index: 1000; }
 #attribution { z-index: 900; }
 
@@ -174,7 +174,6 @@ html, body, button, input, select, textarea, .status, .attribution {
    <img> tiles: the chart layer is made of transparent <canvas> tiles and must stay transparent,
    otherwise it hides the map and the opacity control seems to wash the map out. */
 .leaflet-tile-pane img.leaflet-tile { background: #dfe6ea; }
-.leaflet-tile-pane img.leaflet-tile.chart-tile { background: none; }
 .leaflet-container { background: #dfe6ea; }
 
 

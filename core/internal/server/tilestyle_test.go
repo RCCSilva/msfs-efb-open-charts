@@ -122,27 +122,3 @@ func TestStyledTileIsServedAndCached(t *testing.T) {
 	}
 	_ = filepath.Join
 }
-
-func TestTruecolorTileIsPlainRGB(t *testing.T) {
-	pal := image.NewPaletted(image.Rect(0, 0, 8, 8), color.Palette{color.RGBA{10, 20, 30, 255}, color.RGBA{200, 100, 50, 255}})
-	pal.SetColorIndex(1, 1, 1)
-	var in bytes.Buffer
-	if err := png.Encode(&in, pal); err != nil {
-		t.Fatal(err)
-	}
-	out, err := toTruecolor(in.Bytes())
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := png.DecodeConfig(bytes.NewReader(out))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.ColorModel != color.RGBAModel {
-		t.Fatalf("color model = %v, want RGBA (24-bit truecolor)", cfg.ColorModel)
-	}
-	img, _ := png.Decode(bytes.NewReader(out))
-	if r, g, b, _ := img.At(1, 1).RGBA(); r>>8 != 200 || g>>8 != 100 || b>>8 != 50 {
-		t.Fatalf("pixel changed: %d %d %d", r>>8, g>>8, b>>8)
-	}
-}
