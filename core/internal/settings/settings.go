@@ -28,8 +28,8 @@ const (
 
 // Base maps drawn under the charts (see internal/server/tilestyle.go).
 const (
-	BasemapStandard = "standard"
-	BasemapLight    = "light" // the default: a quiet grey-scale version of OpenStreetMap
+	BasemapStandard = "standard" // the default: the regular OpenStreetMap tiles
+	BasemapLight    = "light"    // a quiet grey-scale version of OpenStreetMap (lighter to download)
 	BasemapDark     = "dark"
 	BasemapNone     = "none"
 )
@@ -54,13 +54,13 @@ type Settings struct {
 	Token string `json:"token"` // the key those devices must present (in the QR code link)
 	// Detail is the level of detail of charts imported from now on (DetailNormal or DetailHigh).
 	Detail string `json:"detail"`
-	// Basemap is what the viewer draws under the chart (BasemapLight by default).
+	// Basemap is what the viewer draws under the chart (BasemapStandard by default).
 	Basemap string `json:"basemap"`
 }
 
 // Default returns the settings of a fresh installation (a new key is generated).
 func Default() Settings {
-	return Settings{Port: DefaultPort, LAN: false, Token: NewToken(), Detail: DetailNormal, Basemap: BasemapLight}
+	return Settings{Port: DefaultPort, LAN: false, Token: NewToken(), Detail: DetailNormal, Basemap: BasemapStandard}
 }
 
 // NewToken returns a random key (96 bits, hex).

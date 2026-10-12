@@ -12,7 +12,9 @@
 (function () {
   'use strict';
 
-  var POLL_MS = 250;
+  var POLL_MS = 500;            // position polling while the aircraft moves
+  var POLL_IDLE_MS = 1500;      // ... and while it has not changed for a few polls (parked)
+  var FOLLOW_DEADZONE_PX = 36;  // the map follows the aircraft only beyond this distance from the centre
   var TILE = 256;
   var MESH = 8;
   var OPACITY_STEPS = [1, 0.75, 0.5, 0.25];   // chart opacity: the one button steps through these
@@ -113,7 +115,7 @@
   if (params.lang === 'en') lang = 'en';
   function t(k) { return STR[lang][k] || STR.en[k] || k; }
 
-  var basemap = 'light';   // from the settings, through /api/viewer-state (standard, light, dark, none)
+  var basemap = 'standard';   // from the settings, through /api/viewer-state (standard, light, dark, none)
   if (/^(standard|light|dark|none)$/.test(params.basemap || '')) basemap = params.basemap;
   var mode = params.mode || store('mode') || 'overlay';
   if (mode !== 'chart' && mode !== 'overlay') mode = 'overlay';
@@ -125,6 +127,13 @@
       debugAt = { lat: pa[0], lon: pa[1], headingTrue: isFinite(pa[2]) ? pa[2] : 0 };
     }
   }
+
+  // What this page does, counted and sent to the server every 10 s (reportPerf). Used to find
+  // out what makes the simulator's browser flicker; see /api/client-perf.
+  var perf = {};
+  function bump(k) { perf[k] = (perf[k] || 0) + 1; }
+  var idlePolls = 0;
+  var lastPollSig = '';
 
   var map = null;
   var marker = null;
@@ -247,6 +256,7 @@
       this._img = img;
     },
     createTile: function (coords, done) {
+      bump('chartTileDrawn');
       var dpr = Math.min(3, window.devicePixelRatio || 1);   // draw at device pixels: crisp lines
       var tile = document.createElement('canvas');
       tile.width = Math.round(TILE * dpr);
@@ -341,10 +351,15 @@
         minZoom: OVERLAY_MIN_ZOOM, maxZoom: OVERLAY_MAX_ZOOM, tileSize: 256, updateWhenIdle: false, keepBuffer: 2,
         detectRetina: true   // phones and tablets: tiles of the next zoom level, drawn at half size
       });
-      if (base) base.addTo(map);
+      if (base) {
+        base.on('tileload', function () { bump('baseTileLoaded'); });
+        base.on('tileunload', function () { bump('baseTileUnloaded'); });
+        base.addTo(map);
+      }
       // A tile that failed (network blip, upstream throttling) is asked again a few times
       // instead of staying black until the user moves or zooms the map.
       if (base) base.on('tileerror', function (ev) {
+        bump('baseTileError');
         var img = ev.tile;
         var n = (img._ocRetry || 0) + 1;
         if (n > 4) return;
@@ -363,6 +378,9 @@
     });
     marker = L.marker([0, 0], { icon: icon, interactive: false, keyboard: false, zIndexOffset: 1000 });
     map.on('dragstart', function () { setFollow(false); });
+    map.on('move', function () { bump('mapMove'); });
+    map.on('zoomend', function () { bump('mapZoomEnd'); });
+    map.on('resize', function () { bump('mapResize'); });
 
     attribEl.style.display = mode === 'overlay' ? '' : 'none';
     updateDisplayPanel();
@@ -450,7 +468,10 @@
     } else {
       ll = L.latLng(p.lat, p.lon);
     }
-    var key = ll.lat.toFixed(5) + '|' + ll.lng.toFixed(5) + '|' + Math.round(rot);
+    // Redraw the aircraft only when it moved by about half a pixel or turned by 2 degrees: a parked
+    // aircraft still reports tiny changes, and every redraw is work for the simulator's browser.
+    var lp = map.latLngToLayerPoint(ll);
+    var key = Math.round(lp.x * 2) + '|' + Math.round(lp.y * 2) + '|' + Math.round(rot / 2);
     var changed = key !== lastKey;
     if (!map.hasLayer(marker)) {
       marker.addTo(map);
@@ -459,6 +480,7 @@
     }
     if (changed) {
       lastKey = key;
+      bump('markerMoved');
       marker.setLatLng(ll);
       rotatePlane(rot);
     }
@@ -466,16 +488,18 @@
     setStatus(name + (p.simulated ? t('fixed') + ' ' : '') + p.lat.toFixed(4) + ', ' + p.lon.toFixed(4) +
       '  HDG ' + Math.round(p.headingTrue) + (inside ? '' : '  -  ' + t('offChart')), inside ? 'ok' : 'warn');
 
-    if (follow && (changed || followJustEnabled) && inside) {
-      followJustEnabled = false;
-      if (mode === 'overlay') {
-        map.setView(ll, map.getZoom(), { animate: false });
-      } else {
-        var c = map.latLngToContainerPoint(ll);
-        var s = map.getSize();
-        var dx = c.x - s.x / 2;
-        var dy = c.y - s.y / 2;
-        if (Math.abs(dx) >= 1 || Math.abs(dy) >= 1) map.panBy([dx, dy], { animate: false });
+    // Follow: the map moves only when the aircraft gets away from the centre (a dead zone), not for
+    // every small step. In the simulator the map pane moves through left/top (no 3D), which
+    // repaints every tile; doing that for each position update made the tiles flicker.
+    if (follow && inside) {
+      var c = map.latLngToContainerPoint(ll);
+      var s = map.getSize();
+      var dx = c.x - s.x / 2;
+      var dy = c.y - s.y / 2;
+      if (followJustEnabled || Math.abs(dx) > FOLLOW_DEADZONE_PX || Math.abs(dy) > FOLLOW_DEADZONE_PX) {
+        followJustEnabled = false;
+        bump('followPan');
+        map.panBy([dx, dy], { animate: false });
       }
     }
   }
@@ -486,6 +510,15 @@
       return;
     }
     getJson('/api/position?t=' + Date.now(), function (p) {
+      bump('positionPolls');
+      var next = POLL_MS;
+      if (p && p.valid) {
+        // A parked aircraft does not need four requests a second: slow down while nothing changes.
+        var sig = p.lat.toFixed(5) + '|' + p.lon.toFixed(5) + '|' + Math.round(p.headingTrue);
+        idlePolls = sig === lastPollSig ? idlePolls + 1 : 0;
+        lastPollSig = sig;
+        if (idlePolls >= 4) next = POLL_IDLE_MS;
+      }
       if (!p) {
         setStatus(t('unreachable'), 'bad');
       } else if (!p.simConnected) {
@@ -495,7 +528,7 @@
       } else {
         showAircraft(p);
       }
-      window.setTimeout(poll, POLL_MS);
+      window.setTimeout(poll, next);
     });
   }
 
@@ -1034,6 +1067,29 @@
   if (params.q) { qEl.value = params.q; }
   window.setInterval(softRefresh, 15000);
 
+  // Count the changes made to the map's DOM (nodes added/removed, style/class/src attributes).
+  function watchDom() {
+    if (typeof MutationObserver === 'undefined') return;
+    var mo = new MutationObserver(function (list) {
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].type === 'childList') {
+          perf.domChildren = (perf.domChildren || 0) + list[i].addedNodes.length + list[i].removedNodes.length;
+        } else {
+          bump('domAttr');
+        }
+      }
+    });
+    mo.observe(el('map'), { subtree: true, childList: true, attributes: true, attributeFilter: ['style', 'class', 'src'] });
+  }
+
+  // Every 10 s: tell the server what this page did (counts only, nothing about the user).
+  function reportPerf() {
+    var snapshot = perf;
+    perf = {};
+    request('POST', '/api/client-perf', { ua: navigator.userAgent, seconds: 10, mode: mode, counts: snapshot }, null);
+  }
+  window.setInterval(reportPerf, 10000);
+
   // Tell the server what this browser can do (WebGL, pixel ratio...). Read in the manager's Setup.
   // Only facts about the browser; nothing about the user.
   function reportClient() {
@@ -1068,6 +1124,7 @@
     checkSize();
     window.setInterval(checkSize, 1000);
     poll();
+    watchDom();
     loadFlights(function () {
       if (params.q) runSearch();
       var want = params.chart || saved.chart || store('chart');

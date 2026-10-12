@@ -93,8 +93,8 @@ func TestDetailDefaultsAndSizes(t *testing.T) {
 }
 
 func TestBasemapDefaultAndValidation(t *testing.T) {
-	if got := Load(t.TempDir()).Basemap; got != BasemapLight {
-		t.Fatalf("default basemap = %q, want light", got)
+	if got := Load(t.TempDir()).Basemap; got != BasemapStandard {
+		t.Fatalf("default basemap = %q, want standard", got)
 	}
 	for _, ok := range []string{BasemapStandard, BasemapLight, BasemapDark, BasemapNone} {
 		if !ValidBasemap(ok) {
@@ -108,7 +108,7 @@ func TestBasemapDefaultAndValidation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(`{"port": 43210, "basemap": "neon"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := Load(dir).Basemap; got != BasemapLight {
-		t.Fatalf("unknown basemap must fall back to light, got %q", got)
+	if got := Load(dir).Basemap; got != BasemapStandard {
+		t.Fatalf("unknown basemap must fall back to standard, got %q", got)
 	}
 }
