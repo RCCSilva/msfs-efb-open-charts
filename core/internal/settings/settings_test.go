@@ -24,7 +24,7 @@ func TestDefaults(t *testing.T) {
 
 func TestRoundTripAndLAN(t *testing.T) {
 	dir := t.TempDir()
-	in := Settings{Port: 45000, LAN: true, Token: "abc123", Detail: DetailHigh, Basemap: BasemapDark}
+	in := Settings{Port: 45000, LAN: true, Token: "abc123", Detail: DetailHigh, Basemap: BasemapDark, Aircraft: AircraftHelicopter, AircraftColor: "blue"}
 	if err := in.Save(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -110,5 +110,25 @@ func TestBasemapDefaultAndValidation(t *testing.T) {
 	}
 	if got := Load(dir).Basemap; got != BasemapStandard {
 		t.Fatalf("unknown basemap must fall back to standard, got %q", got)
+	}
+}
+
+func TestAircraftSymbolDefaultAndValidation(t *testing.T) {
+	d := Load(t.TempDir())
+	if d.Aircraft != AircraftPlane || d.AircraftColor != "yellow" {
+		t.Fatalf("default = %q %q, want a yellow plane", d.Aircraft, d.AircraftColor)
+	}
+	if !ValidAircraft(AircraftHelicopter) || ValidAircraft("rocket") || ValidAircraft("") {
+		t.Error("ValidAircraft")
+	}
+	if AircraftHex("yellow") == "" || AircraftHex("plaid") != "" {
+		t.Error("AircraftHex")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(`{"port":43210,"aircraft":"rocket","aircraftColor":"plaid"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := Load(dir); got.Aircraft != AircraftPlane || got.AircraftColor != "yellow" {
+		t.Fatalf("unknown values must fall back to the defaults, got %q %q", got.Aircraft, got.AircraftColor)
 	}
 }

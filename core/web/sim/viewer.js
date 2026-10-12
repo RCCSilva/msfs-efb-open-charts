@@ -327,6 +327,20 @@
   // ---------------------------------------------------------------------------
   // Map (rebuilt when the mode changes: the two modes use different CRS)
   // ---------------------------------------------------------------------------
+  // The aircraft symbol comes from the settings (the manager's Setup): a plane or a helicopter, in the
+  // chosen colour. Both point up at heading 0.
+  var HELI_SVG =
+    '<svg viewBox="0 0 64 64"><path d="M29.5 36h5v20h-5z"/><path d="M23 54h18v5H23z"/>' +
+    '<path d="M32 8c8.5 0 13 8 13 18.5S40.500 41 32 41s-13-4-13-14.500S23.500 8 32 8z"/>' +
+    '<path d="M8 13l4-3.500 44 38-4 3.500z"/><path d="M56 13l-4-3.500-44 38 4 3.500z"/></svg>';
+  var aircraft = 'plane';
+  var aircraftHex = '#ffd21f';
+
+  function aircraftSvg() {
+    var svg = aircraft === 'helicopter' ? HELI_SVG : PLANE_SVG;
+    return svg.replace('<svg ', '<svg style="fill:' + aircraftHex + '" ');
+  }
+
   var PLANE_SVG =
     '<svg viewBox="0 0 64 64"><path d="M32 4L35 10L36 24L58 40L58 45L36 38L35 50L42 57L42 61' +
     'L32 58L22 61L22 57L29 50L28 38L6 45L6 40L28 24L29 10Z"/></svg>';
@@ -390,7 +404,7 @@
     }
     var icon = L.divIcon({
       className: 'plane-icon',
-      html: '<div class="plane-rot">' + PLANE_SVG + '</div>',
+      html: '<div class="plane-rot">' + aircraftSvg() + '</div>',
       iconSize: [40, 40],
       iconAnchor: [20, 20]
     });
@@ -1192,6 +1206,17 @@
   // The simulator keeps the EFB app open, so the page cannot be closed and reopened: this reloads it.
   el('btn-reload').title = lang === 'pt' ? 'Recarregar' : 'Reload';
   el('btn-reload').addEventListener('click', function () { window.location.reload(); });
+  // Clean view: every control and the status line are hidden, so the chart (or the map) is seen on its
+  // own. The button stays, and so does the black header band and the map credit.
+  var cleanBtn = el('btn-clean');
+  function setClean(on) {
+    document.body.className = on ? 'clean' : '';
+    cleanBtn.title = on ? (lang === 'pt' ? 'Mostrar controles' : 'Show controls') : (lang === 'pt' ? 'Ocultar controles' : 'Hide controls');
+    store('clean', on ? '1' : '0');
+    window.setTimeout(checkSize, 50);
+  }
+  cleanBtn.addEventListener('click', function () { setClean(document.body.className !== 'clean'); });
+  setClean(store('clean') === '1');
   window.addEventListener('resize', checkSize);
 
   window.LMM_DEBUG = {
@@ -1332,6 +1357,8 @@
     saved = saved || {};
     if (!params.mode && (saved.mode === 'chart' || saved.mode === 'overlay')) mode = saved.mode;
     if (!params.basemap && /^(standard|light|dark|none)$/.test(saved.basemap || '')) basemap = saved.basemap;
+    if (saved.aircraft === 'plane' || saved.aircraft === 'helicopter') aircraft = saved.aircraft;
+    if (/^#[0-9a-fA-F]{6}$/.test(saved.aircraftHex || '')) aircraftHex = saved.aircraftHex;
     if (!params.lang && (saved.lang === 'pt' || saved.lang === 'en')) {
       lang = saved.lang;
       qEl.placeholder = t('search');

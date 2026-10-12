@@ -14,18 +14,19 @@ html, body, button, input, select, textarea, .status, .attribution {
 
 .hidden { display: none !important; }
 
-/* Always-visible reminder: simulation only. */
+/* Always-visible reminder: simulation only. It is a black band as tall as the simulator's own tablet
+   header, which hides what is drawn right under it: the map and the controls start below the band. */
 .simnote {
   position: absolute;
   left: 0;
   right: 0;
   top: 0;
   z-index: 1200;
-  height: 16px;
-  background: rgba(130, 20, 20, 0.92);
-  color: #fff;
-  font-size: 10px;
-  line-height: 16px;
+  height: 32px;
+  background: #000;
+  color: #f0b4b4;
+  font-size: 11px;
+  line-height: 32px;
   text-align: center;
   letter-spacing: 0.3px;
   white-space: nowrap;
@@ -42,7 +43,7 @@ html, body, button, input, select, textarea, .status, .attribution {
   right: 0;
   top: 0;
   z-index: 1100;
-  padding: 24px 10px 0 10px;
+  padding: 38px 10px 0 10px;
 }
 
 .row { height: 44px; }
@@ -159,8 +160,10 @@ html, body, button, input, select, textarea, .status, .attribution {
 }
 .kbd button.k-wide { width: 24%; }
 
-/* The status line moves to the bottom so it never hides the bar. */
-.status { top: auto; bottom: 34px; left: 70px; } /* +24px: the EFB app no longer has its own bottom bar */
+/* The status line is a small tab in the lower left corner, flush with the edges of the screen, so it
+   takes (almost) nothing of the chart. */
+.status { top: auto; bottom: 0; left: 0; max-width: 72%; padding: 1px 8px; border-radius: 0 6px 0 0;
+  font-size: 11px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .controls { z-index: 1000; }
 #attribution { z-index: 900; }
 
@@ -216,3 +219,18 @@ html, body, button, input, select, textarea, .status, .attribution {
    in current Chrome). The simulator's browser does not know that mode and would composite each tile
    through a blending pass, which flickered and blackened the base map. Plain drawing is enough here. */
 .leaflet-container img.leaflet-tile { mix-blend-mode: normal !important; }
+
+/* The map starts under the black header band. (map.css makes #map fill the page.) */
+#map { top: 32px !important; height: auto !important; bottom: 0 !important; }
+
+/* ---- clean view: one button at the upper right hides everything else ---- */
+.cleanbtn { position: absolute; right: 10px; top: 38px; z-index: 1150; width: 44px; height: 44px;
+  margin: 0; padding: 0; border: 0; border-radius: 6px; background: rgba(20, 30, 40, 0.88);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4); cursor: pointer; }
+.cleanbtn svg { width: 26px; height: 26px; fill: none; stroke: #fff; stroke-width: 2.4;
+  stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
+.cleanbtn .slash { display: none; }
+body.clean .cleanbtn { background: rgba(20, 30, 40, 0.55); }
+body.clean .cleanbtn .slash { display: inline; }
+body.clean .bar, body.clean #controls, body.clean #display, body.clean #status { display: none !important; }
+.bar .row { padding-right: 54px; }

@@ -49,6 +49,12 @@ type netState struct {
 func (s *Server) UseSettings(dataDir, defaultDataDir string, cfg settings.Settings, fixedAddr bool) {
 	s.net.mu.Lock()
 	defer s.net.mu.Unlock()
+	if !settings.ValidAircraft(cfg.Aircraft) {
+		cfg.Aircraft = settings.AircraftPlane
+	}
+	if settings.AircraftHex(cfg.AircraftColor) == "" {
+		cfg.AircraftColor = settings.DefaultAircraftColor
+	}
 	s.net.cfg, s.net.dataDir, s.net.defaultDataDir, s.net.fixedAddr = cfg, dataDir, defaultDataDir, fixedAddr
 }
 
@@ -331,6 +337,7 @@ func (s *Server) settingsView() map[string]any {
 	}
 	return map[string]any{
 		"port": cfg.Port, "lan": cfg.LAN, "defaultPort": settings.DefaultPort, "fixed": fixed, "detail": cfg.Detail, "basemap": cfg.Basemap,
+		"aircraft": cfg.Aircraft, "aircraftColor": cfg.AircraftColor, "aircraftColors": settings.AircraftColors,
 		"listenAddr": s.listenAddr(), "localURL": "http://127.0.0.1:" + port + "/", "addresses": addrs,
 	}
 }
@@ -347,6 +354,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		LAN     *bool   `json:"lan"`
 		Detail  *string `json:"detail"`
 		Basemap *string `json:"basemap"`
+		// the symbol of the aircraft
+		Aircraft      *string `json:"aircraft"`
+		AircraftColor *string `json:"aircraftColor"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, 400, err)
@@ -355,6 +365,32 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	s.net.mu.RLock()
 	fixed, dir := s.net.fixedAddr, s.net.dataDir
 	s.net.mu.RUnlock()
+	// the aircraft symbol does not depend on the listen address either
+	if (body.Aircraft != nil || body.AircraftColor != nil) && body.Port == nil && body.LAN == nil && body.Detail == nil && body.Basemap == nil {
+		if body.Aircraft != nil && !settings.ValidAircraft(*body.Aircraft) {
+			writeErr(w, 400, errors.New("aircraft must be plane or helicopter"))
+			return
+		}
+		if body.AircraftColor != nil && settings.AircraftHex(*body.AircraftColor) == "" {
+			writeErr(w, 400, errors.New("unknown aircraft colour"))
+			return
+		}
+		s.net.mu.Lock()
+		if body.Aircraft != nil {
+			s.net.cfg.Aircraft = *body.Aircraft
+		}
+		if body.AircraftColor != nil {
+			s.net.cfg.AircraftColor = *body.AircraftColor
+		}
+		cfg := s.net.cfg
+		s.net.mu.Unlock()
+		if err := cfg.Save(dir); err != nil {
+			writeErr(w, 500, err)
+			return
+		}
+		writeJSON(w, 200, s.settingsView())
+		return
+	}
 	// the base map does not depend on the listen address
 	if body.Basemap != nil && body.Port == nil && body.LAN == nil && body.Detail == nil {
 		if !settings.ValidBasemap(*body.Basemap) {

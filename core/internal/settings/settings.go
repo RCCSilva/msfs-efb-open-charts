@@ -34,6 +34,38 @@ const (
 	BasemapNone     = "none"
 )
 
+// The aircraft symbol drawn on the map: a shape and a colour.
+const (
+	AircraftPlane        = "plane"
+	AircraftHelicopter   = "helicopter"
+	DefaultAircraftColor = "yellow"
+)
+
+// AircraftColor is one of the colours offered for the symbol.
+type AircraftColor struct {
+	ID  string `json:"id"`
+	Hex string `json:"hex"`
+}
+
+// AircraftColors is the list the manager offers (the first is the default).
+var AircraftColors = []AircraftColor{
+	{"yellow", "#ffd21f"}, {"white", "#ffffff"}, {"orange", "#ff8c1a"}, {"red", "#e53935"},
+	{"magenta", "#d81b9a"}, {"blue", "#2f80ed"}, {"cyan", "#19b8d8"}, {"green", "#34c759"}, {"black", "#1a1a1a"},
+}
+
+// ValidAircraft reports whether shape is a known aircraft symbol.
+func ValidAircraft(shape string) bool { return shape == AircraftPlane || shape == AircraftHelicopter }
+
+// AircraftHex returns the colour value of an aircraft colour id ("" if unknown).
+func AircraftHex(id string) string {
+	for _, c := range AircraftColors {
+		if c.ID == id {
+			return c.Hex
+		}
+	}
+	return ""
+}
+
 // ValidBasemap reports whether s is a known base map style.
 func ValidBasemap(s string) bool {
 	return s == BasemapStandard || s == BasemapLight || s == BasemapDark || s == BasemapNone
@@ -56,11 +88,15 @@ type Settings struct {
 	Detail string `json:"detail"`
 	// Basemap is what the viewer draws under the chart (BasemapStandard by default).
 	Basemap string `json:"basemap"`
+	// Aircraft and AircraftColor are the symbol shown for the aircraft position (a yellow plane by default).
+	Aircraft      string `json:"aircraft"`
+	AircraftColor string `json:"aircraftColor"`
 }
 
 // Default returns the settings of a fresh installation (a new key is generated).
 func Default() Settings {
-	return Settings{Port: DefaultPort, LAN: false, Token: NewToken(), Detail: DetailNormal, Basemap: BasemapStandard}
+	return Settings{Port: DefaultPort, LAN: false, Token: NewToken(), Detail: DetailNormal, Basemap: BasemapStandard,
+		Aircraft: AircraftPlane, AircraftColor: DefaultAircraftColor}
 }
 
 // NewToken returns a random key (96 bits, hex).
@@ -96,6 +132,12 @@ func Load(dir string) Settings {
 			}
 			if ValidBasemap(f.Basemap) {
 				s.Basemap = f.Basemap
+			}
+			if ValidAircraft(f.Aircraft) {
+				s.Aircraft = f.Aircraft
+			}
+			if AircraftHex(f.AircraftColor) != "" {
+				s.AircraftColor = f.AircraftColor
 			}
 			if f.Token != "" {
 				s.Token = f.Token

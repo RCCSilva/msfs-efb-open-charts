@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 )
 
@@ -19,6 +20,10 @@ type viewerState struct {
 	Lang  string `json:"lang"` // "pt" | "en" | ""
 	// Basemap comes from the settings (set in the manager); it is read-only here.
 	Basemap string `json:"basemap,omitempty"`
+	// The aircraft symbol also comes from the settings: shape, colour id and its colour value.
+	Aircraft      string `json:"aircraft,omitempty"`
+	AircraftColor string `json:"aircraftColor,omitempty"`
+	AircraftHex   string `json:"aircraftHex,omitempty"`
 }
 
 var viewerStateMu sync.Mutex
@@ -38,7 +43,11 @@ func (s *Server) handleViewerState(w http.ResponseWriter, r *http.Request) {
 			st.Chart = ""
 		}
 	}
-	st.Basemap = s.settingsSnapshot().Basemap
+	cfg := s.settingsSnapshot()
+	st.Basemap = cfg.Basemap
+	st.Aircraft = cfg.Aircraft
+	st.AircraftColor = cfg.AircraftColor
+	st.AircraftHex = settings.AircraftHex(cfg.AircraftColor)
 	writeJSON(w, 200, st)
 }
 

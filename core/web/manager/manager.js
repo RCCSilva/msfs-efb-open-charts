@@ -31,6 +31,10 @@
       diagSim: 'Simulator (EFB)', diagBrowser: 'Browser', diagYes: 'yes', diagNo: 'no', diagRatio: 'Pixel ratio',
       diagHelp: 'What each viewer reported about itself. WebGL decides whether a vector map (lighter and sharper) is possible inside the simulator.',
       baseTitle: 'Base map', baseLight: 'Light (quiet)', baseStandard: 'Standard OpenStreetMap', baseDark: 'Dark', baseNone: 'No map',
+      aircraftTitle: 'Aircraft symbol', aircraftPlane: 'Airplane', aircraftHeli: 'Helicopter', aircraftColor: 'Colour',
+      aircraftHelp: 'What marks the aircraft on the map in the viewer. Reload the viewer to see the change.',
+      col_yellow: 'Yellow', col_white: 'White', col_orange: 'Orange', col_red: 'Red', col_magenta: 'Magenta',
+      col_blue: 'Blue', col_cyan: 'Cyan', col_green: 'Green', col_black: 'Black',
       baseHelp: 'What is drawn under the chart in the viewer. Light is a quiet grey version of OpenStreetMap: lighter to load and easier on the chart. Reload the viewer to see the change.',
       detailTitle: 'Chart detail', detailNormal: 'Normal', detailHigh: 'High',
       detailHelp: 'Applies to charts imported from now on. High is sharper when you zoom in (phones, large screens) but makes bigger files and takes longer. To change charts already in the library, delete and add them again.',
@@ -101,6 +105,10 @@
       diagSim: 'Simulador (EFB)', diagBrowser: 'Navegador', diagYes: 'sim', diagNo: 'não', diagRatio: 'Densidade de pixels',
       diagHelp: 'O que cada visualizador informou sobre si. O WebGL decide se um mapa vetorial (mais leve e mais nítido) é possível dentro do simulador.',
       baseTitle: 'Mapa base', baseLight: 'Claro (discreto)', baseStandard: 'OpenStreetMap padrão', baseDark: 'Escuro', baseNone: 'Sem mapa',
+      aircraftTitle: 'Símbolo da aeronave', aircraftPlane: 'Avião', aircraftHeli: 'Helicóptero', aircraftColor: 'Cor',
+      aircraftHelp: 'O que marca a aeronave no mapa do visualizador. Recarregue o visualizador para ver a mudança.',
+      col_yellow: 'Amarelo', col_white: 'Branco', col_orange: 'Laranja', col_red: 'Vermelho', col_magenta: 'Magenta',
+      col_blue: 'Azul', col_cyan: 'Ciano', col_green: 'Verde', col_black: 'Preto',
       baseHelp: 'O que aparece embaixo da carta no visualizador. O Claro é uma versão discreta, em cinza, do OpenStreetMap: carrega mais leve e não disputa atenção com a carta. Recarregue o visualizador para ver a mudança.',
       detailTitle: 'Detalhe das cartas', detailNormal: 'Normal', detailHigh: 'Alto',
       detailHelp: 'Vale para as cartas importadas daqui em diante. Alto fica mais nítido ao dar zoom (celular, telas grandes), mas gera arquivos maiores e demora mais. Para mudar as cartas que já estão na biblioteca, exclua e adicione de novo.',
@@ -898,6 +906,56 @@
       h('div', { class: 'muted', style: 'margin-top:8px' }, t('baseHelp')));
   }
 
+  // The aircraft symbol (same shapes as the viewer's; the colour list comes from the server).
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const AIRCRAFT_PATHS = {
+    plane: ['M32 4L35 10L36 24L58 40L58 45L36 38L35 50L42 57L42 61L32 58L22 61L22 57L29 50L28 38L6 45L6 40L28 24L29 10Z'],
+    helicopter: ['M29.5 36h5v20h-5z', 'M23 54h18v5H23z', 'M32 8c8.5 0 13 8 13 18.5S40.5 41 32 41s-13-4-13-14.5S23.5 8 32 8z',
+      'M8 13l4-3.5 44 38-4 3.5z', 'M56 13l-4-3.5-44 38 4 3.5z']
+  };
+  function aircraftSvg(shape, hex, size) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 64 64');
+    svg.setAttribute('width', size);
+    svg.setAttribute('height', size);
+    for (const d of AIRCRAFT_PATHS[shape] || AIRCRAFT_PATHS.plane) {
+      const p = document.createElementNS(SVG_NS, 'path');
+      p.setAttribute('d', d);
+      p.setAttribute('fill', hex);
+      p.setAttribute('stroke', '#0b1f33');
+      p.setAttribute('stroke-width', '3');
+      p.setAttribute('stroke-linejoin', 'round');
+      svg.appendChild(p);
+    }
+    return svg;
+  }
+
+  async function aircraftCard() {
+    let net;
+    try { net = await api('GET', '/api/settings'); } catch (e) { return null; }
+    if (!net.aircraftColors) return null;
+    const set = async (patch) => {
+      try { await api('PUT', '/api/settings', patch); toast(t('done')); } catch (e) { toast(e.message); }
+      renderSetup();
+    };
+    const shapeBtn = (value, label) => h('button', {
+      class: 'btn sm' + (net.aircraft === value ? ' primary' : ''),
+      onclick: () => set({ aircraft: value }) }, label);
+    const current = (net.aircraftColors.find((c) => c.id === net.aircraftColor) || net.aircraftColors[0]).hex;
+    const swatches = net.aircraftColors.map((c) => h('button', {
+      class: 'btn sm', title: t('col_' + c.id), 'aria-label': t('col_' + c.id),
+      style: 'width:30px;height:30px;padding:0;border-radius:50%;background:' + c.hex + ';border:' +
+        (c.id === net.aircraftColor ? '3px solid #2369be' : '1px solid #888'),
+      onclick: () => set({ aircraftColor: c.id }) }));
+    return h('div', { class: 'card' }, h('h3', null, t('aircraftTitle')),
+      h('div', { class: 'row', style: 'align-items:center' },
+        h('span', { style: 'display:inline-block;width:56px;height:56px;background:#dfe6ea;border-radius:8px;text-align:center;margin-right:10px' },
+          aircraftSvg(net.aircraft, current, 52)),
+        shapeBtn('plane', t('aircraftPlane')), shapeBtn('helicopter', t('aircraftHeli'))),
+      h('div', { class: 'row', style: 'margin-top:8px' }, h('span', { class: 'muted', style: 'margin-right:6px' }, t('aircraftColor') + ':'), ...swatches),
+      h('div', { class: 'muted', style: 'margin-top:8px' }, t('aircraftHelp')));
+  }
+
   async function detailCard() {
     let net;
     try { net = await api('GET', '/api/settings'); } catch (e) { return null; }
@@ -915,6 +973,8 @@
     cards.push(...await networkCards(st));
     const bCard = await basemapCard();
     if (bCard) cards.push(bCard);
+    const aCard = await aircraftCard();
+    if (aCard) cards.push(aCard);
     const gCard = await diagCard();
     if (gCard) cards.push(gCard);
     const dCard = await detailCard();
