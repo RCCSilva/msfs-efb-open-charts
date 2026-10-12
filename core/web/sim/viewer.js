@@ -416,7 +416,9 @@
     var meta = active.meta;
     if (mode === 'chart') {
       var b = L.latLngBounds([0, 0], [meta.image.height, meta.image.width]);
-      chartLayer = L.imageOverlay('/charts/' + encodeURIComponent(meta.id) + '/' + meta.image.file, b).addTo(map);
+      // The page already loaded and decoded this image (openChart): give that element to Leaflet.
+      // Passing the URL made the browser fetch and decode the same big PNG a second time.
+      chartLayer = L.imageOverlay(active.img, b).addTo(map);
       map.setMaxBounds(b.pad(0.5));
     } else {
       chartLayer = new WarpLayer(meta, active.img, {
@@ -597,7 +599,12 @@
         loadTiming = timing;
         buildMap();
         timing.built = nowMs();
-        if (chartLayer && chartLayer.once) {
+        if (mode === 'chart') {
+          // nothing more to load: the image element is already decoded
+          timing.tiles = nowMs();
+          loadTiming = null;
+          reportLoadTiming(timing);
+        } else if (chartLayer && chartLayer.once) {
           chartLayer.once('load', function () {
             if (loadTiming !== timing) return;   // another chart was opened meanwhile
             timing.tiles = nowMs();
