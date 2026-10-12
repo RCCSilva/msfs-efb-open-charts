@@ -133,6 +133,18 @@
   var perf = {};
   function bump(k) { perf[k] = (perf[k] || 0) + 1; }
   var idlePolls = 0;
+  // How long opening a chart takes, phase by phase, measured in the browser that shows it (the
+  // simulator's is much slower than a PC's). Sent once per chart to /api/client-perf.
+  var loadTiming = null;
+  function nowMs() { return new Date().getTime(); }
+  function reportLoadTiming(t) {
+    var counts = {
+      ms_json: t.json - t.start, ms_image: t.image - t.json, ms_build: t.built - t.image,
+      ms_tiles: t.tiles - t.built, ms_total: t.tiles - t.start,
+      tilesDrawn: t.drawn, ms_drawingTiles: t.drawMs, imgW: t.w, imgH: t.h
+    };
+    request('POST', '/api/client-perf', { ua: navigator.userAgent, seconds: 0, mode: 'chart-open:' + t.mode, counts: counts, note: t.id.slice(0, 80) }, null);
+  }
   var lastPollSig = '';
 
   var map = null;
@@ -257,6 +269,7 @@
     },
     createTile: function (coords, done) {
       bump('chartTileDrawn');
+      var drawStart = loadTiming ? nowMs() : 0;
       var dpr = Math.min(3, window.devicePixelRatio || 1);   // draw at device pixels: crisp lines
       var tile = document.createElement('canvas');
       tile.width = Math.round(TILE * dpr);
@@ -301,6 +314,7 @@
           }
         }
       }
+      if (loadTiming) { loadTiming.drawn += 1; loadTiming.drawMs += nowMs() - drawStart; }
       window.setTimeout(function () { done(null, tile); }, 0);
       return tile;
     }
@@ -568,14 +582,29 @@
     setStatus(t('loading'), 'warn');
     hidePanels();
     // v=<time>: never trust a chart.json cached by an older server (it kept names for an hour)
+    var timing = { id: id, mode: mode, start: nowMs(), json: 0, image: 0, built: 0, tiles: 0, drawn: 0, drawMs: 0, w: 0, h: 0 };
     getJson('/charts/' + encodeURIComponent(id) + '/chart.json?v=' + Date.now(), function (meta) {
       if (!meta) { loadFailed(id, fallback); return; }
+      timing.json = nowMs();
       var img = new Image();
       img.onload = function () {
+        timing.image = nowMs();
+        timing.w = img.naturalWidth;
+        timing.h = img.naturalHeight;
         active = { meta: meta, img: img };
         store('chart', id);
         setFollow(!debugAt);
+        loadTiming = timing;
         buildMap();
+        timing.built = nowMs();
+        if (chartLayer && chartLayer.once) {
+          chartLayer.once('load', function () {
+            if (loadTiming !== timing) return;   // another chart was opened meanwhile
+            timing.tiles = nowMs();
+            loadTiming = null;
+            reportLoadTiming(timing);
+          });
+        }
         renderPins();
         updateCloseButton();
         saveState();
