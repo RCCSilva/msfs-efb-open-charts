@@ -1075,6 +1075,9 @@
   el('btn-zoom-out').addEventListener('click', function () { map.zoomOut(1, { animate: false }); });
   followBtn.addEventListener('click', function () { setFollow(!follow); });
   el('btn-fit').addEventListener('click', function () { setFollow(false); fitChart(); });
+  // The simulator keeps the EFB app open, so the page cannot be closed and reopened: this reloads it.
+  el('btn-reload').title = lang === 'pt' ? 'Recarregar' : 'Reload';
+  el('btn-reload').addEventListener('click', function () { window.location.reload(); });
   window.addEventListener('resize', checkSize);
 
   window.LMM_DEBUG = {
