@@ -27,7 +27,8 @@ func TestAirportsAreSummarisedAndFilteredByPrefix(t *testing.T) {
 	addChart(t, lib, "v1", "", "REA")
 
 	all := lib.Airports("")
-	if len(all) != 3 || all[0].ICAO != "SBGR" || all[1].ICAO != "SBSP" || all[2].ICAO != "" {
+	// the visual chart has no ICAO: it is a route chart, not part of any aerodrome
+	if len(all) != 2 || all[0].ICAO != "SBGR" || all[1].ICAO != "SBSP" {
 		t.Fatalf("airports = %+v", all)
 	}
 	if all[1].Count != 3 || all[1].Types["IAC"] != 2 || all[1].Types["ADC"] != 1 {

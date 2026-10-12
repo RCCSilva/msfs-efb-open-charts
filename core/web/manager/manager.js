@@ -25,7 +25,7 @@
       patExample: 'Example: {icao}_{type}_{title}_{date:YYYYMMDD} reads SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
       patPlaceholder: '{icao}_{type}_{title}_{date:YYYYMMDD}', patTestLabel: 'Test with a file name', patTestPlaceholder: 'SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
       patSave: 'Save patterns', patSaved: 'Patterns saved', patNoMatch: 'no pattern matches this name', patResult: 'Reads',
-      libAll: 'All charts', libAirports: 'By airport', noIcao: 'No airport (visual charts)', airportsN: 'airports',
+      libAll: 'All charts', libAirports: 'By airport', libRoutes: 'Route charts', noIcao: 'No airport (visual charts)', airportsN: 'airports',
       selN: '{n} selected', selPage: 'All {n} on this page are selected.', selAll: 'Select all {n} matching charts', selClear: 'Clear selection',
       delSelected: 'Delete selected', confirmDelN: 'Delete {n} charts from the library? This cannot be undone.', deletedN: '{n} charts deleted',
       backAirports: '< Airports', openAirport: 'Open', selectAllPage: 'Select all on this page',
@@ -115,7 +115,7 @@
       patExample: 'Exemplo: {icao}_{type}_{title}_{date:YYYYMMDD} lê SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
       patPlaceholder: '{icao}_{type}_{title}_{date:YYYYMMDD}', patTestLabel: 'Teste com um nome de arquivo', patTestPlaceholder: 'SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
       patSave: 'Salvar padrões', patSaved: 'Padrões salvos', patNoMatch: 'nenhum padrão serve para este nome', patResult: 'Lê',
-      libAll: 'Todas as cartas', libAirports: 'Por aeródromo', noIcao: 'Sem aeródromo (cartas visuais)', airportsN: 'aeródromos',
+      libAll: 'Todas as cartas', libAirports: 'Por aeródromo', libRoutes: 'Cartas de rota', noIcao: 'Sem aeródromo (cartas visuais)', airportsN: 'aeródromos',
       selN: '{n} selecionadas', selPage: 'Todas as {n} desta página estão selecionadas.', selAll: 'Selecionar todas as {n} cartas da busca', selClear: 'Limpar seleção',
       delSelected: 'Excluir selecionadas', confirmDelN: 'Excluir {n} cartas da biblioteca? Isso não pode ser desfeito.', deletedN: '{n} cartas excluídas',
       backAirports: '< Aeródromos', openAirport: 'Abrir', selectAllPage: 'Selecionar todas desta página',
@@ -365,7 +365,7 @@
     const PAGE = 50;
     const selected = new Set();
     const names = new Map();           // id -> chart, for the group panel
-    let mode = 'all';                  // 'all' | 'airports'
+    let mode = 'all';                  // 'all' | 'airports' | 'routes' (charts with no airport)
     let airport = null;                // an ICAO ('' = no ICAO) while looking inside one airport
     let page = 0;
     let total = 0;
@@ -476,7 +476,8 @@
 
     function filters() {
       const parts = ['q=' + encodeURIComponent(q.value), 'type=' + encodeURIComponent(type.value)];
-      if (airport !== null) parts.push('icao=' + encodeURIComponent(airport === '' ? '-' : airport));
+      if (mode === 'routes') parts.push('icao=-');   // no airport: route charts, visual charts...
+      else if (airport !== null) parts.push('icao=' + encodeURIComponent(airport));
       return parts.join('&');
     }
 
@@ -514,7 +515,8 @@
     function draw() {
       seg.replaceChildren(
         h('button', { class: mode === 'all' ? 'on' : '', onclick: () => { mode = 'all'; airport = null; page = 0; selected.clear(); load(); } }, t('libAll')),
-        h('button', { class: mode === 'airports' ? 'on' : '', onclick: () => { mode = 'airports'; airport = null; page = 0; selected.clear(); load(); } }, t('libAirports')));
+        h('button', { class: mode === 'airports' ? 'on' : '', onclick: () => { mode = 'airports'; airport = null; page = 0; selected.clear(); load(); } }, t('libAirports')),
+        h('button', { class: mode === 'routes' ? 'on' : '', onclick: () => { mode = 'routes'; airport = null; page = 0; selected.clear(); load(); } }, t('libRoutes')));
       crumb.replaceChildren(...(mode === 'airports' && airport !== null ? [
         h('button', { class: 'btn sm', onclick: () => { airport = null; page = 0; selected.clear(); load(); } }, t('backAirports')),
         h('strong', null, airport === '' ? t('noIcao') : airport)] : []));

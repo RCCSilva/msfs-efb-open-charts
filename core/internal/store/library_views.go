@@ -8,7 +8,6 @@ import (
 )
 
 // AirportSummary is one aerodrome of the library: how many charts it has and of which types.
-// Charts without an ICAO (visual charts, for example) are grouped under an empty ICAO.
 type AirportSummary struct {
 	ICAO  string         `json:"icao"`
 	Count int            `json:"count"`
@@ -16,7 +15,7 @@ type AirportSummary struct {
 }
 
 // Airports lists the aerodromes of the library, optionally only those whose ICAO starts with
-// prefix, ordered by ICAO (charts without an ICAO last).
+// prefix, ordered by ICAO. A chart with no ICAO (a route or visual chart) belongs to no aerodrome.
 func (l *Library) Airports(prefix string) []AirportSummary {
 	prefix = strings.ToUpper(strings.TrimSpace(prefix))
 	l.mu.RLock()
@@ -24,7 +23,7 @@ func (l *Library) Airports(prefix string) []AirportSummary {
 	by := map[string]*AirportSummary{}
 	for _, c := range l.charts {
 		icao := strings.ToUpper(c.ICAO)
-		if prefix != "" && !strings.HasPrefix(icao, prefix) {
+		if icao == "" || (prefix != "" && !strings.HasPrefix(icao, prefix)) {
 			continue
 		}
 		a := by[icao]
@@ -43,12 +42,7 @@ func (l *Library) Airports(prefix string) []AirportSummary {
 	for _, a := range by {
 		out = append(out, *a)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if (out[i].ICAO == "") != (out[j].ICAO == "") {
-			return out[j].ICAO == "" // charts without an ICAO last
-		}
-		return out[i].ICAO < out[j].ICAO
-	})
+	sort.Slice(out, func(i, j int) bool { return out[i].ICAO < out[j].ICAO })
 	return out
 }
 
