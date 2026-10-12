@@ -71,5 +71,5 @@ issues unless their terms allow it.
 
 ## License
 
-MIT, see [`core/LICENSE`](core/LICENSE). Third-party components: see [`NOTICE.md`](NOTICE.md).
+MIT, see [`LICENSE`](LICENSE). Third-party components: see [`NOTICE.md`](NOTICE.md).
 Not affiliated with Microsoft, Asobo Studio, DECEA or any chart provider.

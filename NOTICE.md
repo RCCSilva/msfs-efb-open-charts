@@ -1,6 +1,6 @@
 # Third-party notices
 
-Open Charts is distributed under the MIT license (`core/LICENSE`). It uses the components below,
+Open Charts is distributed under the MIT license (`LICENSE`). It uses the components below,
 each under its own license.
 
 | Component | Use | License |

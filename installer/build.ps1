@@ -38,7 +38,7 @@ $stage = Join-Path $build 'OpenCharts'
 Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item (Join-Path $build 'opencharts.exe'), (Join-Path $build 'SimConnect.dll') -Destination $stage
-Copy-Item (Join-Path $root 'core\LICENSE') -Destination $stage
+Copy-Item (Join-Path $root 'LICENSE') -Destination $stage
 Copy-Item (Join-Path $PSScriptRoot 'readme-portable.txt') -Destination (Join-Path $stage 'README.txt')
 $zip = Join-Path $dist "OpenCharts-$Version-open-beta-win64-portable.zip"
 Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue

@@ -27,7 +27,7 @@ OutputBaseFilename=OpenCharts-Setup-{#AppVersion}-open-beta
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-LicenseFile=..\core\LICENSE
+LicenseFile=..\LICENSE
 UninstallDisplayIcon={app}\opencharts.exe
 CloseApplications=no
 
@@ -55,7 +55,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 [Files]
 Source: "..\build\opencharts.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\SimConnect.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\core\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\opencharts.exe"; Parameters: "-open"
