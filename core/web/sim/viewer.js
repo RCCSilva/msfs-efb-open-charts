@@ -40,7 +40,8 @@
       unreachable: 'Server unreachable',
       pick: 'Pick a chart (search above)',
       offChart: 'OFF CHART',
-      loading: 'Loading chart...',
+      loading: 'Loading chart',
+      loadingSlow: 'Big charts take a while',
       loadFail: 'Could not load the chart',
       fixed: 'FIXED',
       simNote: 'FLIGHT SIMULATION ONLY - NOT FOR REAL-WORLD AVIATION',
@@ -64,7 +65,8 @@
       unreachable: 'Servidor inacessível',
       pick: 'Escolha uma carta (busca acima)',
       offChart: 'FORA DA CARTA',
-      loading: 'Carregando carta...',
+      loading: 'Carregando carta',
+      loadingSlow: 'Cartas grandes demoram mais',
       loadFail: 'Não foi possível carregar a carta',
       fixed: 'FIXO',
       simNote: 'APENAS SIMULAÇÃO AÉREA - PROIBIDO O USO EM AVIAÇÃO REAL',
@@ -412,6 +414,7 @@
     });
     marker = L.marker([0, 0], { icon: icon, interactive: false, keyboard: false, zIndexOffset: 1000 });
     map.on('dragstart', function () { setFollow(false); pendingRegional = false; });
+    setFollow(follow);
     if (mode === 'chart') map.on('zoomend', refineChartLevel);
     map.on('move', function () { bump('mapMove'); });
     map.on('zoomend', function () { bump('mapZoomEnd'); });
@@ -440,7 +443,7 @@
       // The page already loaded and decoded this image (openChart): give that element to Leaflet.
       // Passing the URL made the browser fetch and decode the same big PNG a second time.
       chartLayer = L.imageOverlay(active.img, b).addTo(map);
-      map.setMaxBounds(b.pad(0.5));
+      map.setMaxBounds(b.pad(0.75));
     } else {
       chartLayer = new WarpLayer(meta, active.img, {
         tileSize: TILE, opacity: OPACITY_STEPS[opacityIdx], minZoom: OVERLAY_MIN_ZOOM,
@@ -502,6 +505,9 @@
     var meta = active.meta;
     if (mode === 'chart') {
       map.fitBounds(L.latLngBounds([0, 0], [meta.image.height, meta.image.width]), { animate: false });
+      // One level beyond the whole chart is enough: further out, the view is wider than the area the
+      // map may show, the map is pushed back into it and the aircraft can no longer be centred.
+      map.setMinZoom(Math.max(CHART_MIN_ZOOM, map.getZoom() - 1));
     } else {
       var pts = meta.geoCorners.map(function (g) { return L.latLng(g.lat, g.lon); });
       map.fitBounds(L.latLngBounds(pts), { animate: false });
@@ -512,6 +518,13 @@
     if (on && !follow) followJustEnabled = true;
     follow = on;
     followBtn.className = on ? 'active' : '';
+    // While following, pinch and wheel zoom around the centre of the screen (where the aircraft is):
+    // zooming around the finger moved the aircraft away from the centre and every position update
+    // then pulled the map back, which looked like flicker. Leaflet reads these options at each gesture.
+    if (map) {
+      map.options.touchZoom = on ? 'center' : true;
+      map.options.scrollWheelZoom = on ? 'center' : true;
+    }
   }
 
   function rotatePlane(deg) {
@@ -626,7 +639,40 @@
   // the page URL (reload, or opening the same URL in a browser, comes back to the same view).
   // A remembered chart may have been deleted or renamed: fall back to the first pinned chart
   // (or just wait for a choice) instead of leaving the viewer on an error.
+  // ---- loading box: its own element, so the position updates (which rewrite the status line) never
+  // wipe it; it counts the seconds so a slow chart is visibly working, and it is gone only when the
+  // chart is on screen or has failed.
+  var loadingEl = el('loading');
+  var loadingTimer = null;
+  var loadingSince = 0;
+  var loadingToken = null;
+  function paintLoading() {
+    var secs = Math.floor((new Date().getTime() - loadingSince) / 1000);
+    var dots = ['.', '..', '...'][Math.floor((new Date().getTime() - loadingSince) / 400) % 3];
+    clear(loadingEl);
+    loadingEl.appendChild(document.createTextNode(t('loading') + dots + (secs >= 2 ? '  ' + secs + ' s' : '')));
+    if (secs >= 4) {
+      var sub = document.createElement('div');
+      sub.className = 'sub';
+      sub.textContent = t('loadingSlow');
+      loadingEl.appendChild(sub);
+    }
+  }
+  function showLoading(token) {
+    loadingToken = token;
+    loadingSince = new Date().getTime();
+    loadingEl.className = 'loading';
+    paintLoading();
+    if (!loadingTimer) loadingTimer = window.setInterval(paintLoading, 400);
+  }
+  function hideLoading(token) {
+    if (token !== undefined && token !== loadingToken) return;   // another chart is being opened meanwhile
+    loadingEl.className = 'loading hidden';
+    if (loadingTimer) { window.clearInterval(loadingTimer); loadingTimer = null; }
+  }
+
   function loadFailed(id, fallback) {
+    hideLoading();
     setStatus(t('loadFail'), 'bad');
     if (fallback) return;
     var next = null;
@@ -652,8 +698,11 @@
   }
 
   function openChart(id, fallback) {
-    setStatus(t('loading'), 'warn');
+    setStatus(t('loading') + '...', 'warn');
     hidePanels();
+    var loadToken = {};
+    showLoading(loadToken);
+    window.setTimeout(function () { hideLoading(loadToken); }, 120000);   // never leave it up forever
     // v=<time>: never trust a chart.json cached by an older server (it kept names for an hour)
     var timing = { id: id, mode: mode, start: nowMs(), json: 0, image: 0, built: 0, tiles: 0, drawn: 0, drawMs: 0, w: 0, h: 0 };
     getJson('/charts/' + encodeURIComponent(id) + '/chart.json?v=' + Date.now(), function (meta) {
@@ -677,13 +726,17 @@
           timing.tiles = nowMs();
           loadTiming = null;
           reportLoadTiming(timing);
+          hideLoading(loadToken);
         } else if (chartLayer && chartLayer.once) {
           chartLayer.once('load', function () {
+            hideLoading(loadToken);
             if (loadTiming !== timing) return;   // another chart was opened meanwhile
             timing.tiles = nowMs();
             loadTiming = null;
             reportLoadTiming(timing);
           });
+        } else {
+          hideLoading(loadToken);
         }
         renderPins();
         updateCloseButton();

@@ -258,3 +258,10 @@ body.clean .cleanbtn { background: rgba(20, 30, 40, 0.55); }
 body.clean .cleanbtn .slash { display: inline; }
 body.clean .bar, body.clean #controls, body.clean #display, body.clean #status { display: none !important; }
 .bar .row { padding-right: 54px; }
+
+/* ---- loading a chart: a box in the middle of the map, above everything ---- */
+.loading { position: absolute; left: 50%; top: 42%; z-index: 1300; width: 230px; margin-left: -115px;
+  padding: 12px 10px; border-radius: 8px; background: rgba(20, 30, 40, 0.92); color: #fff;
+  font-size: 14px; line-height: 20px; text-align: center; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  pointer-events: none; }
+.loading .sub { margin-top: 4px; font-size: 11px; line-height: 14px; color: #c9d4de; }
