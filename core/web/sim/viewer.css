@@ -63,7 +63,8 @@
   cursor: pointer;
 }
 
-.tool.wide { max-width: 22%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* clip, never "..." : the ellipsis character is missing in the simulator font */
+.tool.wide { max-width: 28%; overflow: hidden; white-space: nowrap; text-overflow: clip; }
 .tool.on { background: rgba(35, 105, 190, 0.96); }
 .tool svg { width: 24px; height: 24px; fill: none; stroke: #fff; stroke-width: 2; vertical-align: middle; }
 

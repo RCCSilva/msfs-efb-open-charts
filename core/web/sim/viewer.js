@@ -545,7 +545,8 @@
     getJson('/api/flights', function (st) {
       if (st) flights = st;
       var fl = currentFlight();
-      flightBtn.textContent = t('flight') + ': ' + (fl ? fl.name : '-');
+      flightBtn.textContent = fl ? fl.name : '-';
+      flightBtn.title = t('flight');
       if (!fl || !fl.pins.length) {
         pinned = [];
         renderPins();
@@ -690,7 +691,7 @@
     pinned.forEach(function (c) {
       var r = document.createElement('div');
       r.className = 'item' + (active && active.meta.id === c.id ? ' current' : '');
-      var x = button('pinbtn', '\u2715 ' + t('remove'), function (ev) {
+      var x = button('pinbtn', t('remove'), function (ev) {
         if (ev.stopPropagation) ev.stopPropagation();
         togglePin({ id: c.id }, function () { drawFlights(); });
       });
@@ -715,7 +716,7 @@
     var last = document.createElement('div');
     last.className = 'krow';
     last.appendChild(button('k-wide', '____', function () { type(' '); }));
-    last.appendChild(button('', '⌫', function () { qEl.value = qEl.value.slice(0, -1); scheduleSearch(); }));
+    last.appendChild(button('', '<', function () { qEl.value = qEl.value.slice(0, -1); scheduleSearch(); }));
     last.appendChild(button('', 'C', function () { qEl.value = ''; runSearch(); }));
     kbdEl.appendChild(last);
   }

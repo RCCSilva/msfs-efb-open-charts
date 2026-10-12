@@ -1,4 +1,4 @@
-# Open Charts — Open Beta 0.1.0
+# Open Charts — 0.1.1 Open Beta
 
 A local aeronautical chart manager and in-sim moving map for **Microsoft Flight Simulator 2024**.
 
@@ -34,7 +34,7 @@ The installer is not code-signed yet, so Windows SmartScreen may warn on first r
 Requirements: Go 1.26+ (no cgo), the MSFS 2024 SDK (for `SimConnect.dll`), Inno Setup 6.
 
 ```powershell
-powershell -File installer\build.ps1 -Version 0.1.0
+powershell -File installer\build.ps1 -Version 0.1.1
 ```
 
 This runs the tests, builds `build\opencharts.exe`, and produces

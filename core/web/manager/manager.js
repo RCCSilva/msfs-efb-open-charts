@@ -105,7 +105,7 @@
   try { lang = localStorage.getItem('oc.lang') || ((navigator.language || 'en').toLowerCase().startsWith('pt') ? 'pt' : 'en'); } catch (e) { /* ignore */ }
   const qLang = new URLSearchParams(location.search).get('lang');
   if (qLang === 'pt' || qLang === 'en') lang = qLang;
-  const VERSION = '0.1.0 Open Beta';
+  const VERSION = '0.1.1 Open Beta';
   const REPO = 'https://github.com/RCCSilva/msfs-efb-open-charts';
   const t = (k) => STR[lang][k] || STR.en[k] || k;
   const tx = (o) => (o && (o[lang] || o.en)) || '';
