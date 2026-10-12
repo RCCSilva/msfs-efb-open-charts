@@ -317,9 +317,21 @@
       common.minZoom = OVERLAY_MIN_ZOOM;
       common.maxZoom = OVERLAY_MAX_ZOOM;
       map = L.map('map', common).setView([-23.55, -46.63], 9);
-      L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+      var base = L.tileLayer('/tiles/{z}/{x}/{y}.png', {
         minZoom: OVERLAY_MIN_ZOOM, maxZoom: OVERLAY_MAX_ZOOM, tileSize: 256, updateWhenIdle: false, keepBuffer: 2
       }).addTo(map);
+      // A tile that failed (network blip, upstream throttling) is asked again a few times
+      // instead of staying black until the user moves or zooms the map.
+      base.on('tileerror', function (ev) {
+        var img = ev.tile;
+        var n = (img._ocRetry || 0) + 1;
+        if (n > 4) return;
+        img._ocRetry = n;
+        var url = img.src.split('?')[0];
+        window.setTimeout(function () {
+          if (img.parentNode) img.src = url + '?r=' + n;
+        }, 700 * n);
+      });
     }
     var icon = L.divIcon({
       className: 'plane-icon',

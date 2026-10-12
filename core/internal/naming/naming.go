@@ -34,6 +34,21 @@ func Display(icao, typ, title string) string {
 	return strings.Join(parts, " · ")
 }
 
+// IsGenericTitle reports whether a title embedded in a PDF says nothing about the chart:
+// authoring-tool leftovers such as "BaseMap_REA", "Layer 1" or "Untitled".
+func IsGenericTitle(s string) bool {
+	f := strings.Join(Tokens(s), " ")
+	if f == "" {
+		return true
+	}
+	for _, w := range []string{"basemap", "base map", "untitled", "sem titulo", "layer", "viewport", "document", "documento"} {
+		if strings.Contains(f, w) {
+			return true
+		}
+	}
+	return f == "map" || f == "mapa" || f == "page" || f == "pagina"
+}
+
 // Tidy turns "ils-x_rwy-17r" into "ILS X RWY 17R".
 func Tidy(s string) string {
 	s = strings.NewReplacer("_", " ", "-", " ").Replace(strings.TrimSuffix(s, ".pdf"))

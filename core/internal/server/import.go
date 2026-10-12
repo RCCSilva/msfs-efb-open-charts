@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/pdfgeo"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sources"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
@@ -47,20 +46,14 @@ func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.C
 		return fallback
 	}
 	source := pick(f.Source, "manual")
-	info, by := sources.Recognize(source, stem)
-	if by == "" {
-		by = source
-	}
-	if it, ok := sources.MatchCatalog(by, base); ok { // exactly as the provider lists it
-		info.Type, info.Title, info.Validity = it.Type, it.Name, it.Effective
-	}
+	id := sources.Identify(source, stem, base, pdfViewportName(data))
 	opt := importer.Options{
 		Source:   source,
 		Name:     strings.TrimSpace(f.Name),
-		ICAO:     strings.ToUpper(pick(f.ICAO, info.ICAO)),
-		Type:     strings.ToUpper(pick(f.Type, info.Type)),
-		Title:    pick(f.Title, s.autoTitle(data, info)),
-		Validity: pick(f.Validity, info.Validity),
+		ICAO:     strings.ToUpper(pick(f.ICAO, id.ICAO)),
+		Type:     strings.ToUpper(pick(f.Type, id.Type)),
+		Title:    pick(f.Title, id.Title),
+		Validity: pick(f.Validity, id.Validity),
 		Original: base,
 		Package:  f.Package,
 	}
@@ -112,16 +105,10 @@ func itemStatus(err error) (status, msg string) {
 	}
 }
 
-// autoTitle: ICAO charts use the title from the name; charts without ICAO use the title the PDF
-// itself carries, then the tidied file name.
-func (s *Server) autoTitle(data []byte, info naming.Info) string {
-	if info.ICAO != "" {
-		return info.Title
-	}
+// pdfViewportName returns the name of the first georeferenced viewport of a PDF, or "".
+func pdfViewportName(data []byte) string {
 	if pg, err := pdfgeo.Read(data); err == nil && len(pg.Viewports) > 0 {
-		if n := strings.TrimSpace(pg.Viewports[0].Name); n != "" {
-			return n
-		}
+		return strings.TrimSpace(pg.Viewports[0].Name)
 	}
-	return info.Title
+	return ""
 }

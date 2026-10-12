@@ -448,14 +448,12 @@
         fd.append('source', s.id);
         try {
           const ins = await api('POST', '/api/import/inspect', fd);
-          if (!s.builtin && ins.confident && !ins.duplicate) {
+          if (ins.action === 'import') { // the server decided: import as it identified the file
             const line = h('div', { class: 'card' }, f.name + ' ...');
             reviews.appendChild(line);
-            const sg = ins.suggestion;
             const body = new FormData();
             body.append('token', ins.token);
             body.append('source', s.id);
-            ['icao', 'type', 'title', 'validity'].forEach((k) => sg[k] && body.append(k, sg[k]));
             try {
               const c = await api('POST', '/api/import', body);
               line.replaceChildren(h('span', { class: 'badge ok' }, t('imported')), c.name);

@@ -80,6 +80,21 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   `core/internal/setup/efbpkg/OpenCharts.js` (`VERSION`) and `installer/build.ps1`. Change them
   together.
 
+## Where logic lives
+
+- **Back-end (Go) owns the rules.** What a file is, how a chart is named, whether it is imported
+  automatically or reviewed, duplicates, validation, what may be written where: all of it is decided
+  in `core/internal`, in the domain packages (`sources`, `naming`, `store`, `importer`), not in
+  the HTTP handlers and never in the browser. Handlers translate HTTP to domain calls.
+- **One rule, one place.** If two handlers need the same decision, it belongs in a domain function
+  they both call (see `sources.Identify`). Duplicated rules drift and become bugs.
+- **Front-end shows and collects.** The manager and viewer handle input, layout, windows/panels and
+  what to display; they send what the user entered and render what the server answers. When the UI
+  needs to branch on a business decision, the API returns that decision (for example the
+  `action` field of `/api/import/inspect`) instead of the UI re-deriving it from raw fields.
+- Exceptions are fine when justified (for example the viewer's geometry maths, which must run in
+  the browser to draw the aircraft), but say why in a comment.
+
 ## Architecture notes worth knowing
 
 - **Georeference:** the chart image is placed with an affine map from projected coordinates to

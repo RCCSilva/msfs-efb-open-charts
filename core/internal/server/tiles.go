@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,6 +20,8 @@ type tileCache struct {
 	upstream string
 	ua       string
 	client   *http.Client
+	slots    chan struct{} // limits simultaneous requests to the upstream (OSM asks for few)
+	backoff  time.Duration // first retry delay; doubles on each attempt
 
 	mu       sync.Mutex
 	inflight map[string]*pending
@@ -37,6 +40,8 @@ func newTileCache(dir string) *tileCache {
 		// OSM's tile policy requires an identifying User-Agent.
 		ua:       "OpenCharts/0.1 (personal non-commercial MSFS chart viewer)",
 		client:   &http.Client{Timeout: 10 * time.Second},
+		slots:    make(chan struct{}, 4),
+		backoff:  400 * time.Millisecond,
 		inflight: map[string]*pending{},
 	}
 }
@@ -75,7 +80,10 @@ func (t *tileCache) handle(w http.ResponseWriter, r *http.Request) {
 
 	<-p.done
 	if p.err != nil {
-		http.Error(w, "tile fetch failed", http.StatusBadGateway)
+		// Do not let the browser cache the failure; Retry-After lets a client try again soon.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Retry-After", "2")
+		http.Error(w, "tile fetch failed", http.StatusServiceUnavailable)
 		return
 	}
 	sendTile(w, p.data)
@@ -87,29 +95,57 @@ func sendTile(w http.ResponseWriter, data []byte) {
 	_, _ = w.Write(data)
 }
 
+// fetch gets one tile from the upstream, retrying on throttling (429) and server errors, with a
+// small number of simultaneous requests. A failed tile used to stay failed until the user moved
+// the map; now it is retried here and, if it still fails, logged.
 func (t *tileCache) fetch(z, x, y int, file string) ([]byte, error) {
+	const attempts = 3
+	var last error
+	delay := t.backoff
+	for n := 1; n <= attempts; n++ {
+		data, retry, err := t.fetchOnce(z, x, y)
+		if err == nil {
+			if err := os.MkdirAll(filepath.Dir(file), 0o755); err == nil {
+				tmp := file + ".tmp"
+				if os.WriteFile(tmp, data, 0o644) == nil {
+					_ = os.Rename(tmp, file)
+				}
+			}
+			return data, nil
+		}
+		last = err
+		if !retry || n == attempts {
+			break
+		}
+		time.Sleep(delay)
+		delay *= 2
+	}
+	log.Printf("tiles: %d/%d/%d: %v", z, x, y, last)
+	return nil, last
+}
+
+// fetchOnce does a single upstream request. retry tells whether trying again may help.
+func (t *tileCache) fetchOnce(z, x, y int) (data []byte, retry bool, err error) {
+	t.slots <- struct{}{}
+	defer func() { <-t.slots }()
+
 	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(t.upstream, z, x, y), nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	req.Header.Set("User-Agent", t.ua)
 	resp, err := t.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, true, err // network error or timeout
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("upstream HTTP %d", resp.StatusCode)
+		retry = resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+		return nil, retry, fmt.Errorf("upstream HTTP %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	data, err = io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
-	if err := os.MkdirAll(filepath.Dir(file), 0o755); err == nil {
-		tmp := file + ".tmp"
-		if os.WriteFile(tmp, data, 0o644) == nil {
-			_ = os.Rename(tmp, file)
-		}
-	}
-	return data, nil
+	return data, false, nil
 }

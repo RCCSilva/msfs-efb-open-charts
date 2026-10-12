@@ -112,9 +112,6 @@ func (s *Server) handleInspect(w http.ResponseWriter, r *http.Request) {
 	stem := strings.TrimSuffix(base, filepath.Ext(base))
 
 	out := map[string]any{"file": base, "size": len(data), "source": source}
-	info, by := sources.Recognize(source, stem)
-	out["recognizedBy"] = by
-
 	viewport, geo := "", false
 	if pg, err := pdfgeo.Read(data); err == nil && len(pg.Viewports) > 0 {
 		geo = true
@@ -122,37 +119,28 @@ func (s *Server) handleInspect(w http.ResponseWriter, r *http.Request) {
 	}
 	out["georeferenced"], out["viewport"] = geo, viewport
 
-	matched := ""
-	if it, ok := sources.MatchCatalog(firstNonEmpty(by, source), base); ok {
-		info.Type, info.Title, info.Validity = it.Type, it.Name, it.Effective
-		matched = "catalog"
-	}
-	sg := suggestion{ICAO: info.ICAO, Type: info.Type, Title: info.Title, Validity: info.Validity}
-	if sg.ICAO == "" && viewport != "" {
-		sg.Title = viewport // charts without an ICAO are better named by the PDF's own title
-	}
-	if sg.Title == "" {
-		sg.Title = naming.Tidy(stem)
-	}
+	id := sources.Identify(source, stem, base, viewport)
+	out["recognizedBy"] = id.Recognizer
+	out["matched"] = id.Matched
+	out["confident"] = geo && id.Confident
+	sg := suggestion{ICAO: id.ICAO, Type: id.Type, Title: id.Title, Validity: id.Validity}
 	sg.Name = naming.Display(sg.ICAO, sg.Type, sg.Title)
 	out["suggestion"] = sg
-	out["matched"] = matched
-	// confident: the file is a known provider file (catalog, or a package-style name with ICAO
-	// and type), so the UI may import it without asking.
-	out["confident"] = geo && (matched != "" || (by != "" && sg.ICAO != "" && sg.Type != ""))
 
+	_, dup := s.lib.FindByOriginal(base)
 	if c, ok := s.lib.FindByOriginal(base); ok {
 		out["duplicate"] = map[string]string{"id": c.ID, "name": c.Name}
 	}
+	// action is the server's decision about what should happen next:
+	//   "import" - a known provider file arriving through that provider's page: import it as is;
+	//   "review" - anything else (unknown file, duplicate, built-in source, not georeferenced):
+	//              the user reviews the proposed identity first.
+	// The UI follows it; it does not re-derive the rule.
+	action := "review"
+	if si, ok := sources.Get(source); ok && !si.Builtin && geo && id.Confident && !dup {
+		action = "import"
+	}
+	out["action"] = action
 	out["token"] = s.staged.put(data, base)
 	writeJSON(w, 200, out)
-}
-
-func firstNonEmpty(v ...string) string {
-	for _, s := range v {
-		if s != "" {
-			return s
-		}
-	}
-	return ""
 }
