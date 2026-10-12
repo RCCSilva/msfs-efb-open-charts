@@ -72,6 +72,11 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   viewport of about 468×696 CSS px, and touch events reported. So the map must be **raster**:
   vector tiles (MapLibre, OpenFreeMap, MapTiler vector styles) cannot be drawn in the simulator;
   they would need to be rasterised on the server. Phones and tablets do have WebGL.
+  Text fields: the page runs in a frame, so it tells the EFB app (postMessage `text-input`) when the
+  search field has focus, and the app triggers the game's `FOCUS_INPUT_FIELD` / `UNFOCUS_INPUT_FIELD`
+  (as the SDK's own Input does). Without it the simulator treats typed keys as key bindings.
+  Leaflet's CSS asks tiles for `mix-blend-mode: plus-lighter`; viewer.css turns it off because the
+  simulator flickered and blackened the base map with it.
 - **Manager UI (`core/web/manager`):** modern plain JS, no build step, no framework. Never use
   `innerHTML` with data; build nodes with the `h()` helper and `textContent`. Every user-visible
   string goes through the pt/en table.

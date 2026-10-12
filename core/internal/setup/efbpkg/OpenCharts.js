@@ -87,6 +87,10 @@
         this.healthTimer = null;
         this.healthFails = 0;   // consecutive failed checks
         this.destroyed = false;
+        this.textFocused = false;   // the page inside the frame has a text field in use
+        this.onFrameMessage = this.handleFrameMessage.bind(this);
+        this.onGameBlur = this.blurTextField.bind(this, true);
+        this.onTextFromGame = this.handleTextFromGame.bind(this);
         this.barEl = null;
         this.msgEl = null;
         // The EFB may route gamepad/page-key events to the view; harmless no-ops.
@@ -108,8 +112,57 @@
         this.barEl = root.querySelector('.lmm-bar');
         this.msgEl = root.querySelector('.lmm-msg');
         trace('view rendered (frame exists: ' + !!this.frame + ')');
+        window.addEventListener('message', this.onFrameMessage);
         this.createFrame('after-render');
         this.startHealthCheck();
+      }
+
+      // ---- keyboard: while a text field of the page has focus, tell the game, so the keys typed go
+      // to the field and do not trigger commands of the simulator (gear, flaps, camera...). This is
+      // the same FOCUS_INPUT_FIELD / UNFOCUS_INPUT_FIELD pair the EFB's own text boxes use. The page
+      // runs in a frame from another origin, so it asks for it with postMessage.
+      handleFrameMessage(ev) {
+        var d = ev && ev.data;
+        if (!d || d.oc !== 'text-input' || !this.frame || ev.source !== this.frame.contentWindow) return;
+        if (d.state === 'focus') this.focusTextField(d.text);
+        else this.blurTextField(false);
+      }
+
+      focusTextField(text) {
+        var C = window.Coherent;
+        if (this.textFocused || !C || typeof C.trigger !== 'function') return;
+        this.textFocused = true;
+        C.trigger('FOCUS_INPUT_FIELD', { title: APP_NAME, description: '', default_text: String(text || ''), is_numeric: false, is_efb: true });
+        if (typeof C.on === 'function') {
+          C.on('mousePressOutsideView', this.onGameBlur);
+          C.on('SetInputTextFromOS', this.onTextFromGame);
+        }
+      }
+
+      // fromGame: the game itself asked to leave the field (a click outside the view): the page's
+      // field must lose focus too.
+      blurTextField(fromGame) {
+        var C = window.Coherent;
+        if (!this.textFocused) return;
+        this.textFocused = false;
+        if (C && typeof C.trigger === 'function') C.trigger('UNFOCUS_INPUT_FIELD', 'open-charts-search');
+        if (C && typeof C.off === 'function') {
+          C.off('mousePressOutsideView', this.onGameBlur);
+          C.off('SetInputTextFromOS', this.onTextFromGame);
+        }
+        if (fromGame) this.sendToFrame({ oc: 'text-blur' });
+      }
+
+      // Text entered with the game's own keyboard (VR, gamepad): hand it to the page.
+      handleTextFromGame(text) {
+        this.sendToFrame({ oc: 'text-value', text: String(text || '') });
+        this.blurTextField(true);
+      }
+
+      sendToFrame(msg) {
+        try {
+          if (this.frame && this.frame.contentWindow) this.frame.contentWindow.postMessage(msg, SERVER_URL.slice(0, -1));
+        } catch (e) { /* the frame is gone */ }
       }
 
       createFrame(reason) {
@@ -205,8 +258,8 @@
       // EFB lifecycle (see AppView.d.ts): open/resume/pause/close/update.
       onOpen() { trace('onOpen'); this.startHealthCheck(); }
       onResume() { trace('onResume'); this.startHealthCheck(); }
-      onPause() { trace('onPause'); this.stopHealthCheck(); }
-      onClose() { trace('onClose'); this.stopHealthCheck(); }
+      onPause() { trace('onPause'); this.blurTextField(false); this.stopHealthCheck(); }
+      onClose() { trace('onClose'); this.blurTextField(false); this.stopHealthCheck(); }
       onUpdate() {}
       routeGamepadInteractionEvent() {}
       handlePageKeyAction() {}
@@ -214,6 +267,8 @@
       destroy() {
         trace('view destroyed');
         this.destroyed = true;
+        this.blurTextField(false);
+        window.removeEventListener('message', this.onFrameMessage);
         this.stopHealthCheck();
         if (this.frame) {
           this.frame.onload = null;

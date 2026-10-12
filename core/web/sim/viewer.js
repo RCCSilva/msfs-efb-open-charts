@@ -1041,6 +1041,21 @@
   });
   updateStar();
   qEl.addEventListener('input', scheduleSearch);
+  // Inside the EFB the page runs in a frame: tell the app when the search field is in use, so the
+  // simulator sends the typed keys to it and not to its own key bindings (gear, flaps, camera...).
+  function tellHost(state) {
+    try {
+      if (window.parent && window.parent !== window) window.parent.postMessage({ oc: 'text-input', state: state, text: qEl.value }, '*');
+    } catch (e) { /* not in a frame */ }
+  }
+  qEl.addEventListener('focus', function () { tellHost('focus'); });
+  qEl.addEventListener('blur', function () { tellHost('blur'); });
+  window.addEventListener('message', function (ev) {
+    var d = ev && ev.data;
+    if (!d || ev.source !== window.parent) return;
+    if (d.oc === 'text-value' && typeof d.text === 'string') { qEl.value = d.text.slice(0, 200); runSearch(); }
+    if (d.oc === 'text-blur') qEl.blur();
+  });
   qEl.addEventListener('keyup', function (ev) { if (ev.keyCode === 27) { qEl.value = ''; hidePanels(); } });
   el('btn-kbd').addEventListener('click', function () {
     var hidden = kbdEl.className.indexOf('hidden') >= 0;
