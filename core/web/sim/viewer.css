@@ -1,5 +1,17 @@
 /* Open Charts viewer. Plain CSS, ASCII only (the sim's browser is old). Shared basics: map.css. */
 
+/* Noto Sans (SIL OFL 1.1, see fonts/OFL.txt): the simulator's browser font misses glyphs such as
+   the tilde on a capital A. Falls back to Arial if the file cannot be loaded. */
+@font-face {
+  font-family: 'OC Sans';
+  src: url('/fonts/NotoSans-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+html, body, button, input, select, textarea, .status, .attribution {
+  font-family: 'OC Sans', Arial, Helvetica, sans-serif;
+}
+
 .hidden { display: none !important; }
 
 /* Always-visible reminder: simulation only. */

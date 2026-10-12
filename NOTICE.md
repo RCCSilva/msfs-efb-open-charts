@@ -12,6 +12,7 @@ each under its own license.
 | [fyne.io/systray](https://github.com/fyne-io/systray) | System tray icon | Apache-2.0 |
 | [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) | Text normalisation (accents) | BSD-3-Clause |
 | [Leaflet](https://leafletjs.com/) | Map in the viewer | BSD-2-Clause |
+| [Noto Sans](https://github.com/notofonts/latin-greek-cyrillic) | Font of the in-sim viewer (`core/web/sim/fonts`) | SIL Open Font License 1.1 |
 | [go-winres](https://github.com/tc-hib/go-winres) | Executable icon and version (build only) | MIT |
 | [Inno Setup](https://jrsoftware.org/isinfo.php) | Installer generation (build only) | Inno Setup license (free) |
 
