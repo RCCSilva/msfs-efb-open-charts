@@ -296,14 +296,40 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, err := s.importPDF(data, filename, importForm{
+	form := importForm{
 		Source:   r.FormValue("source"),
 		Name:     r.FormValue("name"),
 		ICAO:     r.FormValue("icao"),
 		Type:     r.FormValue("type"),
 		Title:    r.FormValue("title"),
 		Validity: r.FormValue("validity"),
-	})
+	}
+
+	// async: answer at once with a job; the UI follows its stage and percentage.
+	if r.FormValue("async") != "" {
+		job := s.jobs.Start("import", 1, func(j *jobs.Job) {
+			form.Stage = j.SetStage
+			c, err := s.importPDF(data, filename, form)
+			if err != nil {
+				st, msg := itemStatus(err)
+				it := jobs.Item{File: filename, Status: st, Message: msg}
+				if c != nil {
+					it.ChartID, it.Name = c.ID, c.Name
+				}
+				j.Add(it)
+				return
+			}
+			if token != "" {
+				s.staged.drop(token)
+			}
+			j.Add(jobs.Item{File: filename, ChartID: c.ID, Name: c.Name, Status: "ok"})
+		})
+		snap, _ := s.jobs.Get(job.ID())
+		writeJSON(w, 202, snap)
+		return
+	}
+
+	c, err := s.importPDF(data, filename, form)
 	if err != nil {
 		writeErr(w, importStatus(err), err)
 		return

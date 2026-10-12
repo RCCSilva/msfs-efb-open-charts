@@ -22,13 +22,17 @@ func (s *Server) canImport() bool { return s.newRenderer != nil }
 
 // withRenderer runs fn with the renderer, creating it if needed. Imports run one at a time
 // (one PDFium instance).
-func (s *Server) withRenderer(fn func(r *importer.Renderer) error) error {
+// onLoad (may be nil) is called when the renderer has to be created first.
+func (s *Server) withRenderer(onLoad func(), fn func(r *importer.Renderer) error) error {
 	if s.newRenderer == nil {
 		return errors.New("importer unavailable")
 	}
 	s.importMu.Lock()
 	defer s.importMu.Unlock()
 	if s.rend == nil {
+		if onLoad != nil {
+			onLoad()
+		}
 		r, err := s.newRenderer()
 		if err != nil {
 			return err

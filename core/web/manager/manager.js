@@ -27,6 +27,9 @@
       tabCatalog: 'Visual charts (catalog)', tabPackage: 'Aerodromes (package)', tabFiles: 'Add files',
       stepsFiles: 'Add what you downloaded', capCatalog: 'Catalog', capPackage: 'Package', capLocate: 'By date', capUpload: 'Upload',
       about: 'About', setup: 'Setup', map: 'Map',
+      sUploading: 'Uploading the file', sAnalyzing: 'Reading the PDF and identifying the chart',
+      sWaiting: 'Waiting for the previous file', sEngine: 'Starting the PDF engine (first import only)',
+      sRender: 'Rendering and georeferencing the chart', sSave: 'Saving to the library',
       aboutProject: 'Project and support', aboutRepo: 'Source code on GitHub', aboutIssues: 'Open issues',
       aboutBug: 'Report a bug', aboutFeature: 'Suggest a feature', aboutBeta: 'This is an Open Beta: bug reports are very welcome.',
       aboutLogs: 'When reporting a bug, include the log file',
@@ -75,6 +78,9 @@
       tabCatalog: 'Cartas visuais (catálogo)', tabPackage: 'Aeródromos (pacote)', tabFiles: 'Adicionar arquivos',
       stepsFiles: 'Adicione o que você baixou', capCatalog: 'Catálogo', capPackage: 'Pacote', capLocate: 'Por data', capUpload: 'Envio',
       about: 'Sobre', setup: 'Configuração', map: 'Mapa',
+      sUploading: 'Enviando o arquivo', sAnalyzing: 'Lendo o PDF e identificando a carta',
+      sWaiting: 'Aguardando o arquivo anterior', sEngine: 'Iniciando o motor de PDF (só na primeira importação)',
+      sRender: 'Renderizando e georreferenciando a carta', sSave: 'Salvando na biblioteca',
       aboutProject: 'Projeto e suporte', aboutRepo: 'Código-fonte no GitHub', aboutIssues: 'Ver issues',
       aboutBug: 'Reportar um bug', aboutFeature: 'Sugerir uma funcionalidade', aboutBeta: 'Esta é uma Open Beta: relatos de bugs são muito bem-vindos.',
       aboutLogs: 'Ao reportar um bug, anexe o arquivo de log',
@@ -374,19 +380,103 @@
   }
 
   // Upload PDFs on behalf of a source (recognition and naming use that source's rules).
+  // ---- per-file progress: the server reports the stage and the percentage, the UI shows them
+  const STAGE_LABEL = { waiting: 'sWaiting', engine: 'sEngine', render: 'sRender', save: 'sSave' };
+
+  // POST a FormData with upload progress. onProgress(0-100) while sending, onUploaded() once the
+  // body is sent and the server is working on it.
+  function xhrPost(url, fd, onProgress, onUploaded) {
+    return new Promise((resolve, reject) => {
+      const x = new XMLHttpRequest();
+      x.open('POST', url);
+      x.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100)); };
+      x.upload.onload = () => { if (onUploaded) onUploaded(); };
+      x.onload = () => {
+        let data = null;
+        try { data = JSON.parse(x.responseText); } catch (e) { /* no body */ }
+        if (x.status >= 200 && x.status < 300) resolve(data);
+        else reject(new Error((data && data.error) || x.statusText || 'error'));
+      };
+      x.onerror = () => reject(new Error('network error'));
+      x.send(fd);
+    });
+  }
+
+  // A row with the file name, what is happening, a bar and the elapsed time.
+  function progressRow(name) {
+    const label = h('span', { class: 'muted' });
+    const clock = h('span', { class: 'muted' });
+    const fill = h('i');
+    const bar = h('div', { class: 'bar' }, fill);
+    const el = h('div', { class: 'card prow' },
+      h('div', { class: 'row' }, h('strong', { class: 'grow' }, name), label, clock), bar);
+    const t0 = Date.now();
+    const tick = setInterval(() => { clock.textContent = Math.round((Date.now() - t0) / 1000) + ' s'; }, 500);
+    const row = {
+      el,
+      update(text, pct) {
+        label.textContent = text;
+        if (pct === null || pct === undefined) { bar.classList.add('indet'); fill.style.width = ''; } else {
+          bar.classList.remove('indet'); fill.style.width = pct + '%';
+        }
+      },
+      ok(text) {
+        clearInterval(tick);
+        el.replaceChildren(h('span', { class: 'badge ok' }, t('imported')), text);
+      },
+      warn(text) {
+        clearInterval(tick);
+        el.replaceChildren(h('span', { class: 'badge warn' }, t('skipped')), text);
+      },
+      fail(text) {
+        clearInterval(tick);
+        el.replaceChildren(h('span', { class: 'badge bad' }, t('error')), text);
+      },
+      stop() { clearInterval(tick); }
+    };
+    row.update(t('sUploading'), 0);
+    return row;
+  }
+
+  // Start an import job on the server (async) and follow it, showing its stage in the row.
+  // Resolves with the job's item; rejects with the server's message on failure.
+  async function runImport(fd, row, snapshotPromise) {
+    let snap = snapshotPromise ? await snapshotPromise : null;
+    if (!snap) {
+      fd.append('async', '1');
+      snap = await api('POST', '/api/import', fd);
+    }
+    for (;;) {
+      const label = STAGE_LABEL[snap.stage] ? t(STAGE_LABEL[snap.stage]) : t('sWaiting');
+      // while rendering the server cannot say how far it is: show motion and the clock instead
+      row.update(label, snap.state === 'done' ? 100 : (snap.stage === 'render' ? null : snap.percent));
+      if (snap.state === 'done') break;
+      await new Promise((r) => setTimeout(r, 250));
+      snap = await api('GET', '/api/jobs/' + encodeURIComponent(snap.id));
+    }
+    const item = snap.items[0];
+    if (!item) throw new Error('no result');
+    if (item.status === 'ok') return item;
+    const e = new Error(item.message || item.status);
+    e.skipped = item.status === 'skipped';
+    throw e;
+  }
+
   async function uploadFiles(source, files, log, extra) {
     for (const f of files) {
-      const line = h('div', null, f.name + ' ...');
-      log.appendChild(line);
+      const row = progressRow(f.name);
+      log.appendChild(row.el);
       const fd = new FormData();
       fd.append('file', f);
       fd.append('source', source);
+      fd.append('async', '1');
       for (const key of Object.keys(extra || {})) if (extra[key]) fd.append(key, extra[key]);
       try {
-        const c = await api('POST', '/api/import', fd);
-        line.replaceChildren(h('span', { class: 'badge ok' }, t('imported')), c.name);
+        const snap = await xhrPost('/api/import', fd, (p) => row.update(t('sUploading'), p), () => row.update(t('sAnalyzing'), null));
+        const item = await runImport(null, row, Promise.resolve(snap));
+        row.ok(item.name);
       } catch (e) {
-        line.replaceChildren(h('span', { class: 'badge bad' }, t('error')), f.name + ': ' + e.message);
+        if (e.skipped) row.warn(f.name + ': ' + e.message); else row.fail(f.name + ': ' + e.message);
       }
     }
   }
@@ -414,12 +504,15 @@
       fd.append('title', title.value.trim());
       fd.append('validity', validity.value.trim());
       fd.append('name', name.value.trim());
+      const row = progressRow(ins.file);
+      status.replaceChildren(row.el);
       try {
-        const c = await api('POST', '/api/import', fd);
-        card.replaceChildren(h('span', { class: 'badge ok' }, t('imported')), c.name);
+        const item = await runImport(fd, row);
+        card.replaceChildren(h('span', { class: 'badge ok' }, t('imported')), item.name);
         card.done = true;
+        row.stop();
       } catch (e) {
-        status.replaceChildren(h('span', { class: 'badge bad' }, e.message));
+        row.fail(e.message);
         btn.disabled = false;
       }
     } }, t('importOne'));
@@ -443,30 +536,32 @@
 
     async function inspectFiles(files) {
       for (const f of files) {
+        const row = progressRow(f.name);
+        reviews.appendChild(row.el);
         const fd = new FormData();
         fd.append('file', f);
         fd.append('source', s.id);
         try {
-          const ins = await api('POST', '/api/import/inspect', fd);
+          const ins = await xhrPost('/api/import/inspect', fd,
+            (p) => row.update(t('sUploading'), p), () => row.update(t('sAnalyzing'), null));
           if (ins.action === 'import') { // the server decided: import as it identified the file
-            const line = h('div', { class: 'card' }, f.name + ' ...');
-            reviews.appendChild(line);
             const body = new FormData();
             body.append('token', ins.token);
             body.append('source', s.id);
             try {
-              const c = await api('POST', '/api/import', body);
-              line.replaceChildren(h('span', { class: 'badge ok' }, t('imported')), c.name);
+              const item = await runImport(body, row);
+              row.ok(item.name);
             } catch (e) {
-              line.replaceChildren(h('span', { class: 'badge bad' }, t('error')), f.name + ': ' + e.message);
+              if (e.skipped) row.warn(f.name + ': ' + e.message); else row.fail(f.name + ': ' + e.message);
             }
             continue;
           }
-          const c = reviewCard(s, ins);
-          cards.push(c);
-          reviews.appendChild(c);
+          const card = reviewCard(s, ins);
+          cards.push(card);
+          row.stop();
+          reviews.replaceChild(card, row.el);
         } catch (e) {
-          reviews.appendChild(h('div', { class: 'card' }, h('span', { class: 'badge bad' }, t('error')), f.name + ': ' + e.message));
+          row.fail(f.name + ': ' + e.message);
         }
       }
       if (cards.length > 1 && !reviews.querySelector('.importall')) {
@@ -506,7 +601,7 @@
       const r = await api('GET', `/api/sources/${s.id}/catalog?limit=40&q=${encodeURIComponent(q.value)}`);
       info.textContent = `${r.total} · ${t('snapshot')} ${r.snapshot}`;
       body.replaceChildren(...r.items.map((it) => {
-        const log = h('span', { class: 'muted' });
+        const log = h('div');
         const picker = h('input', { type: 'file', accept: '.pdf,application/pdf', hidden: true });
         picker.addEventListener('change', async () => {
           await uploadFiles(s.id, [...picker.files], log, { type: it.type, title: it.name, validity: it.effective });

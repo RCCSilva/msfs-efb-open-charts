@@ -192,7 +192,7 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 	defer rendered.Cleanup()
 
 	var pngBuf bytes.Buffer
-	enc := png.Encoder{CompressionLevel: png.BestCompression}
+	enc := png.Encoder{CompressionLevel: png.DefaultCompression} // BestCompression doubled the import time for ~2% smaller files
 	if err := enc.Encode(&pngBuf, rendered.Result.Image); err != nil {
 		return nil, err
 	}

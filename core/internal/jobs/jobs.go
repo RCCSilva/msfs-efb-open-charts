@@ -20,15 +20,19 @@ type Item struct {
 
 // Snapshot is the copyable, JSON-ready state of a job.
 type Snapshot struct {
-	ID      string     `json:"id"`
-	Kind    string     `json:"kind"`
-	State   string     `json:"state"` // "running", "done"
-	Total   int        `json:"total"`
-	Done    int        `json:"done"`
-	OK      int        `json:"ok"`
-	Skipped int        `json:"skipped"`
-	Failed  int        `json:"failed"`
-	Current string     `json:"current,omitempty"`
+	ID      string `json:"id"`
+	Kind    string `json:"kind"`
+	State   string `json:"state"` // "running", "done"
+	Total   int    `json:"total"`
+	Done    int    `json:"done"`
+	OK      int    `json:"ok"`
+	Skipped int    `json:"skipped"`
+	Failed  int    `json:"failed"`
+	Current string `json:"current,omitempty"`
+	// Stage names what a single-file job is doing now ("waiting", "engine", "render", "save")
+	// and Percent is the server's estimate of how far it is. The UI only displays them.
+	Stage   string     `json:"stage,omitempty"`
+	Percent int        `json:"percent"`
 	Started time.Time  `json:"started"`
 	Ended   *time.Time `json:"ended,omitempty"`
 	Items   []Item     `json:"items"`
@@ -72,7 +76,7 @@ func (m *Manager) Start(kind string, total int, fn func(j *Job)) *Job {
 		fn(j)
 		j.mu.Lock()
 		end := time.Now().UTC()
-		j.s.State, j.s.Ended, j.s.Current = "done", &end, ""
+		j.s.State, j.s.Ended, j.s.Current, j.s.Stage, j.s.Percent = "done", &end, "", "", 100
 		j.mu.Unlock()
 	}()
 	return j
@@ -97,6 +101,13 @@ func (m *Manager) Get(id string) (Snapshot, bool) {
 func (j *Job) SetCurrent(s string) {
 	j.mu.Lock()
 	j.s.Current = s
+	j.mu.Unlock()
+}
+
+// SetStage records the stage of a single-file job and how far along it is (0-100).
+func (j *Job) SetStage(stage string, percent int) {
+	j.mu.Lock()
+	j.s.Stage, j.s.Percent = stage, percent
 	j.mu.Unlock()
 }
 

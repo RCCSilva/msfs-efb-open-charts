@@ -17,6 +17,14 @@ import (
 type importForm struct {
 	Source, Name, ICAO, Type, Title, Validity string
 	Package                                   string // archive the PDF was taken from
+	// Stage, when set, is told what the import is doing and how far along it is.
+	Stage func(stage string, percent int)
+}
+
+func (f importForm) stage(name string, percent int) {
+	if f.Stage != nil {
+		f.Stage(name, percent)
+	}
 }
 
 // errAlready is returned when the same original file is already in the library.
@@ -60,13 +68,16 @@ func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.C
 	opt.ID = s.lib.UniqueID(store.Slug(source + " " + stem))
 
 	var res *importer.Result
-	err := s.withRenderer(func(r *importer.Renderer) (e error) {
+	f.stage("waiting", 5)
+	err := s.withRenderer(func() { f.stage("engine", 15) }, func(r *importer.Renderer) (e error) {
+		f.stage("render", 40)
 		res, e = r.Import(data, opt)
 		return e
 	})
 	if err != nil {
 		return nil, err
 	}
+	f.stage("save", 85)
 	c, err := s.lib.Add(opt.ID, res.PNG, res.JSON, data)
 	if err != nil {
 		return nil, err
