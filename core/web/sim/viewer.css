@@ -169,8 +169,10 @@ html, body, button, input, select, textarea, .status, .attribution {
 
 .item.head { background: #eef2f6; font-size: 12px; color: #456; cursor: default; }
 
-/* A tile that has not loaded (yet) shows the map colour, never black. */
-.leaflet-tile { background: #dfe6ea; }
+/* A map tile that has not loaded (yet) shows the map colour, never black. Only the base
+   <img> tiles: the chart layer is made of transparent <canvas> tiles and must stay transparent,
+   otherwise it hides the map and the opacity control seems to wash the map out. */
+.leaflet-tile-pane img.leaflet-tile { background: #dfe6ea; }
 .leaflet-container { background: #dfe6ea; }
 
 
@@ -213,3 +215,9 @@ html, body, button, input, select, textarea, .status, .attribution {
 .bstep.on { background: #8fb4e3; }
 .bstep.cur { background: rgba(35, 105, 190, 0.96); }
 .display { width: 112px; }
+
+/* icon-only view switch: two square buttons side by side */
+.seg { white-space: nowrap; }
+.segbtn { display: inline-block; width: 50%; height: 52px; padding: 0; vertical-align: top; }
+.segbtn + .segbtn { border-top: 0; border-left: 1px solid #d5dbe2; }
+.segbtn svg { width: 30px; height: 30px; margin: 0 auto; }

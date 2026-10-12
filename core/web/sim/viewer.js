@@ -137,6 +137,7 @@
   var lastW = 0;
   var lastH = 0;
   var opacityIdx = 3;
+  if (params.blend !== undefined && /^[0-4]$/.test(params.blend)) opacityIdx = parseInt(params.blend, 10);
   try { var oi = parseInt(window.localStorage.getItem('oc.blend'), 10); if (oi >= 0 && oi < 5) opacityIdx = oi; } catch (e) { /* ignore */ }
   var needsFit = false;
   var searchTimer = null;
@@ -863,8 +864,8 @@
   }
 
   qEl.placeholder = t('search');
-  el('view-overlay-label').textContent = t('viewWithMap');
-  el('view-chart-label').textContent = t('viewChartOnly');
+  viewOverlayBtn.setAttribute('aria-label', t('viewWithMap'));
+  viewChartBtn.setAttribute('aria-label', t('viewChartOnly'));
   el('blend-map').textContent = t('blendMap');
   el('blend-chart').textContent = t('blendChart');
   blendSteps.title = t('blendTitle');

@@ -67,13 +67,11 @@
   <!-- Display: how the chart is shown -->
   <div id="display" class="display">
     <div class="seg">
-      <button id="view-overlay" type="button" class="segbtn">
+      <button id="view-overlay" type="button" class="segbtn" aria-label="With map">
         <svg viewBox="0 0 32 32"><path d="M16 5l11 6-11 6-11-6z"/><path d="M5 17l11 6 11-6"/><path d="M5 22l11 6 11-6"/></svg>
-        <span id="view-overlay-label"></span>
       </button>
-      <button id="view-chart" type="button" class="segbtn">
+      <button id="view-chart" type="button" class="segbtn" aria-label="Chart only">
         <svg viewBox="0 0 32 32"><rect x="8" y="4" width="16" height="24" rx="1.5"/><path d="M11 10h10M11 15h10M11 20h6"/></svg>
-        <span id="view-chart-label"></span>
       </button>
     </div>
     <!-- How much of the chart shows over the map (the map tiles themselves are never dimmed) -->
