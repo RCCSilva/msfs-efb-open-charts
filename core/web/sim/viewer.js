@@ -44,7 +44,7 @@
       loadFail: 'Could not load the chart',
       fixed: 'FIXED',
       simNote: 'FLIGHT SIMULATION ONLY - NOT FOR REAL-WORLD AVIATION',
-      regionalTitle: 'Regional zoom (about 50 km around the aircraft)',
+      regionalTitle: 'Regional zoom (about 30 km around the aircraft)',
       starPin: 'Pin this chart to the group', starUnpin: 'Remove this chart from the group',
       thisGroup: 'Charts in this group', noPinsHere: 'No charts pinned in this group.', remove: 'Remove',
       viewWithMap: 'With map', viewChartOnly: 'Chart only', blendMap: 'Map', blendChart: 'Chart',
@@ -68,7 +68,7 @@
       loadFail: 'Não foi possível carregar a carta',
       fixed: 'FIXO',
       simNote: 'APENAS SIMULAÇÃO AÉREA - PROIBIDO O USO EM AVIAÇÃO REAL',
-      regionalTitle: 'Zoom regional (cerca de 50 km ao redor da aeronave)',
+      regionalTitle: 'Zoom regional (cerca de 30 km ao redor da aeronave)',
       starPin: 'Fixar esta carta no grupo', starUnpin: 'Tirar esta carta do grupo',
       thisGroup: 'Cartas deste grupo', noPinsHere: 'Nenhuma carta fixada neste grupo.', remove: 'Tirar',
       viewWithMap: 'Com mapa', viewChartOnly: 'S\u00f3 a carta', blendMap: 'Mapa', blendChart: 'Carta',
@@ -451,8 +451,8 @@
     fitInitial();
   }
 
-  // ---- regional zoom: about 50 km around the aircraft ----
-  var REGIONAL_RADIUS_KM = 50;
+  // ---- regional zoom: about 30 km around the aircraft ----
+  var REGIONAL_RADIUS_KM = 30;
   var pendingRegional = false;   // the chart is a big one and has not been framed around the aircraft yet
 
   function chartMetersPerPixel(meta) {
