@@ -212,3 +212,8 @@ html, body, button, input, select, textarea, .status, .attribution {
 #display .closebtn { background: rgba(176, 32, 32, 0.96); }
 #display .closebtn svg { stroke: #fff; stroke-width: 3; }
 #display .lvl { fill: #123; }
+
+/* Leaflet 1.9 asks every tile for mix-blend-mode: plus-lighter (a workaround for seams between tiles
+   in current Chrome). The simulator's browser does not know that mode and would composite each tile
+   through a blending pass, which flickered and blackened the base map. Plain drawing is enough here. */
+.leaflet-container img.leaflet-tile { mix-blend-mode: normal !important; }
