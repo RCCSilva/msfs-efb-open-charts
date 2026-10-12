@@ -17,6 +17,7 @@
   <div id="simnote" class="simnote"></div>
 
   <div id="bar" class="bar">
+    <!-- Row 1: find a chart, pin it, choose the flight -->
     <div class="row">
       <input id="q" type="text" autocomplete="off" spellcheck="false">
       <button id="btn-star" type="button" class="tool" aria-label="Pin to flight">
@@ -26,9 +27,20 @@
         <svg viewBox="0 0 32 32"><rect x="3" y="9" width="26" height="14" rx="2"/><path d="M7 14h2M12 14h2M17 14h2M22 14h3M9 19h14"/></svg>
       </button>
       <button id="btn-flight" type="button" class="tool wide"></button>
-      <button id="btn-mode" type="button" class="tool wide"></button>
     </div>
-    <div id="pins" class="pins"></div>
+
+    <!-- Row 2: the pinned charts of the flight, grouped by airport, with previous / next -->
+    <div class="strip">
+      <button id="pin-prev" type="button" class="chev" aria-label="Previous chart">
+        <svg viewBox="0 0 32 32"><path d="M20 6l-10 10 10 10"/></svg>
+      </button>
+      <div id="pins" class="pins"></div>
+      <span id="pin-count" class="count"></span>
+      <button id="pin-next" type="button" class="chev" aria-label="Next chart">
+        <svg viewBox="0 0 32 32"><path d="M12 6l10 10-10 10"/></svg>
+      </button>
+    </div>
+
     <div id="results" class="panel hidden"></div>
     <div id="flights" class="panel hidden"></div>
     <div id="kbd" class="kbd hidden"></div>
@@ -36,6 +48,7 @@
 
   <div id="status" class="status">...</div>
 
+  <!-- Navigation: where the map is looking -->
   <div id="controls" class="controls">
     <button id="btn-zoom-in" type="button" aria-label="Zoom in">
       <svg viewBox="0 0 32 32"><path d="M16 7v18M7 16h18"/></svg>
@@ -49,9 +62,32 @@
     <button id="btn-fit" type="button" aria-label="Show whole chart">
       <svg viewBox="0 0 32 32"><path d="M5 12V5h7M20 5h7v7M27 20v7h-7M12 27H5v-7"/></svg>
     </button>
-    <button id="btn-opacity" type="button" aria-label="Chart opacity">
-      <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="10"/><path d="M16 6v20"/></svg>
-    </button>
+  </div>
+
+  <!-- Display: how the chart is shown -->
+  <div id="display" class="display">
+    <div class="seg">
+      <button id="view-overlay" type="button" class="segbtn">
+        <svg viewBox="0 0 32 32"><path d="M16 5l11 6-11 6-11-6z"/><path d="M5 17l11 6 11-6"/><path d="M5 22l11 6 11-6"/></svg>
+        <span id="view-overlay-label"></span>
+      </button>
+      <button id="view-chart" type="button" class="segbtn">
+        <svg viewBox="0 0 32 32"><rect x="8" y="4" width="16" height="24" rx="1.5"/><path d="M11 10h10M11 15h10M11 20h6"/></svg>
+        <span id="view-chart-label"></span>
+      </button>
+    </div>
+    <div id="opacity-box" class="opbox">
+      <div id="opacity-label" class="oplabel"></div>
+      <div class="oprow">
+        <button id="opacity-dec" type="button" class="opbtn" aria-label="Less opaque">
+          <svg viewBox="0 0 32 32"><path d="M8 16h16"/></svg>
+        </button>
+        <span id="opacity-val" class="opval"></span>
+        <button id="opacity-inc" type="button" class="opbtn" aria-label="More opaque">
+          <svg viewBox="0 0 32 32"><path d="M16 8v16M8 16h16"/></svg>
+        </button>
+      </div>
+    </div>
   </div>
 
   <div id="attribution" class="attribution">&copy; OpenStreetMap contributors</div>

@@ -39,7 +39,9 @@
       fixed: 'FIXED',
       simNote: 'FLIGHT SIMULATION ONLY - NOT FOR REAL-WORLD AVIATION',
       starPin: 'Pin this chart to the flight', starUnpin: 'Remove this chart from the flight',
-      thisFlight: 'Charts in this flight', noPinsHere: 'No charts pinned in this flight.', remove: 'Remove'
+      thisFlight: 'Charts in this flight', noPinsHere: 'No charts pinned in this flight.', remove: 'Remove',
+      viewWithMap: 'With map', viewChartOnly: 'Chart only', opacity: 'Opacity', otherGroup: 'Other',
+      prevChart: 'Previous chart', nextChart: 'Next chart'
     },
     pt: {
       search: 'Buscar cartas: SBSP, ILS, sao paulo...',
@@ -58,7 +60,9 @@
       fixed: 'FIXO',
       simNote: 'APENAS SIMULAÇÃO AÉREA - PROIBIDO O USO EM AVIAÇÃO REAL',
       starPin: 'Fixar esta carta no voo', starUnpin: 'Tirar esta carta do voo',
-      thisFlight: 'Cartas deste voo', noPinsHere: 'Nenhuma carta fixada neste voo.', remove: 'Tirar'
+      thisFlight: 'Cartas deste voo', noPinsHere: 'Nenhuma carta fixada neste voo.', remove: 'Tirar',
+      viewWithMap: 'Com mapa', viewChartOnly: 'S\u00f3 a carta', opacity: 'Opacidade', otherGroup: 'Outras',
+      prevChart: 'Carta anterior', nextChart: 'Pr\u00f3xima carta'
     }
   };
 
@@ -70,9 +74,14 @@
   var kbdEl = el('kbd');
   var statusEl = el('status');
   var followBtn = el('btn-follow');
-  var modeBtn = el('btn-mode');
   var flightBtn = el('btn-flight');
-  var opacityBtn = el('btn-opacity');
+  var viewOverlayBtn = el('view-overlay');
+  var viewChartBtn = el('view-chart');
+  var opacityBox = el('opacity-box');
+  var opacityVal = el('opacity-val');
+  var pinPrev = el('pin-prev');
+  var pinNext = el('pin-next');
+  var pinCount = el('pin-count');
   var attribEl = el('attribution');
   var starBtn = el('btn-star');
   var simNoteEl = el('simnote');
@@ -126,6 +135,7 @@
   var lastW = 0;
   var lastH = 0;
   var opacityIdx = 2;
+  try { var oi = parseInt(window.localStorage.getItem('oc.opacity'), 10); if (oi >= 0 && oi < 4) opacityIdx = oi; } catch (e) { /* ignore */ }
   var needsFit = false;
   var searchTimer = null;
   var searchSeq = 0;
@@ -343,8 +353,7 @@
     map.on('dragstart', function () { setFollow(false); });
 
     attribEl.style.display = mode === 'overlay' ? '' : 'none';
-    opacityBtn.style.display = mode === 'overlay' ? '' : 'none';
-    modeBtn.textContent = mode === 'overlay' ? t('modeOverlay') : t('modeChart');
+    updateDisplayPanel();
     mapBackground();
     applyChart();
     if (lastFix) showAircraft(lastFix);
@@ -573,6 +582,72 @@
     });
   }
 
+  // ---- display panel: "With map" / "Chart only" and, for the map view, the chart opacity
+  function updateDisplayPanel() {
+    viewOverlayBtn.className = 'segbtn' + (mode === 'overlay' ? ' on' : '');
+    viewChartBtn.className = 'segbtn' + (mode === 'chart' ? ' on' : '');
+    opacityBox.style.display = mode === 'overlay' ? '' : 'none';
+    opacityVal.textContent = Math.round(OPACITY_STEPS[opacityIdx] * 100) + '%';
+  }
+
+  function setMode(next) {
+    if (next === mode) return;
+    mode = next;
+    store('mode', mode);
+    buildMap();
+    saveState();
+  }
+
+  function setOpacity(idx) {
+    if (idx < 0 || idx >= OPACITY_STEPS.length) return;
+    opacityIdx = idx;
+    store('opacity', String(idx));
+    if (chartLayer && chartLayer.setOpacity && mode === 'overlay') chartLayer.setOpacity(OPACITY_STEPS[opacityIdx]);
+    updateDisplayPanel();
+  }
+
+  // ---- pinned charts, grouped by airport
+  function viewWithMapTitle() { return lang === 'pt' ? 'Carta sobre o mapa do OpenStreetMap' : 'Chart over the OpenStreetMap map'; }
+  function viewChartOnlyTitle() { return lang === 'pt' ? 'Apenas a carta, sem mapa' : 'The chart alone, no map'; }
+
+  function chipLabel(c) {
+    var title = c.title || '';
+    var typeIsProcedure = c.type === 'IAC' || c.type === 'SID' || c.type === 'STAR';
+    var parts = [];
+    if (c.type && !typeIsProcedure && title.toUpperCase().indexOf(c.type) < 0) parts.push(c.type);
+    if (title) parts.push(title);
+    return parts.join(' ') || c.name;
+  }
+
+  // [{key, label, items:[chart]}] in order of first appearance, charts keep their pin order
+  function groupPinned() {
+    var groups = [];
+    var byKey = {};
+    pinned.forEach(function (c) {
+      var key = c.icao || '';
+      if (!byKey[key]) {
+        byKey[key] = { key: key, label: key || t('otherGroup'), items: [] };
+        groups.push(byKey[key]);
+      }
+      byKey[key].items.push(c);
+    });
+    return groups;
+  }
+
+  function activeIndex() {
+    if (!active) return -1;
+    for (var i = 0; i < pinned.length; i++) if (pinned[i].id === active.meta.id) return i;
+    return -1;
+  }
+
+  function stepChart(delta) {
+    if (!pinned.length) return;
+    var i = activeIndex();
+    var next = i < 0 ? (delta > 0 ? 0 : pinned.length - 1) : i + delta;
+    if (next < 0 || next >= pinned.length) return;
+    openChart(pinned[next].id);
+  }
+
   // The star pins/unpins the chart on screen for the current flight.
   function updateStar() {
     var on = !!active && isPinned(active.meta.id);
@@ -585,17 +660,47 @@
     updateStar();
     clear(pinsEl);
     if (!pinned.length) {
-      var h = document.createElement('span');
-      h.className = 'hint';
-      h.textContent = t('noPins');
-      pinsEl.appendChild(h);
+      var hint = document.createElement('span');
+      hint.className = 'hint';
+      hint.textContent = t('noPins');
+      pinsEl.appendChild(hint);
+      pinCount.textContent = '';
+      pinPrev.disabled = true;
+      pinNext.disabled = true;
       return;
     }
-    pinned.forEach(function (c) {
-      var short = (c.icao ? c.icao + ' ' : '') + (c.type ? c.type + ' ' : '') + (c.title || '');
-      var b = button('chip' + (active && active.meta.id === c.id ? ' active' : ''), (short.replace(/\s+$/, '') || c.name), function () { openChart(c.id); });
-      pinsEl.appendChild(b);
+    var activeChip = null;
+    groupPinned().forEach(function (g) {
+      var wrap = document.createElement('span');
+      wrap.className = 'group';
+      var lbl = document.createElement('span');
+      lbl.className = 'glabel';
+      lbl.textContent = g.label;
+      wrap.appendChild(lbl);
+      g.items.forEach(function (c) {
+        var isActive = !!active && active.meta.id === c.id;
+        var b = button('chip' + (isActive ? ' active' : ''), chipLabel(c), function () { openChart(c.id); });
+        b.title = label(c.name);
+        if (isActive) activeChip = b;
+        wrap.appendChild(b);
+      });
+      pinsEl.appendChild(wrap);
     });
+    var idx = activeIndex();
+    pinCount.textContent = (idx >= 0 ? (idx + 1) : '-') + '/' + pinned.length;
+    pinPrev.disabled = idx <= 0;
+    pinNext.disabled = idx >= pinned.length - 1;
+    // Keep the chart on screen visible inside the scrolling strip. Widths settle after layout and
+    // after the web font loads, so the position is applied now and again shortly after.
+    if (activeChip) {
+      var reveal = function () {
+        var left = activeChip.offsetLeft - 56;
+        pinsEl.scrollLeft = left > 0 ? left : 0;
+      };
+      reveal();
+      window.setTimeout(reveal, 60);
+      window.setTimeout(reveal, 500);
+    }
   }
 
   function renderResults(list) {
@@ -741,6 +846,13 @@
   }
 
   qEl.placeholder = t('search');
+  el('view-overlay-label').textContent = t('viewWithMap');
+  el('view-chart-label').textContent = t('viewChartOnly');
+  el('opacity-label').textContent = t('opacity');
+  viewOverlayBtn.title = viewWithMapTitle();
+  viewChartBtn.title = viewChartOnlyTitle();
+  pinPrev.title = t('prevChart');
+  pinNext.title = t('nextChart');
   simNoteEl.textContent = t('simNote');
   starBtn.addEventListener('click', function () {
     if (active) togglePin({ id: active.meta.id }, function () { renderPins(); });
@@ -753,20 +865,16 @@
     kbdEl.className = hidden ? 'kbd' : 'kbd hidden';
   });
   flightBtn.addEventListener('click', showFlights);
-  modeBtn.addEventListener('click', function () {
-    mode = mode === 'overlay' ? 'chart' : 'overlay';
-    store('mode', mode);
-    buildMap();
-    saveState();
-  });
+  viewOverlayBtn.addEventListener('click', function () { setMode('overlay'); });
+  viewChartBtn.addEventListener('click', function () { setMode('chart'); });
+  el('opacity-dec').addEventListener('click', function () { setOpacity(opacityIdx - 1); });
+  el('opacity-inc').addEventListener('click', function () { setOpacity(opacityIdx + 1); });
+  pinPrev.addEventListener('click', function () { stepChart(-1); });
+  pinNext.addEventListener('click', function () { stepChart(1); });
   el('btn-zoom-in').addEventListener('click', function () { map.zoomIn(1, { animate: false }); });
   el('btn-zoom-out').addEventListener('click', function () { map.zoomOut(1, { animate: false }); });
   followBtn.addEventListener('click', function () { setFollow(!follow); });
   el('btn-fit').addEventListener('click', function () { setFollow(false); fitChart(); });
-  opacityBtn.addEventListener('click', function () {
-    opacityIdx = (opacityIdx + 1) % OPACITY_STEPS.length;
-    if (chartLayer && chartLayer.setOpacity && mode === 'overlay') chartLayer.setOpacity(OPACITY_STEPS[opacityIdx]);
-  });
   window.addEventListener('resize', checkSize);
 
   window.LMM_DEBUG = {
