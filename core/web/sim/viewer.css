@@ -14,9 +14,9 @@ html, body, button, input, select, textarea, .status, .attribution {
 
 .hidden { display: none !important; }
 
-/* Always-visible reminder: simulation only. It is a black band as tall as the simulator's own tablet
-   header, which hides what is drawn right under it: the map and the controls start below the band. */
-.simnote {
+/* A black band as tall as the simulator's own tablet header, which hides what is drawn right under it:
+   the map and the controls start below the band. */
+.topband {
   position: absolute;
   left: 0;
   right: 0;
@@ -24,13 +24,24 @@ html, body, button, input, select, textarea, .status, .attribution {
   z-index: 1200;
   height: 32px;
   background: #000;
-  color: #f0b4b4;
-  font-size: 11px;
-  line-height: 32px;
-  text-align: center;
-  letter-spacing: 0.3px;
-  white-space: nowrap;
-  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Always-visible reminder: simulation only. Small, at the lower right (the lower left holds the status). */
+.simnote {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 1200;
+  max-width: 62%;
+  padding: 2px 6px;
+  border-radius: 6px 0 0 0;
+  background: rgba(130, 20, 20, 0.92);
+  color: #fff;
+  font-size: 9px;
+  line-height: 12px;
+  text-align: right;
+  letter-spacing: 0.2px;
   pointer-events: none;
 }
 .tool.on svg { fill: #ffd54a; stroke: #ffd54a; }
@@ -160,16 +171,16 @@ html, body, button, input, select, textarea, .status, .attribution {
 }
 .kbd button.k-wide { width: 24%; }
 
-/* The status line is a small tab in the lower left corner, flush with the edges of the screen, so it
-   takes (almost) nothing of the chart. */
-.status { top: auto; bottom: 0; left: 0; max-width: 72%; padding: 1px 8px; border-radius: 0 6px 0 0;
-  font-size: 11px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The status line is a small tab in the lower left corner, flush with the edges of the screen and at
+   most 30% of its width (the tablet's own menu is below): the text wraps instead of growing. */
+.status { top: auto; bottom: 0; left: 0; max-width: 30%; padding: 1px 6px; border-radius: 0 6px 0 0;
+  font-size: 10px; line-height: 13px; white-space: normal; word-wrap: break-word; overflow: hidden; }
 .controls { z-index: 1000; }
 #attribution { z-index: 900; }
 
 /* Inside the EFB the page sits in a tablet whose bottom menu covers the lowest ~70px. */
 .controls { bottom: 104px; }
-#attribution { bottom: 0; }
+#attribution { bottom: 26px; }
 
 .item.head { background: #eef2f6; font-size: 12px; color: #456; cursor: default; }
 

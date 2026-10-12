@@ -44,6 +44,7 @@
       loadFail: 'Could not load the chart',
       fixed: 'FIXED',
       simNote: 'FLIGHT SIMULATION ONLY - NOT FOR REAL-WORLD AVIATION',
+      regionalTitle: 'Regional zoom (about 50 km around the aircraft)',
       starPin: 'Pin this chart to the group', starUnpin: 'Remove this chart from the group',
       thisGroup: 'Charts in this group', noPinsHere: 'No charts pinned in this group.', remove: 'Remove',
       viewWithMap: 'With map', viewChartOnly: 'Chart only', blendMap: 'Map', blendChart: 'Chart',
@@ -67,6 +68,7 @@
       loadFail: 'Não foi possível carregar a carta',
       fixed: 'FIXO',
       simNote: 'APENAS SIMULAÇÃO AÉREA - PROIBIDO O USO EM AVIAÇÃO REAL',
+      regionalTitle: 'Zoom regional (cerca de 50 km ao redor da aeronave)',
       starPin: 'Fixar esta carta no grupo', starUnpin: 'Tirar esta carta do grupo',
       thisGroup: 'Cartas deste grupo', noPinsHere: 'Nenhuma carta fixada neste grupo.', remove: 'Tirar',
       viewWithMap: 'Com mapa', viewChartOnly: 'S\u00f3 a carta', blendMap: 'Mapa', blendChart: 'Carta',
@@ -409,7 +411,7 @@
       iconAnchor: [20, 20]
     });
     marker = L.marker([0, 0], { icon: icon, interactive: false, keyboard: false, zIndexOffset: 1000 });
-    map.on('dragstart', function () { setFollow(false); });
+    map.on('dragstart', function () { setFollow(false); pendingRegional = false; });
     if (mode === 'chart') map.on('zoomend', refineChartLevel);
     map.on('move', function () { bump('mapMove'); });
     map.on('zoomend', function () { bump('mapZoomEnd'); });
@@ -445,6 +447,51 @@
         maxZoom: OVERLAY_MAX_ZOOM, updateWhenIdle: false, keepBuffer: 1, zIndex: 10
       }).addTo(map);
     }
+    pendingRegional = !debugAt && isRegionalChart(meta);
+    fitInitial();
+  }
+
+  // ---- regional zoom: about 50 km around the aircraft ----
+  var REGIONAL_RADIUS_KM = 50;
+  var pendingRegional = false;   // the chart is a big one and has not been framed around the aircraft yet
+
+  function chartMetersPerPixel(meta) {
+    if (meta.georef && meta.georef.metersPerPixel > 0) return meta.georef.metersPerPixel;
+    var c = meta.geoCorners;
+    var f = meta.mapFramePx;
+    return L.latLng(c[0].lat, c[0].lon).distanceTo(L.latLng(c[1].lat, c[1].lon)) / Math.max(1, f.bottom - f.top);
+  }
+
+  // Clearly bigger than the regional area: only then is the whole chart "too far away" to start from.
+  function isRegionalChart(meta) {
+    var f = meta.mapFramePx;
+    var span = Math.max(f.right - f.left, f.bottom - f.top) * chartMetersPerPixel(meta);
+    return span > 2 * REGIONAL_RADIUS_KM * 1000 * 1.25;
+  }
+
+  // Frame the aircraft with REGIONAL_RADIUS_KM around it. False when that is not possible (no position
+  // yet, or the aircraft is not on this chart): the caller falls back to the whole chart.
+  function showRegional() {
+    if (!map || !active || !lastFix || !hasSize()) return false;
+    var meta = active.meta;
+    var pt = LMMGeo.toPixel(meta, lastFix.lat, lastFix.lon);
+    var f = meta.mapFramePx;
+    if (pt.px < f.left || pt.px > f.right || pt.py < f.top || pt.py > f.bottom) return false;
+    var half = REGIONAL_RADIUS_KM * 1000;
+    if (mode === 'chart') {
+      var hp = half / chartMetersPerPixel(meta);
+      var c = chartPixelToLatLng(pt);
+      map.fitBounds(L.latLngBounds([c.lat - hp, c.lng - hp], [c.lat + hp, c.lng + hp]), { animate: false });
+    } else {
+      map.fitBounds(L.latLng(lastFix.lat, lastFix.lon).toBounds(2 * half), { animate: false });
+    }
+    return true;
+  }
+
+  // How a chart is first shown: a regional chart around the aircraft, anything else as a whole.
+  function fitInitial() {
+    if (!active || !map) return;
+    if (pendingRegional && showRegional()) { pendingRegional = false; return; }
     fitChart();
   }
 
@@ -519,9 +566,14 @@
       marker.setLatLng(ll);
       rotatePlane(rot);
     }
-    var name = active ? label(active.meta.name) + '  |  ' : '';
-    setStatus(name + (p.simulated ? t('fixed') + ' ' : '') + p.lat.toFixed(4) + ', ' + p.lon.toFixed(4) +
+    // Short on purpose: the status tab may use only 30% of the width. The chart's name is the
+    // highlighted chip in the strip, so it is not repeated here.
+    setStatus((p.simulated ? t('fixed') + ' ' : '') + p.lat.toFixed(4) + ', ' + p.lon.toFixed(4) +
       '  HDG ' + Math.round(p.headingTrue) + (inside ? '' : '  -  ' + t('offChart')), inside ? 'ok' : 'warn');
+
+    // A chart that covers a whole region opens at a regional zoom around the aircraft, not zoomed out
+    // to the whole chart: done once, with the first position that falls on the chart.
+    if (pendingRegional && inside && hasSize() && showRegional()) pendingRegional = false;
 
     // Follow: the map moves only when the aircraft gets away from the centre (a dead zone), not for
     // every small step. In the simulator the map pane moves through left/top (no 3D), which
@@ -1145,7 +1197,7 @@
       lastH = h;
       if (map) {
         map.invalidateSize({ animate: false });
-        if (needsFit) fitChart();
+        if (needsFit) fitInitial();
       }
     }
   }
@@ -1173,6 +1225,21 @@
   });
   updateStar();
   qEl.addEventListener('input', scheduleSearch);
+  // A tap anywhere outside the bar (the map, the side buttons) closes the result and group lists, and
+  // so does the viewer losing the focus (a click on the simulator's own interface): a list left open
+  // after the search was abandoned only gets in the way. The on-screen keyboard is inside the bar.
+  var barEl = el('bar');
+  function closeListsFromOutside(ev) {
+    var n = ev.target;
+    while (n) {
+      if (n === barEl) return;
+      n = n.parentNode;
+    }
+    hidePanels();
+  }
+  document.addEventListener('mousedown', closeListsFromOutside, true);
+  document.addEventListener('touchstart', closeListsFromOutside, true);
+  window.addEventListener('blur', hidePanels);
   // Inside the EFB the page runs in a frame: tell the app when the search field is in use, so the
   // simulator sends the typed keys to it and not to its own key bindings (gear, flaps, camera...).
   function tellHost(state) {
@@ -1202,7 +1269,12 @@
   el('btn-zoom-in').addEventListener('click', function () { map.zoomIn(1, { animate: false }); });
   el('btn-zoom-out').addEventListener('click', function () { map.zoomOut(1, { animate: false }); });
   followBtn.addEventListener('click', function () { setFollow(!follow); });
-  el('btn-fit').addEventListener('click', function () { setFollow(false); fitChart(); });
+  el('btn-fit').addEventListener('click', function () { setFollow(false); pendingRegional = false; fitChart(); });
+  el('btn-regional').title = t('regionalTitle');
+  el('btn-regional').addEventListener('click', function () {
+    pendingRegional = false;
+    if (showRegional()) setFollow(true); else fitChart();
+  });
   // The simulator keeps the EFB app open, so the page cannot be closed and reopened: this reloads it.
   el('btn-reload').title = lang === 'pt' ? 'Recarregar' : 'Reload';
   el('btn-reload').addEventListener('click', function () { window.location.reload(); });
