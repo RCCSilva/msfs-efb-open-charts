@@ -249,6 +249,62 @@
     ctx.restore();
   }
 
+  // Base map tiles are fetched with XHR and shown as data: URIs. In the simulator a tile image that
+  // came from the network was dropped from its image cache while the game's own UI was redrawn and
+  // came back black; the chart tiles (data: URIs) never did. A data: URI keeps the bytes in the
+  // element itself, so there is nothing to lose.
+  function toBase64(buf) {
+    var bytes = new Uint8Array(buf);
+    var s = '';
+    for (var i = 0; i < bytes.length; i += 0x4000) {
+      s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x4000));
+    }
+    return window.btoa(s);
+  }
+
+  var DataTileLayer = L.TileLayer.extend({
+    initialize: function (url, options) {
+      L.TileLayer.prototype.initialize.call(this, url, options);
+      this.on('tileunload', function (ev) {
+        if (ev.tile && ev.tile._xhr) { try { ev.tile._xhr.abort(); } catch (e) { /* done */ } }
+      });
+    },
+    createTile: function (coords, done) {
+      var tile = document.createElement('img');
+      tile.alt = '';
+      tile.setAttribute('role', 'presentation');
+      var url = this.getTileUrl(coords);
+      var tries = 0;
+      var settled = false;
+      function fin(err) { if (!settled) { settled = true; done(err || null, tile); } }
+      function retry() {
+        tile._xhr = null;
+        if (tries >= 5) { bump('baseTileError'); fin('failed'); return; }
+        window.setTimeout(load, 700 * tries);   // a blip or upstream throttling: ask again
+      }
+      function load() {
+        tries += 1;
+        var x = new XMLHttpRequest();
+        tile._xhr = x;
+        x.open('GET', url);
+        x.responseType = 'arraybuffer';
+        x.timeout = 20000;
+        x.onload = function () {
+          if (x.status !== 200 || !x.response) { retry(); return; }
+          var type = x.getResponseHeader('Content-Type') || 'image/png';
+          tile.onload = function () { fin(null); };
+          tile.onerror = function () { retry(); };
+          tile.src = 'data:' + type + ';base64,' + toBase64(x.response);
+        };
+        x.onerror = retry;
+        x.ontimeout = retry;
+        x.send();
+      }
+      load();
+      return tile;
+    }
+  });
+
   var BLANK_TILE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
   var WarpLayer = L.GridLayer.extend({
@@ -383,7 +439,7 @@
       common.minZoom = OVERLAY_MIN_ZOOM;
       common.maxZoom = OVERLAY_MAX_ZOOM;
       map = L.map('map', common).setView([-23.55, -46.63], 9);
-      var base = basemap === 'none' ? null : L.tileLayer(basemap === 'standard' ? '/tiles/{z}/{x}/{y}.png?f=rgb' : '/tiles/' + basemap + '/{z}/{x}/{y}.jpg?f=rgb', {
+      var base = basemap === 'none' ? null : new DataTileLayer(basemap === 'standard' ? '/tiles/{z}/{x}/{y}.png?f=rgb' : '/tiles/' + basemap + '/{z}/{x}/{y}.jpg?f=rgb', {
         minZoom: OVERLAY_MIN_ZOOM, maxZoom: OVERLAY_MAX_ZOOM, tileSize: 256, updateWhenIdle: false, keepBuffer: 2,
         detectRetina: true   // phones and tablets: tiles of the next zoom level, drawn at half size
       });
@@ -392,19 +448,6 @@
         base.on('tileunload', function () { bump('baseTileUnloaded'); });
         base.addTo(map);
       }
-      // A tile that failed (network blip, upstream throttling) is asked again a few times
-      // instead of staying black until the user moves or zooms the map.
-      if (base) base.on('tileerror', function (ev) {
-        bump('baseTileError');
-        var img = ev.tile;
-        var n = (img._ocRetry || 0) + 1;
-        if (n > 4) return;
-        img._ocRetry = n;
-        var url = img.src.split('?')[0];
-        window.setTimeout(function () {
-          if (img.parentNode) img.src = url + '?r=' + n;
-        }, 700 * n);
-      });
     }
     var icon = L.divIcon({
       className: 'plane-icon',
