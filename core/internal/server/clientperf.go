@@ -19,6 +19,7 @@ type PerfWindow struct {
 	Seconds int            `json:"seconds"`
 	Mode    string         `json:"mode"`
 	Counts  map[string]int `json:"counts"`
+	Note    string         `json:"note,omitempty"`
 }
 
 var (
@@ -34,6 +35,7 @@ func (s *Server) handlePostClientPerf(w http.ResponseWriter, r *http.Request) {
 		Seconds int            `json:"seconds"`
 		Mode    string         `json:"mode"`
 		Counts  map[string]int `json:"counts"`
+		Note    string         `json:"note"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		writeErr(w, 400, err)
@@ -43,7 +45,7 @@ func (s *Server) handlePostClientPerf(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errTooMany)
 		return
 	}
-	pw := PerfWindow{At: time.Now(), Kind: kindOf(in.UA), Seconds: in.Seconds, Mode: in.Mode, Counts: in.Counts}
+	pw := PerfWindow{At: time.Now(), Kind: kindOf(in.UA), Seconds: in.Seconds, Mode: in.Mode, Counts: in.Counts, Note: truncate(in.Note, 300)}
 	perfMu.Lock()
 	list := append(perfWindows[pw.Kind], pw)
 	if len(list) > perfKeep {
@@ -63,7 +65,7 @@ func (s *Server) handlePostClientPerf(w http.ResponseWriter, r *http.Request) {
 	for _, k := range keys {
 		b.WriteString(" " + k + "=" + strconv.Itoa(in.Counts[k]))
 	}
-	log.Printf("perf (%s, %ds, %s):%s", pw.Kind, in.Seconds, in.Mode, b.String())
+	log.Printf("perf (%s, %ds, %s):%s %s", pw.Kind, in.Seconds, in.Mode, b.String(), pw.Note)
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 
@@ -82,3 +84,10 @@ var errTooMany = &perfError{"too many counters"}
 type perfError struct{ s string }
 
 func (e *perfError) Error() string { return e.s }
+
+func truncate(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
+	}
+	return s
+}

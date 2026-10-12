@@ -1122,11 +1122,61 @@
   }
 
   // Every 10 s: tell the server what this page did (counts only, nothing about the user).
+  // The state of the map as the browser really has it (not what our code believes): how many tiles
+  // exist, how many have an image, how many are visible, frames painted, timer stalls, errors.
+  var frames = 0;
+  var maxGap = 0;
+  var lastTick = 0;
+  var lastError = '';
+  function rafLoop() { frames += 1; if (window.requestAnimationFrame) window.requestAnimationFrame(rafLoop); }
+  function tickGap() {
+    var n = new Date().getTime();
+    if (lastTick) maxGap = Math.max(maxGap, n - lastTick - 250);
+    lastTick = n;
+  }
+  window.onerror = function (msg, src, line) {
+    bump('jsErrors');
+    lastError = String(msg).slice(0, 120) + ' @' + String(src || '').split('/').pop() + ':' + line;
+  };
+  function health(snapshot) {
+    var imgs = document.querySelectorAll('#map .leaflet-tile-pane img.leaflet-tile');
+    var total = 0;
+    var ok = 0;
+    var vis = 0;
+    var chart = 0;
+    var chartOk = 0;
+    var box = el('map').getBoundingClientRect();
+    for (var i = 0; i < imgs.length; i++) {
+      var im = imgs[i];
+      var isChart = im.className.indexOf('chart-tile') >= 0;
+      var good = im.complete && im.naturalWidth > 0;
+      if (isChart) { chart += 1; if (good) chartOk += 1; } else { total += 1; if (good) ok += 1; }
+      var r = im.getBoundingClientRect();
+      if (r.right > box.left && r.left < box.right && r.bottom > box.top && r.top < box.bottom) vis += 1;
+    }
+    snapshot.h_baseTiles = total;
+    snapshot.h_baseOk = ok;
+    snapshot.h_chartTiles = chart;
+    snapshot.h_chartOk = chartOk;
+    snapshot.h_inView = vis;
+    snapshot.h_frames = frames;
+    snapshot.h_maxTimerGapMs = Math.round(maxGap);
+    snapshot.h_hidden = document.hidden ? 1 : 0;
+    snapshot.h_w = Math.round(box.width);
+    snapshot.h_h = Math.round(box.height);
+    frames = 0;
+    maxGap = 0;
+  }
   function reportPerf() {
     var snapshot = perf;
     perf = {};
-    request('POST', '/api/client-perf', { ua: navigator.userAgent, seconds: 10, mode: mode, counts: snapshot }, null);
+    health(snapshot);
+    var note = lastError;
+    lastError = '';
+    request('POST', '/api/client-perf', { ua: navigator.userAgent, seconds: 10, mode: mode, counts: snapshot, note: note }, null);
   }
+  rafLoop();
+  window.setInterval(tickGap, 250);
   window.setInterval(reportPerf, 10000);
 
   // Tell the server what this browser can do (WebGL, pixel ratio...). Read in the manager's Setup.
