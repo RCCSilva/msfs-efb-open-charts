@@ -25,6 +25,10 @@
       patExample: 'Example: {icao}_{type}_{title}_{date:YYYYMMDD} reads SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
       patPlaceholder: '{icao}_{type}_{title}_{date:YYYYMMDD}', patTestLabel: 'Test with a file name', patTestPlaceholder: 'SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
       patSave: 'Save patterns', patSaved: 'Patterns saved', patNoMatch: 'no pattern matches this name', patResult: 'Reads',
+      libAll: 'All charts', libAirports: 'By airport', noIcao: 'No airport (visual charts)', airportsN: 'airports',
+      selN: '{n} selected', selPage: 'All {n} on this page are selected.', selAll: 'Select all {n} matching charts', selClear: 'Clear selection',
+      delSelected: 'Delete selected', confirmDelN: 'Delete {n} charts from the library? This cannot be undone.', deletedN: '{n} charts deleted',
+      backAirports: '< Airports', openAirport: 'Open', selectAllPage: 'Select all on this page',
       pkgEta: 'left', pkgDuration: { s: 'a few seconds', m: '{n} min', h: '{h} h {m} min' },
       inbox: 'Inbox folder', inboxHelp: 'What you add here stays in this folder, on this computer. PDFs are imported when you click the button; for a .zip, read it and choose the aerodromes.',
       importInbox: 'Import the PDFs of the inbox', noInbox: 'The inbox is empty.',
@@ -111,6 +115,10 @@
       patExample: 'Exemplo: {icao}_{type}_{title}_{date:YYYYMMDD} lê SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
       patPlaceholder: '{icao}_{type}_{title}_{date:YYYYMMDD}', patTestLabel: 'Teste com um nome de arquivo', patTestPlaceholder: 'SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
       patSave: 'Salvar padrões', patSaved: 'Padrões salvos', patNoMatch: 'nenhum padrão serve para este nome', patResult: 'Lê',
+      libAll: 'Todas as cartas', libAirports: 'Por aeródromo', noIcao: 'Sem aeródromo (cartas visuais)', airportsN: 'aeródromos',
+      selN: '{n} selecionadas', selPage: 'Todas as {n} desta página estão selecionadas.', selAll: 'Selecionar todas as {n} cartas da busca', selClear: 'Limpar seleção',
+      delSelected: 'Excluir selecionadas', confirmDelN: 'Excluir {n} cartas da biblioteca? Isso não pode ser desfeito.', deletedN: '{n} cartas excluídas',
+      backAirports: '< Aeródromos', openAirport: 'Abrir', selectAllPage: 'Selecionar todas desta página',
       pkgEta: 'restantes', pkgDuration: { s: 'alguns segundos', m: '{n} min', h: '{h} h {m} min' },
       inbox: 'Pasta de entrada', inboxHelp: 'O que você adiciona aqui fica nesta pasta, no seu computador. Os PDFs são importados quando você clicar no botão; de um .zip, leia o pacote e escolha os aeródromos.',
       importInbox: 'Importar os PDFs da pasta de entrada', noInbox: 'A pasta de entrada está vazia.',
@@ -350,24 +358,42 @@
     icao.focus();
   }
 
-  // ---- Library
+  // ---- Library: all the charts, or by airport; paged, with selection and bulk actions
   async function renderLibrary() {
-    const group = currentGroup();
-    const pins = new Set(group.pins);
-    const all = await api('GET', '/api/charts?limit=1000');
-    const byId = new Map(all.map((c) => [c.id, c]));
+    let group = currentGroup();
+    let pins = new Set(group.pins);
+    const PAGE = 50;
     const selected = new Set();
+    const names = new Map();           // id -> chart, for the group panel
+    let mode = 'all';                  // 'all' | 'airports'
+    let airport = null;                // an ICAO ('' = no ICAO) while looking inside one airport
+    let page = 0;
+    let total = 0;
+    let items = [];
+    let airports = [];
+    let types = [];
+
     const q = h('input', { type: 'text', placeholder: t('search') });
-    const type = h('select', null, h('option', { value: '' }, t('all')),
-      [...new Set(all.map((c) => c.type).filter(Boolean))].sort().map((x) => h('option', { value: x }, x)));
-    const body = h('tbody');
+    const type = h('select');
     const count = h('span', { class: 'muted' });
-    const bulk = h('button', { class: 'btn primary sm', hidden: true });
+    const body = h('tbody');
+    const head = h('thead');
+    const pager = h('div', { class: 'row', style: 'margin-top:8px' });
+    const banner = h('div', { class: 'muted', style: 'margin:6px 0' });
+    const bar = h('div', { class: 'row', style: 'margin:6px 0' });
+    const seg = h('div', { class: 'seg' });
+    const crumb = h('div', { class: 'row' });
     const side = h('div', { class: 'card side' });
 
     async function setPin(id, on) {
       await api(on ? 'PUT' : 'DELETE', `/api/groups/${encodeURIComponent(group.id)}/pins/${encodeURIComponent(id)}`);
       on ? pins.add(id) : pins.delete(id);
+    }
+
+    // the group panel needs the names of the pinned charts, whichever page they are on
+    async function loadPinned() {
+      const list = await api('GET', `/api/charts?group=${encodeURIComponent(group.id)}&limit=1000`);
+      for (const c of list) names.set(c.id, c);
     }
 
     function drawSide() {
@@ -376,23 +402,19 @@
         h('h3', null, `${t('thisGroup')} (${pins.size})`),
         h('div', { class: 'muted', style: 'margin-bottom:6px' }, group.name),
         ...(list.length ? list.map((id) => {
-          const c = byId.get(id);
+          const c = names.get(id);
           return h('div', { class: 'item' },
             h('span', { class: 't', title: c ? c.name : id }, c ? c.name : id),
-            h('button', { class: 'btn sm', title: t('removeFromGroup'), onclick: async () => { await setPin(id, false); drawAll(); } }, '✕'));
+            h('button', { class: 'btn sm', title: t('removeFromGroup'), onclick: async () => { await setPin(id, false); draw(); } }, '✕'));
         }) : [h('div', { class: 'muted' }, t('noPins'))]));
     }
 
-    function drawBulk() {
-      bulk.hidden = selected.size === 0;
-      bulk.textContent = `${t('addSelected')} (${selected.size})`;
-    }
-
+    // ---- the charts table
     function row(c) {
       const inGroup = pins.has(c.id);
       const check = h('input', { type: 'checkbox', checked: selected.has(c.id), onchange: (e) => {
         e.target.checked ? selected.add(c.id) : selected.delete(c.id);
-        drawBulk();
+        drawControls();
       } });
       return h('tr', null,
         h('td', null, check),
@@ -400,7 +422,7 @@
         h('td', { class: 'actions' },
           h('button', { class: 'btn sm' + (inGroup ? ' in' : ''), title: inGroup ? t('removeFromGroup') : '', onclick: async () => {
             await setPin(c.id, !inGroup);
-            drawAll();
+            draw();
           } }, inGroup ? '✓ ' + t('inGroup') : t('addToGroup')), ' ',
           h('details', { class: 'more' }, h('summary', { class: 'btn sm' }, '⋯'),
             h('div', { class: 'menu' },
@@ -408,44 +430,143 @@
               h('a', { href: '/viewer.html?chart=' + encodeURIComponent(c.id) + '&mode=overlay&lang=' + lang, target: '_blank' }, t('onMap')),
               h('button', { onclick: () => editChart(c) }, t('editChart')),
               h('button', { class: 'danger', onclick: async () => {
-                if (confirm(t('confirmDel'))) { await api('DELETE', '/api/charts/' + encodeURIComponent(c.id)); render(); }
+                if (confirm(t('confirmDel'))) { await deleteIds([c.id]); }
               } }, t('del'))))));
     }
 
-    let shown = all;
-    async function load() {
-      shown = await api('GET', `/api/charts?limit=500&q=${encodeURIComponent(q.value)}&type=${encodeURIComponent(type.value)}`);
-      drawAll();
-    }
-    function drawAll() {
-      count.textContent = `${shown.length} ${t('charts')}`;
-      body.replaceChildren(...(shown.length ? shown.map(row) :
-        [h('tr', null, h('td', { colspan: 3, class: 'muted' }, t('noCharts')))]));
-      drawSide();
-      drawBulk();
+    async function deleteIds(ids) {
+      try {
+        const r = await api('POST', '/api/library/delete', { ids });
+        state.groups = r.groups;
+        group = currentGroup();
+        pins = new Set(group.pins);
+        ids.forEach((id) => { selected.delete(id); names.delete(id); });
+        drawGroupBar();
+        toast(fill(t('deletedN'), { n: r.deleted }));
+        await load();
+      } catch (e) { toast(e.message); }
     }
 
-    bulk.addEventListener('click', async () => {
-      for (const id of selected) if (!pins.has(id)) await setPin(id, true);
-      selected.clear();
-      drawAll();
-      drawGroupBar();
-      toast(t('done'));
-    });
+    function drawControls() {
+      const onPage = items.length > 0 && items.every((c) => selected.has(c.id));
+      bar.replaceChildren(...(selected.size === 0 ? [] : [
+        h('strong', null, fill(t('selN'), { n: selected.size })),
+        h('button', { class: 'btn primary sm', onclick: async () => {
+          for (const id of selected) if (!pins.has(id)) await setPin(id, true);
+          selected.clear();
+          drawGroupBar();
+          toast(t('done'));
+          draw();
+        } }, t('addSelected')),
+        h('button', { class: 'btn sm danger', onclick: async () => {
+          if (confirm(fill(t('confirmDelN'), { n: selected.size }))) await deleteIds([...selected]);
+        } }, t('delSelected')),
+        h('button', { class: 'btn sm', onclick: () => { selected.clear(); draw(); } }, t('selClear'))]));
+      // "everything on this page is selected" -> offer everything the search matches
+      banner.replaceChildren(...(onPage && total > items.length && selected.size < total ? [
+        h('span', null, fill(t('selPage'), { n: items.length }) + ' '),
+        h('a', { href: '#', onclick: async (e) => { e.preventDefault(); await selectAllMatching(); } }, fill(t('selAll'), { n: total }))] : []));
+    }
+
+    async function selectAllMatching() {
+      const r = await api('GET', '/api/library?ids=1&' + filters());
+      r.ids.forEach((id) => selected.add(id));
+      draw();
+    }
+
+    function filters() {
+      const parts = ['q=' + encodeURIComponent(q.value), 'type=' + encodeURIComponent(type.value)];
+      if (airport !== null) parts.push('icao=' + encodeURIComponent(airport === '' ? '-' : airport));
+      return parts.join('&');
+    }
+
+    function pagerFor(totalItems) {
+      const pages = Math.max(1, Math.ceil(totalItems / PAGE));
+      page = Math.min(page, pages - 1);
+      pager.replaceChildren(
+        h('button', { class: 'btn sm', disabled: page === 0, onclick: () => { page -= 1; load(); } }, '‹ ' + t('pkgPrev')),
+        h('span', { class: 'muted' }, `${totalItems ? page * PAGE + 1 : 0}–${Math.min(totalItems, (page + 1) * PAGE)} ${t('pkgOf')} ${totalItems}`),
+        h('button', { class: 'btn sm', disabled: page >= pages - 1, onclick: () => { page += 1; load(); } }, t('pkgNext') + ' ›'));
+    }
+
+    // ---- loading and drawing
+    async function load() {
+      if (mode === 'airports' && airport === null) {
+        const r = await api('GET', '/api/airports?q=' + encodeURIComponent(q.value));
+        airports = r.airports;
+        draw();
+        return;
+      }
+      const r = await api('GET', `/api/library?${filters()}&offset=${page * PAGE}&limit=${PAGE}`);
+      items = r.items;
+      total = r.total;
+      types = r.types;
+      for (const c of items) names.set(c.id, c);
+      draw();
+    }
+
+    function drawTypeSelect() {
+      const cur = type.value;
+      type.replaceChildren(h('option', { value: '' }, t('all')), ...types.map((x) => h('option', { value: x }, x)));
+      type.value = cur;
+    }
+
+    function draw() {
+      seg.replaceChildren(
+        h('button', { class: mode === 'all' ? 'on' : '', onclick: () => { mode = 'all'; airport = null; page = 0; selected.clear(); load(); } }, t('libAll')),
+        h('button', { class: mode === 'airports' ? 'on' : '', onclick: () => { mode = 'airports'; airport = null; page = 0; selected.clear(); load(); } }, t('libAirports')));
+      crumb.replaceChildren(...(mode === 'airports' && airport !== null ? [
+        h('button', { class: 'btn sm', onclick: () => { airport = null; page = 0; selected.clear(); load(); } }, t('backAirports')),
+        h('strong', null, airport === '' ? t('noIcao') : airport)] : []));
+      drawTypeSelect();
+
+      if (mode === 'airports' && airport === null) {
+        // the aerodromes: open one to see its charts
+        count.textContent = `${airports.length} ${t('airportsN')}`;
+        head.replaceChildren();
+        bar.replaceChildren();
+        banner.replaceChildren();
+        const slice = airports.slice(page * PAGE, (page + 1) * PAGE);
+        body.replaceChildren(...(slice.length ? slice.map((a) => h('tr', null,
+          h('td', null, h('strong', null, a.icao || t('noIcao'))),
+          h('td', { class: 'muted' }, Object.keys(a.types).sort().map((k) => `${k} ${a.types[k]}`).join(' · ')),
+          h('td', { class: 'actions' }, h('span', { class: 'muted' }, `${a.count} ${t('charts')}`), ' ',
+            h('button', { class: 'btn sm primary', onclick: () => { airport = a.icao; page = 0; selected.clear(); load(); } }, t('openAirport'))))) :
+          [h('tr', null, h('td', { colspan: 3, class: 'muted' }, t('noCharts')))]));
+        pagerFor(airports.length);
+      } else {
+        count.textContent = `${total} ${t('charts')}`;
+        const allOnPage = items.length > 0 && items.every((c) => selected.has(c.id));
+        head.replaceChildren(h('tr', null,
+          h('th', null, h('input', { type: 'checkbox', title: t('selectAllPage'), 'aria-label': t('selectAllPage'), checked: allOnPage, onchange: (e) => {
+            items.forEach((c) => (e.target.checked ? selected.add(c.id) : selected.delete(c.id)));
+            draw();
+          } })),
+          h('th', { colspan: 2, class: 'muted' }, t('selectAllPage'))));
+        body.replaceChildren(...(items.length ? items.map(row) :
+          [h('tr', null, h('td', { colspan: 3, class: 'muted' }, t('noCharts')))]));
+        pagerFor(total);
+        drawControls();
+      }
+      drawSide();
+    }
+
     let timer = null;
-    q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 150); });
-    type.addEventListener('change', load);
+    q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { page = 0; load(); }, 150); });
+    type.addEventListener('change', () => { page = 0; load(); });
 
     view.replaceChildren(
       h('div', { class: 'row' }, h('h2', { class: 'grow' }, t('library')),
         h('a', { class: 'btn', href: '#sources' }, t('addCharts'))),
       h('div', { class: 'split' },
         h('div', { class: 'card' },
-          h('div', { class: 'row' }, h('div', { class: 'grow' }, q), type, count, bulk),
-          h('table', null, body)),
+          seg,
+          h('div', { class: 'row' }, h('div', { class: 'grow' }, q), type, count),
+          crumb, bar, banner,
+          h('table', null, head, body), pager),
         side));
-    shown = all;
-    drawAll();
+    await loadPinned();
+    await load();
   }
 
   // ---- Sources: list, then one page per source
