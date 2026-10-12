@@ -15,7 +15,7 @@
   var POLL_MS = 250;
   var TILE = 256;
   var MESH = 8;
-  var OPACITY_STEPS = [0.35, 0.6, 0.85, 1];
+  var OPACITY_STEPS = [0.3, 0.5, 0.7, 0.85, 1];   // chart opacity, from "more map" to "more chart"
   var CHART_MIN_ZOOM = -5;
   var CHART_MAX_ZOOM = 2;
   var OVERLAY_MIN_ZOOM = 3;
@@ -40,7 +40,8 @@
       simNote: 'FLIGHT SIMULATION ONLY - NOT FOR REAL-WORLD AVIATION',
       starPin: 'Pin this chart to the flight', starUnpin: 'Remove this chart from the flight',
       thisFlight: 'Charts in this flight', noPinsHere: 'No charts pinned in this flight.', remove: 'Remove',
-      viewWithMap: 'With map', viewChartOnly: 'Chart only', opacity: 'Opacity', otherGroup: 'Other',
+      viewWithMap: 'With map', viewChartOnly: 'Chart only', blendMap: 'Map', blendChart: 'Chart',
+      blendTitle: 'How much of the chart shows over the map', otherGroup: 'Other',
       prevChart: 'Previous chart', nextChart: 'Next chart'
     },
     pt: {
@@ -61,7 +62,8 @@
       simNote: 'APENAS SIMULAÇÃO AÉREA - PROIBIDO O USO EM AVIAÇÃO REAL',
       starPin: 'Fixar esta carta no voo', starUnpin: 'Tirar esta carta do voo',
       thisFlight: 'Cartas deste voo', noPinsHere: 'Nenhuma carta fixada neste voo.', remove: 'Tirar',
-      viewWithMap: 'Com mapa', viewChartOnly: 'S\u00f3 a carta', opacity: 'Opacidade', otherGroup: 'Outras',
+      viewWithMap: 'Com mapa', viewChartOnly: 'S\u00f3 a carta', blendMap: 'Mapa', blendChart: 'Carta',
+      blendTitle: 'Quanto da carta aparece sobre o mapa', otherGroup: 'Outras',
       prevChart: 'Carta anterior', nextChart: 'Pr\u00f3xima carta'
     }
   };
@@ -78,7 +80,7 @@
   var viewOverlayBtn = el('view-overlay');
   var viewChartBtn = el('view-chart');
   var opacityBox = el('opacity-box');
-  var opacityVal = el('opacity-val');
+  var blendSteps = el('blend-steps');
   var pinPrev = el('pin-prev');
   var pinNext = el('pin-next');
   var pinCount = el('pin-count');
@@ -134,8 +136,8 @@
   var lastStatusKind = null;
   var lastW = 0;
   var lastH = 0;
-  var opacityIdx = 2;
-  try { var oi = parseInt(window.localStorage.getItem('oc.opacity'), 10); if (oi >= 0 && oi < 4) opacityIdx = oi; } catch (e) { /* ignore */ }
+  var opacityIdx = 3;
+  try { var oi = parseInt(window.localStorage.getItem('oc.blend'), 10); if (oi >= 0 && oi < 5) opacityIdx = oi; } catch (e) { /* ignore */ }
   var needsFit = false;
   var searchTimer = null;
   var searchSeq = 0;
@@ -587,7 +589,22 @@
     viewOverlayBtn.className = 'segbtn' + (mode === 'overlay' ? ' on' : '');
     viewChartBtn.className = 'segbtn' + (mode === 'chart' ? ' on' : '');
     opacityBox.style.display = mode === 'overlay' ? '' : 'none';
-    opacityVal.textContent = Math.round(OPACITY_STEPS[opacityIdx] * 100) + '%';
+    var steps = blendSteps.childNodes;
+    for (var i = 0; i < steps.length; i++) {
+      steps[i].className = 'bstep' + (i <= opacityIdx ? ' on' : '') + (i === opacityIdx ? ' cur' : '');
+    }
+  }
+
+  // Five positions between "more map" and "more chart"; only the chart is made transparent.
+  function buildBlendSteps() {
+    clear(blendSteps);
+    OPACITY_STEPS.forEach(function (v, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'bstep';
+      b.addEventListener('click', function () { setOpacity(i); });
+      blendSteps.appendChild(b);
+    });
   }
 
   function setMode(next) {
@@ -601,7 +618,7 @@
   function setOpacity(idx) {
     if (idx < 0 || idx >= OPACITY_STEPS.length) return;
     opacityIdx = idx;
-    store('opacity', String(idx));
+    store('blend', String(idx));
     if (chartLayer && chartLayer.setOpacity && mode === 'overlay') chartLayer.setOpacity(OPACITY_STEPS[opacityIdx]);
     updateDisplayPanel();
   }
@@ -848,7 +865,10 @@
   qEl.placeholder = t('search');
   el('view-overlay-label').textContent = t('viewWithMap');
   el('view-chart-label').textContent = t('viewChartOnly');
-  el('opacity-label').textContent = t('opacity');
+  el('blend-map').textContent = t('blendMap');
+  el('blend-chart').textContent = t('blendChart');
+  blendSteps.title = t('blendTitle');
+  buildBlendSteps();
   viewOverlayBtn.title = viewWithMapTitle();
   viewChartBtn.title = viewChartOnlyTitle();
   pinPrev.title = t('prevChart');
@@ -867,8 +887,6 @@
   flightBtn.addEventListener('click', showFlights);
   viewOverlayBtn.addEventListener('click', function () { setMode('overlay'); });
   viewChartBtn.addEventListener('click', function () { setMode('chart'); });
-  el('opacity-dec').addEventListener('click', function () { setOpacity(opacityIdx - 1); });
-  el('opacity-inc').addEventListener('click', function () { setOpacity(opacityIdx + 1); });
   pinPrev.addEventListener('click', function () { stepChart(-1); });
   pinNext.addEventListener('click', function () { stepChart(1); });
   el('btn-zoom-in').addEventListener('click', function () { map.zoomIn(1, { animate: false }); });

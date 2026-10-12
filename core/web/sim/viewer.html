@@ -76,17 +76,10 @@
         <span id="view-chart-label"></span>
       </button>
     </div>
+    <!-- How much of the chart shows over the map (the map tiles themselves are never dimmed) -->
     <div id="opacity-box" class="opbox">
-      <div id="opacity-label" class="oplabel"></div>
-      <div class="oprow">
-        <button id="opacity-dec" type="button" class="opbtn" aria-label="Less opaque">
-          <svg viewBox="0 0 32 32"><path d="M8 16h16"/></svg>
-        </button>
-        <span id="opacity-val" class="opval"></span>
-        <button id="opacity-inc" type="button" class="opbtn" aria-label="More opaque">
-          <svg viewBox="0 0 32 32"><path d="M16 8v16M8 16h16"/></svg>
-        </button>
-      </div>
+      <div class="blendlabels"><span id="blend-map"></span><span id="blend-chart"></span></div>
+      <div id="blend-steps" class="blendsteps"></div>
     </div>
   </div>
 

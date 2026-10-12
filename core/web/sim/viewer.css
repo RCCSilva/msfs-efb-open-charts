@@ -202,16 +202,14 @@ html, body, button, input, select, textarea, .status, .attribution {
 .segbtn.on { background: rgba(35, 105, 190, 0.96); color: #fff; }
 .segbtn.on svg { stroke: #fff; }
 
-.opbox { margin-top: 8px; padding: 6px; background: rgba(255, 255, 255, 0.94); border-radius: 8px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4); text-align: center; }
-.oplabel { font-size: 11px; color: #456; margin-bottom: 4px; }
-.oprow { white-space: nowrap; }
-.opbtn { display: inline-block; width: 30px; height: 36px; padding: 0; border: 0; border-radius: 6px;
-  background: #e6edf5; cursor: pointer; vertical-align: middle; }
-.opbtn svg { width: 18px; height: 18px; fill: none; stroke: #123; stroke-width: 3; vertical-align: middle; }
-.opval { display: inline-block; width: 38px; font-size: 13px; color: #123; vertical-align: middle; }
-
-/* offsetLeft of the chips is measured against the strip, so it must be the positioned parent */
-.strip .pins { position: relative; }
-.strip .count { margin: 0 4px; border-radius: 12px; background: rgba(20, 30, 40, 0.88); width: 42px;
-  height: 28px; line-height: 28px; margin-top: 4px; }
+.opbox { margin-top: 8px; padding: 6px 8px 8px 8px; background: rgba(255, 255, 255, 0.94); border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4); }
+.blendlabels { height: 16px; font-size: 11px; line-height: 16px; color: #345; }
+.blendlabels span:first-child { float: left; }
+.blendlabels span:last-child { float: right; }
+.blendsteps { white-space: nowrap; height: 32px; margin-top: 2px; }
+.bstep { display: inline-block; width: 18px; height: 32px; margin: 0 1px; padding: 0; border: 0;
+  border-radius: 4px; background: #d5dbe2; cursor: pointer; vertical-align: top; }
+.bstep.on { background: #8fb4e3; }
+.bstep.cur { background: rgba(35, 105, 190, 0.96); }
+.display { width: 112px; }
