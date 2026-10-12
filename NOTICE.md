@@ -1,25 +1,25 @@
-# Avisos de terceiros / Third-party notices
+# Third-party notices
 
-Open Charts é distribuído sob a licença MIT (`core/LICENSE`). Ele usa os componentes abaixo,
-cada um sob sua própria licença.
+Open Charts is distributed under the MIT license (`core/LICENSE`). It uses the components below,
+each under its own license.
 
-| Componente | Uso | Licença |
+| Component | Use | License |
 |---|---|---|
-| [PDFium](https://pdfium.googlesource.com/pdfium/) | Renderização de PDF (via WebAssembly) | BSD-3-Clause / Apache-2.0 |
-| [go-pdfium](https://github.com/klippa-app/go-pdfium) | Binding Go para o PDFium | MIT |
-| [wazero](https://github.com/tetratelabs/wazero) | Execução de WebAssembly sem cgo | Apache-2.0 |
-| [pdfcpu](https://github.com/pdfcpu/pdfcpu) | Leitura da estrutura do PDF (georreferência) | Apache-2.0 |
-| [fyne.io/systray](https://github.com/fyne-io/systray) | Ícone na bandeja do sistema | Apache-2.0 |
-| [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) | Normalização de texto (acentos) | BSD-3-Clause |
-| [Leaflet](https://leafletjs.com/) | Mapa no visualizador | BSD-2-Clause |
-| [go-winres](https://github.com/tc-hib/go-winres) | Ícone e versão do `.exe` (só no build) | MIT |
-| [Inno Setup](https://jrsoftware.org/isinfo.php) | Geração do instalador (só no build) | Licença própria (gratuita) |
+| [PDFium](https://pdfium.googlesource.com/pdfium/) | PDF rendering (through WebAssembly) | BSD-3-Clause / Apache-2.0 |
+| [go-pdfium](https://github.com/klippa-app/go-pdfium) | Go binding for PDFium | MIT |
+| [wazero](https://github.com/tetratelabs/wazero) | WebAssembly runtime without cgo | Apache-2.0 |
+| [pdfcpu](https://github.com/pdfcpu/pdfcpu) | Reading PDF structure (georeference) | Apache-2.0 |
+| [fyne.io/systray](https://github.com/fyne-io/systray) | System tray icon | Apache-2.0 |
+| [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) | Text normalisation (accents) | BSD-3-Clause |
+| [Leaflet](https://leafletjs.com/) | Map in the viewer | BSD-2-Clause |
+| [go-winres](https://github.com/tc-hib/go-winres) | Executable icon and version (build only) | MIT |
+| [Inno Setup](https://jrsoftware.org/isinfo.php) | Installer generation (build only) | Inno Setup license (free) |
 
-## Dados e SDK
+## Data and SDK
 
-- **Mapas:** © colaboradores do [OpenStreetMap](https://www.openstreetmap.org/copyright), ODbL.
-  Os tiles são usados com cache local e identificação do aplicativo.
-- **SimConnect:** `SimConnect.dll` faz parte do SDK do Microsoft Flight Simulator e é redistribuída
-  conforme os termos do SDK.
-- **Cartas:** pertencem aos seus provedores (por exemplo DECEA/AISWEB). O aplicativo não as
-  redistribui nem as baixa automaticamente; siga a política de uso de cada provedor.
+- **Maps:** © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, ODbL. Tiles are
+  cached locally and requested with an identifying user agent.
+- **SimConnect:** `SimConnect.dll` is part of the Microsoft Flight Simulator SDK and is
+  redistributed under the terms of the SDK.
+- **Charts:** they belong to their providers (for example DECEA/AISWEB). The application does not
+  redistribute them or download them automatically; follow each provider's usage policy.

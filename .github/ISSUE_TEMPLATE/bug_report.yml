@@ -1,55 +1,54 @@
-name: Bug report / Reportar um bug
-description: Something does not work as expected / Algo não funciona como esperado
+name: Bug report
+description: Something does not work as expected
 title: "[Bug] "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        **Open Charts é apenas para simulação aérea / is for flight simulation only.**
-        Obrigado por reportar! Quanto mais detalhes, mais rápido conseguimos corrigir.
-        Thanks for reporting! The more detail, the faster we can fix it.
+        **Open Charts is for flight simulation only.**
+        Thanks for reporting! The more detail you give, the faster it can be fixed.
 
   - type: textarea
     id: what
     attributes:
-      label: O que aconteceu? / What happened?
-      description: Descreva o problema e o que você esperava. / Describe the problem and what you expected.
+      label: What happened?
+      description: Describe the problem and what you expected to happen.
     validations:
       required: true
 
   - type: textarea
     id: steps
     attributes:
-      label: Como reproduzir / Steps to reproduce
+      label: Steps to reproduce
       placeholder: |
-        1. Abrir ...
-        2. Clicar em ...
-        3. Ver o erro ...
+        1. Open ...
+        2. Click ...
+        3. See the error ...
     validations:
       required: true
 
   - type: dropdown
     id: area
     attributes:
-      label: Onde ocorre? / Where does it happen?
+      label: Where does it happen?
       options:
-        - Visualizador no simulador (EFB) / In-sim viewer (EFB)
-        - Gerenciador (navegador) / Manager (browser)
-        - Importação de PDF / PDF import
-        - Fontes (DECEA, Meus PDFs) / Sources
-        - Posição / SimConnect
-        - Instalador / Installer
-        - Ícone da bandeja / Tray icon
-        - Outro / Other
+        - In-sim viewer (EFB)
+        - Manager (browser)
+        - PDF import
+        - Sources (DECEA, My PDFs)
+        - Position / SimConnect
+        - Installer
+        - Tray icon
+        - Other
     validations:
       required: true
 
   - type: input
     id: version
     attributes:
-      label: Versão do Open Charts / Open Charts version
-      description: Veja em Sobre. / See the About page.
+      label: Open Charts version
+      description: See the About page of the manager.
       placeholder: "0.1.0 Open Beta"
     validations:
       required: true
@@ -57,41 +56,39 @@ body:
   - type: dropdown
     id: msfs
     attributes:
-      label: Edição do MSFS / MSFS edition
+      label: MSFS edition
       options:
         - MSFS 2024 (Steam)
         - MSFS 2024 (Microsoft Store / Xbox app)
-        - Outra / Other
+        - Other
     validations:
       required: true
 
   - type: input
     id: windows
     attributes:
-      label: Windows
+      label: Windows version
       placeholder: "Windows 11 23H2"
 
   - type: textarea
     id: logs
     attributes:
-      label: Log / Logs
-      description: |
-        Cole o final do arquivo `%LOCALAPPDATA%\OpenCharts\opencharts.log` (ou anexe o arquivo).
-        Paste the end of `%LOCALAPPDATA%\OpenCharts\opencharts.log` (or attach the file).
+      label: Logs
+      description: Paste the end of `%LOCALAPPDATA%\OpenCharts\opencharts.log`, or attach the file.
       render: text
 
   - type: textarea
     id: extra
     attributes:
-      label: Capturas de tela e detalhes extras / Screenshots and extra details
-      description: Arraste imagens para cá. Se o problema for com uma carta específica, diga o nome (não anexe PDFs protegidos por termos de uso). / Drag images here. If it is about a specific chart, give its name (do not attach PDFs whose terms forbid redistribution).
+      label: Screenshots and extra details
+      description: Drag images here. If it is about a specific chart, give its name; do not attach PDFs whose terms forbid redistribution.
 
   - type: checkboxes
     id: checks
     attributes:
-      label: Confirmações / Checks
+      label: Checks
       options:
-        - label: Procurei nas issues existentes e não encontrei este problema. / I searched existing issues and did not find this problem.
+        - label: I searched the existing issues and did not find this problem.
           required: true
-        - label: Não incluí informações pessoais ou chaves no relato. / I did not include personal information or keys.
+        - label: I did not include personal information or keys.
           required: true
