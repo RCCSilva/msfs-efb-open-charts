@@ -37,6 +37,17 @@
   var HEALTH_POLL_MS = 2000;
   var STYLE_ID = 'lmm-style';
 
+  // Tell the server what this app is doing (only the log of the program; nothing about the user):
+  // the page used to be reloaded for no visible reason, and this shows why.
+  function trace(msg) {
+    try {
+      var x = new XMLHttpRequest();
+      x.open('POST', SERVER_URL + 'api/client-perf');
+      x.setRequestHeader('Content-Type', 'application/json');
+      x.send(JSON.stringify({ ua: navigator.userAgent, seconds: 0, mode: 'efb-app', counts: {}, note: 'efb: ' + msg }));
+    } catch (e) { /* tracing must never break the app */ }
+  }
+
   function getSdk() {
     return window.msfssdk || (typeof msfssdk !== 'undefined' ? msfssdk : null);
   }
@@ -74,6 +85,7 @@
         this.serverOk = null; // null = unknown yet
         this.simInfo = '';
         this.healthTimer = null;
+        this.healthFails = 0;   // consecutive failed checks
         this.destroyed = false;
         this.barEl = null;
         this.msgEl = null;
@@ -95,13 +107,15 @@
         if (!root) return;
         this.barEl = root.querySelector('.lmm-bar');
         this.msgEl = root.querySelector('.lmm-msg');
-        this.createFrame();
+        trace('view rendered (frame exists: ' + !!this.frame + ')');
+        this.createFrame('after-render');
         this.startHealthCheck();
       }
 
-      createFrame() {
+      createFrame(reason) {
         var host = this.frameHost.instance;
         if (!host || this.destroyed) return;
+        trace('page (re)loaded because: ' + (reason || 'unknown'));
         if (this.frame && this.frame.parentNode) this.frame.parentNode.removeChild(this.frame);
 
         var self = this;
@@ -138,7 +152,7 @@
         var self = this;
         var xhr = new XMLHttpRequest();
         xhr.open('GET', SERVER_URL + 'api/health?t=' + Date.now());
-        xhr.timeout = 1500;
+        xhr.timeout = 4000;
         xhr.onreadystatechange = function () {
           if (xhr.readyState !== 4 || self.destroyed) return;
           var ok = false;
@@ -150,11 +164,19 @@
               info = j.simulated ? 'simulated' : (j.simConnected ? 'sim connected' : 'sim not connected');
             } catch (e) { ok = false; }
           }
+          // One slow or lost answer is not an outage (the simulator can stall its own scripts for a
+          // moment): only three failures in a row count, and only then is the page reloaded when the
+          // server answers again. Reloading the page at every hiccup made the map flash.
+          if (ok) {
+            self.healthFails = 0;
+          } else {
+            self.healthFails += 1;
+            if (self.healthFails < 3) return;
+          }
           var wasOk = self.serverOk;
           self.serverOk = ok;
           self.simInfo = info;
-          // Server came up after the app was opened: (re)load the page.
-          if (ok && wasOk === false) self.createFrame();
+          if (ok && wasOk === false) self.createFrame('server back after an outage');
           self.updateBar();
         };
         try { xhr.send(); } catch (e) {
@@ -181,15 +203,16 @@
       }
 
       // EFB lifecycle (see AppView.d.ts): open/resume/pause/close/update.
-      onOpen() { this.startHealthCheck(); }
-      onResume() { this.startHealthCheck(); }
-      onPause() { this.stopHealthCheck(); }
-      onClose() { this.stopHealthCheck(); }
+      onOpen() { trace('onOpen'); this.startHealthCheck(); }
+      onResume() { trace('onResume'); this.startHealthCheck(); }
+      onPause() { trace('onPause'); this.stopHealthCheck(); }
+      onClose() { trace('onClose'); this.stopHealthCheck(); }
       onUpdate() {}
       routeGamepadInteractionEvent() {}
       handlePageKeyAction() {}
 
       destroy() {
+        trace('view destroyed');
         this.destroyed = true;
         this.stopHealthCheck();
         if (this.frame) {
