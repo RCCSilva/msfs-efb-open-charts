@@ -22,6 +22,10 @@
   var CHART_MAX_ZOOM = 2;
   var OVERLAY_MIN_ZOOM = 3;
   var OVERLAY_MAX_ZOOM = 16;
+  // Chart-only mode shows a reduced copy of the chart picture that matches the zoom (the server makes
+  // chart@2.png and chart@4.png): sharper than the browser shrinking a big picture, and much faster to
+  // decode in the simulator. 1 = the full picture, 2 = half size, 4 = quarter size.
+  var CHART_LEVELS = [4, 2, 1];
 
   var STR = {
     en: {
@@ -141,7 +145,7 @@
     var counts = {
       ms_json: t.json - t.start, ms_image: t.image - t.json, ms_build: t.built - t.image,
       ms_tiles: t.tiles - t.built, ms_total: t.tiles - t.start,
-      tilesDrawn: t.drawn, ms_drawingTiles: t.drawMs, imgW: t.w, imgH: t.h
+      tilesDrawn: t.drawn, ms_drawingTiles: t.drawMs, imgW: t.w, imgH: t.h, level: t.level || 1
     };
     request('POST', '/api/client-perf', { ua: navigator.userAgent, seconds: 0, mode: 'chart-open:' + t.mode, counts: counts, note: t.id.slice(0, 80) }, null);
   }
@@ -392,6 +396,7 @@
     });
     marker = L.marker([0, 0], { icon: icon, interactive: false, keyboard: false, zIndexOffset: 1000 });
     map.on('dragstart', function () { setFollow(false); });
+    if (mode === 'chart') map.on('zoomend', refineChartLevel);
     map.on('move', function () { bump('mapMove'); });
     map.on('zoomend', function () { bump('mapZoomEnd'); });
     map.on('resize', function () { bump('mapResize'); });
@@ -588,12 +593,14 @@
     getJson('/charts/' + encodeURIComponent(id) + '/chart.json?v=' + Date.now(), function (meta) {
       if (!meta) { loadFailed(id, fallback); return; }
       timing.json = nowMs();
+      var level = firstLevel(meta);
       var img = new Image();
       img.onload = function () {
         timing.image = nowMs();
         timing.w = img.naturalWidth;
         timing.h = img.naturalHeight;
-        active = { meta: meta, img: img };
+        timing.level = level;
+        active = { meta: meta, img: img, level: level };
         store('chart', id);
         setFollow(!debugAt);
         loadTiming = timing;
@@ -616,9 +623,80 @@
         updateCloseButton();
         saveState();
       };
-      img.onerror = function () { loadFailed(id, fallback); };
-      img.src = '/charts/' + encodeURIComponent(id) + '/' + meta.image.file;
+      img.onerror = function () {
+        if (level !== 1) {   // the reduced copy could not be made: use the full picture
+          level = 1;
+          img.src = chartImageUrl(meta, 1);
+          return;
+        }
+        loadFailed(id, fallback);
+      };
+      img.src = chartImageUrl(meta, level);
     });
+  }
+
+  function chartImageUrl(meta, level) {
+    var base = '/charts/' + encodeURIComponent(meta.id) + '/';
+    return level === 1 || meta.image.file !== 'chart.png' ? base + meta.image.file : base + 'chart@' + level + '.png';
+  }
+
+  // The smallest copy that is still not shown enlarged at this scale (screen px per chart px).
+  function levelForScale(scale) {
+    var need = scale * (window.devicePixelRatio || 1) * 0.85;   // a little slack: a touch of enlargement is fine
+    for (var i = 0; i < CHART_LEVELS.length; i++) {
+      if (1 / CHART_LEVELS[i] >= need) return CHART_LEVELS[i];
+    }
+    return 1;
+  }
+
+  // The level to start with: the overlay mode draws from the full picture; chart-only mode starts at
+  // the size the whole chart is first shown at.
+  function firstLevel(meta) {
+    if (mode !== 'chart') return 1;
+    var m = el('map');
+    var w = m.clientWidth || 468;
+    var h = m.clientHeight || 696;
+    return levelForScale(Math.min(w / meta.image.width, h / meta.image.height));
+  }
+
+  // Zoomed in: swap the chart picture for a finer copy (never back to a coarser one while it stays
+  // open, so zooming out and in does not make the picture flash).
+  var refining = false;
+  function refineChartLevel() {
+    if (mode !== 'chart' || !active || !map || refining) return;
+    var want = levelForScale(Math.pow(2, map.getZoom()));
+    if (want >= active.level) return;
+    refining = true;
+    var id = active.meta.id;
+    var meta = active.meta;
+    var im = new Image();
+    im.onload = function () {
+      refining = false;
+      if (!active || active.meta.id !== id || mode !== 'chart' || !map) return;
+      var b = L.latLngBounds([0, 0], [meta.image.height, meta.image.width]);
+      var next = L.imageOverlay(im, b).addTo(map);
+      if (chartLayer) map.removeLayer(chartLayer);
+      chartLayer = next;
+      active.img = im;
+      active.level = want;
+    };
+    im.onerror = function () { refining = false; };
+    im.src = chartImageUrl(meta, want);
+  }
+
+  // The overlay mode warps the full picture: bring it back before switching to it.
+  function ensureFullImage(done) {
+    if (!active || active.level === 1) { done(); return; }
+    var id = active.meta.id;
+    var meta = active.meta;
+    setStatus(t('loading'), 'warn');
+    var im = new Image();
+    im.onload = function () {
+      if (active && active.meta.id === id) { active.img = im; active.level = 1; }
+      done();
+    };
+    im.onerror = function () { setStatus(t('loadFail'), 'bad'); };
+    im.src = chartImageUrl(meta, 1);
   }
 
   function isPinned(id) {
@@ -716,6 +794,10 @@
 
   function setMode(next) {
     if (next === mode) return;
+    if (next === 'overlay' && active && active.level !== 1) {
+      ensureFullImage(function () { setMode(next); });
+      return;
+    }
     mode = next;
     store('mode', mode);
     buildMap();

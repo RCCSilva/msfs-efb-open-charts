@@ -238,11 +238,24 @@ func (s *Server) handleDeleteChart(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleChartFile(w http.ResponseWriter, r *http.Request) {
 	id, file := r.PathValue("id"), r.PathValue("file")
-	if !store.ValidID(id) || (file != "chart.png" && file != "chart.json") {
+	if !store.ValidID(id) {
 		http.NotFound(w, r)
 		return
 	}
 	path := filepath.Join(s.lib.ChartDir(id), file)
+	switch {
+	case file == "chart.png" || file == "chart.json":
+	case levelFileRe.MatchString(file):
+		p, ok := chartLevelPath(s.lib.ChartDir(id), file)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		path = p
+	default:
+		http.NotFound(w, r)
+		return
+	}
 	if _, err := os.Stat(path); err != nil {
 		http.NotFound(w, r)
 		return

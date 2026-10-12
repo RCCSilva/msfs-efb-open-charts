@@ -119,6 +119,11 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   use the effective per-axis scale stored in `chart.json`, never `dpi / 72`.
 - **Overlay mode** warps the chart per OpenStreetMap tile on a canvas (backward mapping with
   triangle meshes). **Chart-only mode** uses `L.CRS.Simple`; the map is rebuilt when switching.
+- **Chart picture levels:** next to `chart.png` the server makes `chart@2.png` and `chart@4.png` (half and
+  quarter size, Catmull-Rom filter, on the first request; `internal/server/chartlevel.go`). Chart-only mode
+  loads the level that matches the zoom and swaps to a finer one when zooming in; the overlay mode
+  always warps the full picture. All coordinates stay in full-size pixels (the reduced picture is
+  stretched to the same bounds).
 - **Sources** declare abilities by implementing interfaces: `Cataloger` (static list), `Locator`
   (address from a date), `Packager` (reads a downloaded archive). A source may implement only some.
   File-name rules belong to the source (`Recognize`); `manual` falls back to the other sources.
