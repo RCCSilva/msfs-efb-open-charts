@@ -101,6 +101,7 @@ func (s *Server) Handler() http.Handler {
 
 	// OpenStreetMap tiles (cached; the sim only talks to localhost over plain http)
 	mux.HandleFunc("GET /tiles/{z}/{x}/{file}", s.tiles.handle)
+	mux.HandleFunc("GET /tiles/{style}/{z}/{x}/{file}", s.tiles.handleStyled) // quiet grey / dark versions
 
 	// viewer pages
 	static := http.FileServer(http.FS(web.Sim()))

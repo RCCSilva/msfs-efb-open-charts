@@ -27,6 +27,8 @@
       tabCatalog: 'Visual charts (catalog)', tabPackage: 'Aerodromes (package)', tabFiles: 'Add files',
       stepsFiles: 'Add what you downloaded', capCatalog: 'Catalog', capPackage: 'Package', capLocate: 'By date', capUpload: 'Upload',
       about: 'About', setup: 'Setup', map: 'Map',
+      baseTitle: 'Base map', baseLight: 'Light (quiet)', baseStandard: 'Standard OpenStreetMap', baseDark: 'Dark', baseNone: 'No map',
+      baseHelp: 'What is drawn under the chart in the viewer. Light is a quiet grey version of OpenStreetMap: lighter to load and easier on the chart. Reload the viewer to see the change.',
       detailTitle: 'Chart detail', detailNormal: 'Normal', detailHigh: 'High',
       detailHelp: 'Applies to charts imported from now on. High is sharper when you zoom in (phones, large screens) but makes bigger files and takes longer. To change charts already in the library, delete and add them again.',
       netTitle: 'Port and local network', portTitle: 'Server port', lanTitle: 'Local network (tablet and phone)', portLabel: 'Port', apply: 'Apply', portApplied: 'Port changed',
@@ -92,6 +94,8 @@
       tabCatalog: 'Cartas visuais (catálogo)', tabPackage: 'Aeródromos (pacote)', tabFiles: 'Adicionar arquivos',
       stepsFiles: 'Adicione o que você baixou', capCatalog: 'Catálogo', capPackage: 'Pacote', capLocate: 'Por data', capUpload: 'Envio',
       about: 'Sobre', setup: 'Configuração', map: 'Mapa',
+      baseTitle: 'Mapa base', baseLight: 'Claro (discreto)', baseStandard: 'OpenStreetMap padrão', baseDark: 'Escuro', baseNone: 'Sem mapa',
+      baseHelp: 'O que aparece embaixo da carta no visualizador. O Claro é uma versão discreta, em cinza, do OpenStreetMap: carrega mais leve e não disputa atenção com a carta. Recarregue o visualizador para ver a mudança.',
       detailTitle: 'Detalhe das cartas', detailNormal: 'Normal', detailHigh: 'Alto',
       detailHelp: 'Vale para as cartas importadas daqui em diante. Alto fica mais nítido ao dar zoom (celular, telas grandes), mas gera arquivos maiores e demora mais. Para mudar as cartas que já estão na biblioteca, exclua e adicione de novo.',
       netTitle: 'Porta e rede local', portTitle: 'Porta do servidor', lanTitle: 'Rede local (tablet e celular)', portLabel: 'Porta', apply: 'Aplicar', portApplied: 'Porta alterada',
@@ -857,6 +861,21 @@
     ];
   }
 
+  async function basemapCard() {
+    let net;
+    try { net = await api('GET', '/api/settings'); } catch (e) { return null; }
+    const pick = (value, label) => h('button', {
+      class: 'btn sm' + (net.basemap === value ? ' primary' : ''),
+      onclick: async () => {
+        try { await api('PUT', '/api/settings', { basemap: value }); toast(t('done')); } catch (e) { toast(e.message); }
+        renderSetup();
+      } }, label);
+    return h('div', { class: 'card' }, h('h3', null, t('baseTitle')),
+      h('div', { class: 'row' }, pick('light', t('baseLight')), pick('standard', t('baseStandard')),
+        pick('dark', t('baseDark')), pick('none', t('baseNone'))),
+      h('div', { class: 'muted', style: 'margin-top:8px' }, t('baseHelp')));
+  }
+
   async function detailCard() {
     let net;
     try { net = await api('GET', '/api/settings'); } catch (e) { return null; }
@@ -872,6 +891,8 @@
   }
 
     cards.push(...await networkCards(st));
+    const bCard = await basemapCard();
+    if (bCard) cards.push(bCard);
     const dCard = await detailCard();
     if (dCard) cards.push(dCard);
 

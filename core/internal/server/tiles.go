@@ -56,12 +56,24 @@ func (t *tileCache) handle(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	file := filepath.Join(t.dir, strconv.Itoa(z), strconv.Itoa(x), strconv.Itoa(y)+".png")
-	if data, err := os.ReadFile(file); err == nil {
-		sendTile(w, data)
+	data, err := t.original(z, x, y)
+	if err != nil {
+		// Do not let the browser cache the failure; Retry-After lets a client try again soon.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Retry-After", "2")
+		http.Error(w, "tile fetch failed", http.StatusServiceUnavailable)
 		return
 	}
+	sendTile(w, data)
+}
 
+// original returns the OpenStreetMap PNG of a tile: from the disk cache, or fetched (once, even
+// when several requests ask for it at the same time).
+func (t *tileCache) original(z, x, y int) ([]byte, error) {
+	file := filepath.Join(t.dir, strconv.Itoa(z), strconv.Itoa(x), strconv.Itoa(y)+".png")
+	if data, err := os.ReadFile(file); err == nil {
+		return data, nil
+	}
 	key := fmt.Sprintf("%d/%d/%d", z, x, y)
 	t.mu.Lock()
 	p, ok := t.inflight[key]
@@ -77,16 +89,8 @@ func (t *tileCache) handle(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 	t.mu.Unlock()
-
 	<-p.done
-	if p.err != nil {
-		// Do not let the browser cache the failure; Retry-After lets a client try again soon.
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Retry-After", "2")
-		http.Error(w, "tile fetch failed", http.StatusServiceUnavailable)
-		return
-	}
-	sendTile(w, p.data)
+	return p.data, p.err
 }
 
 func sendTile(w http.ResponseWriter, data []byte) {

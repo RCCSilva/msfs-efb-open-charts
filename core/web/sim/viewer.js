@@ -113,6 +113,8 @@
   if (params.lang === 'en') lang = 'en';
   function t(k) { return STR[lang][k] || STR.en[k] || k; }
 
+  var basemap = 'light';   // from the settings, through /api/viewer-state (standard, light, dark, none)
+  if (/^(standard|light|dark|none)$/.test(params.basemap || '')) basemap = params.basemap;
   var mode = params.mode || store('mode') || 'overlay';
   if (mode !== 'chart' && mode !== 'overlay') mode = 'overlay';
 
@@ -335,13 +337,14 @@
       common.minZoom = OVERLAY_MIN_ZOOM;
       common.maxZoom = OVERLAY_MAX_ZOOM;
       map = L.map('map', common).setView([-23.55, -46.63], 9);
-      var base = L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+      var base = basemap === 'none' ? null : L.tileLayer(basemap === 'standard' ? '/tiles/{z}/{x}/{y}.png' : '/tiles/' + basemap + '/{z}/{x}/{y}.jpg', {
         minZoom: OVERLAY_MIN_ZOOM, maxZoom: OVERLAY_MAX_ZOOM, tileSize: 256, updateWhenIdle: false, keepBuffer: 2,
         detectRetina: true   // phones and tablets: tiles of the next zoom level, drawn at half size
-      }).addTo(map);
+      });
+      if (base) base.addTo(map);
       // A tile that failed (network blip, upstream throttling) is asked again a few times
       // instead of staying black until the user moves or zooms the map.
-      base.on('tileerror', function (ev) {
+      if (base) base.on('tileerror', function (ev) {
         var img = ev.tile;
         var n = (img._ocRetry || 0) + 1;
         if (n > 4) return;
@@ -369,7 +372,7 @@
   }
 
   function mapBackground() {
-    el('map').style.background = mode === 'chart' ? '#ffffff' : '#dfe6ea';
+    el('map').style.background = mode === 'chart' ? '#ffffff' : (basemap === 'dark' ? '#1c2024' : (basemap === 'none' ? '#eef1f3' : '#dfe6ea'));
   }
 
   // Put the active chart on the freshly built map.
@@ -1034,6 +1037,7 @@
   function start(saved) {
     saved = saved || {};
     if (!params.mode && (saved.mode === 'chart' || saved.mode === 'overlay')) mode = saved.mode;
+    if (!params.basemap && /^(standard|light|dark|none)$/.test(saved.basemap || '')) basemap = saved.basemap;
     if (!params.lang && (saved.lang === 'pt' || saved.lang === 'en')) {
       lang = saved.lang;
       qEl.placeholder = t('search');

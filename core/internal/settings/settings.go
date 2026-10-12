@@ -26,6 +26,19 @@ const (
 	DetailHigh   = "high"   // 4800 px: sharper when zoomed in, bigger files, slower
 )
 
+// Base maps drawn under the charts (see internal/server/tilestyle.go).
+const (
+	BasemapStandard = "standard"
+	BasemapLight    = "light" // the default: a quiet grey-scale version of OpenStreetMap
+	BasemapDark     = "dark"
+	BasemapNone     = "none"
+)
+
+// ValidBasemap reports whether s is a known base map style.
+func ValidBasemap(s string) bool {
+	return s == BasemapStandard || s == BasemapLight || s == BasemapDark || s == BasemapNone
+}
+
 // LongEdgePx is the longer side of the image for a detail level (unknown values mean normal).
 func LongEdgePx(detail string) int {
 	if detail == DetailHigh {
@@ -41,11 +54,13 @@ type Settings struct {
 	Token string `json:"token"` // the key those devices must present (in the QR code link)
 	// Detail is the level of detail of charts imported from now on (DetailNormal or DetailHigh).
 	Detail string `json:"detail"`
+	// Basemap is what the viewer draws under the chart (BasemapLight by default).
+	Basemap string `json:"basemap"`
 }
 
 // Default returns the settings of a fresh installation (a new key is generated).
 func Default() Settings {
-	return Settings{Port: DefaultPort, LAN: false, Token: NewToken(), Detail: DetailNormal}
+	return Settings{Port: DefaultPort, LAN: false, Token: NewToken(), Detail: DetailNormal, Basemap: BasemapLight}
 }
 
 // NewToken returns a random key (96 bits, hex).
@@ -78,6 +93,9 @@ func Load(dir string) Settings {
 			s.LAN = f.LAN
 			if f.Detail == DetailHigh {
 				s.Detail = DetailHigh
+			}
+			if ValidBasemap(f.Basemap) {
+				s.Basemap = f.Basemap
 			}
 			if f.Token != "" {
 				s.Token = f.Token

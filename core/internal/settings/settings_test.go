@@ -24,7 +24,7 @@ func TestDefaults(t *testing.T) {
 
 func TestRoundTripAndLAN(t *testing.T) {
 	dir := t.TempDir()
-	in := Settings{Port: 45000, LAN: true, Token: "abc123", Detail: DetailHigh}
+	in := Settings{Port: 45000, LAN: true, Token: "abc123", Detail: DetailHigh, Basemap: BasemapDark}
 	if err := in.Save(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -89,5 +89,26 @@ func TestDetailDefaultsAndSizes(t *testing.T) {
 	}
 	if got := Load(dir).Detail; got != DetailNormal {
 		t.Fatalf("unknown detail must fall back to normal, got %q", got)
+	}
+}
+
+func TestBasemapDefaultAndValidation(t *testing.T) {
+	if got := Load(t.TempDir()).Basemap; got != BasemapLight {
+		t.Fatalf("default basemap = %q, want light", got)
+	}
+	for _, ok := range []string{BasemapStandard, BasemapLight, BasemapDark, BasemapNone} {
+		if !ValidBasemap(ok) {
+			t.Errorf("%q should be valid", ok)
+		}
+	}
+	if ValidBasemap("neon") || ValidBasemap("") {
+		t.Error("unknown values must be rejected")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(`{"port": 43210, "basemap": "neon"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := Load(dir).Basemap; got != BasemapLight {
+		t.Fatalf("unknown basemap must fall back to light, got %q", got)
 	}
 }

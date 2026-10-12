@@ -330,7 +330,7 @@ func (s *Server) settingsView() map[string]any {
 		addrs = lanAddresses(port)
 	}
 	return map[string]any{
-		"port": cfg.Port, "lan": cfg.LAN, "defaultPort": settings.DefaultPort, "fixed": fixed, "detail": cfg.Detail,
+		"port": cfg.Port, "lan": cfg.LAN, "defaultPort": settings.DefaultPort, "fixed": fixed, "detail": cfg.Detail, "basemap": cfg.Basemap,
 		"listenAddr": s.listenAddr(), "localURL": "http://127.0.0.1:" + port + "/", "addresses": addrs,
 	}
 }
@@ -343,9 +343,10 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 // and only then saves: a port that is taken leaves everything as it was.
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Port   *int    `json:"port"`
-		LAN    *bool   `json:"lan"`
-		Detail *string `json:"detail"`
+		Port    *int    `json:"port"`
+		LAN     *bool   `json:"lan"`
+		Detail  *string `json:"detail"`
+		Basemap *string `json:"basemap"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, 400, err)
@@ -354,6 +355,23 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	s.net.mu.RLock()
 	fixed, dir := s.net.fixedAddr, s.net.dataDir
 	s.net.mu.RUnlock()
+	// the base map does not depend on the listen address
+	if body.Basemap != nil && body.Port == nil && body.LAN == nil && body.Detail == nil {
+		if !settings.ValidBasemap(*body.Basemap) {
+			writeErr(w, 400, errors.New("basemap must be standard, light, dark or none"))
+			return
+		}
+		s.net.mu.Lock()
+		s.net.cfg.Basemap = *body.Basemap
+		cfg := s.net.cfg
+		s.net.mu.Unlock()
+		if err := cfg.Save(dir); err != nil {
+			writeErr(w, 500, err)
+			return
+		}
+		writeJSON(w, 200, s.settingsView())
+		return
+	}
 	// the chart detail level does not depend on the listen address
 	if body.Detail != nil && body.Port == nil && body.LAN == nil {
 		if *body.Detail != settings.DetailNormal && *body.Detail != settings.DetailHigh {

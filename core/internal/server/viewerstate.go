@@ -17,6 +17,8 @@ type viewerState struct {
 	Chart string `json:"chart"`
 	Mode  string `json:"mode"` // "overlay" | "chart"
 	Lang  string `json:"lang"` // "pt" | "en" | ""
+	// Basemap comes from the settings (set in the manager); it is read-only here.
+	Basemap string `json:"basemap,omitempty"`
 }
 
 var viewerStateMu sync.Mutex
@@ -36,6 +38,7 @@ func (s *Server) handleViewerState(w http.ResponseWriter, r *http.Request) {
 			st.Chart = ""
 		}
 	}
+	st.Basemap = s.settingsSnapshot().Basemap
 	writeJSON(w, 200, st)
 }
 
@@ -57,6 +60,7 @@ func (s *Server) handleSetViewerState(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("invalid chart id"))
 		return
 	}
+	st.Basemap = "" // never persisted with the viewer state
 	b, _ := json.Marshal(st)
 	viewerStateMu.Lock()
 	defer viewerStateMu.Unlock()
