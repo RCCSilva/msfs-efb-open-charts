@@ -20,6 +20,8 @@ type Entry struct {
 	Type   string `json:"type"`
 	File   string `json:"file"`
 	Size   uint64 `json:"size"`
+	// Sidecar is the member that describes this one (a GeoTIFF's .htm metadata), if any.
+	Sidecar string `json:"-"`
 }
 
 // Airport summarises the charts of one aerodrome in a package.
@@ -99,6 +101,11 @@ func openDeceaPackage(path string) (*PackageInfo, error) {
 	}
 	sort.Slice(info.Airports, func(i, j int) bool { return info.Airports[i].ICAO < info.Airports[j].ICAO })
 	return info, nil
+}
+
+// ReadMember returns the bytes of any member of the archive (a sidecar, for example).
+func (p *PackageInfo) ReadMember(name string) ([]byte, error) {
+	return p.Read(Entry{Member: name})
 }
 
 // Entries returns every chart of the package.

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/geotiff"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/pdfgeo"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
@@ -33,13 +34,15 @@ type errAlready struct{ ID, Name string }
 
 func (e errAlready) Error() string { return fmt.Sprintf("already in the library as %q", e.Name) }
 
-// importPDF converts one PDF and adds it to the library. It is the single path used by uploads,
-// package imports. Imports run one at a time (one PDFium instance).
+// importPDF converts one chart file (a georeferenced PDF, or a GeoTIFF such as the FAA rasters) and
+// adds it to the library. It is the single path used by uploads and package imports. PDFs are
+// drawn one at a time (one PDFium instance); a TIFF is read and shrunk without the PDF engine.
 func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.Chart, error) {
 	if !s.canImport() {
 		return nil, errors.New("importer unavailable")
 	}
-	if len(data) < 8 || string(data[:5]) != "%PDF-" {
+	isTIFF := geotiff.IsTIFF(data)
+	if !isTIFF && (len(data) < 8 || string(data[:5]) != "%PDF-") {
 		return nil, errNotPDF
 	}
 	base := filepath.Base(filename)
@@ -55,7 +58,11 @@ func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.C
 		return fallback
 	}
 	source := pick(f.Source, "manual")
-	id := s.identify(source, stem, base, pdfViewportName(data))
+	viewport := ""
+	if !isTIFF {
+		viewport = pdfViewportName(data)
+	}
+	id := s.identify(source, stem, base, viewport)
 	opt := importer.Options{
 		Source:   source,
 		Name:     strings.TrimSpace(f.Name),
@@ -72,18 +79,29 @@ func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.C
 
 	var res *importer.Result
 	var began time.Time
+	var err error
 	f.stage("waiting", 5)
-	err := s.withRenderer(func() { f.stage("engine", 15) }, func(r *importer.Renderer) (e error) {
+	if isTIFF {
 		f.stage("render", 40)
 		began = time.Now()
-		res, e = r.Import(data, opt)
-		return e
-	})
+		res, err = importer.ImportGeoTIFF(data, opt)
+	} else {
+		err = s.withRenderer(func() { f.stage("engine", 15) }, func(r *importer.Renderer) (e error) {
+			f.stage("render", 40)
+			began = time.Now()
+			res, e = r.Import(data, opt)
+			return e
+		})
+	}
 	if err != nil {
 		return nil, err
 	}
 	f.stage("save", 85)
-	c, err := s.lib.Add(opt.ID, res.PNG, res.JSON, data)
+	original := data
+	if isTIFF {
+		original = nil // a 15 MB raster is not kept under the name of a PDF; the picture is what the viewer uses
+	}
+	c, err := s.lib.Add(opt.ID, res.PNG, res.JSON, original)
 	if err != nil {
 		return nil, err
 	}

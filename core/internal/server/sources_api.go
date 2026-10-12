@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/jobs"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sources"
 )
@@ -196,7 +197,13 @@ func (s *Server) handlePackageImport(w http.ResponseWriter, r *http.Request) {
 				j.Add(jobs.Item{File: e.File, Status: "error", Message: err.Error()})
 				continue
 			}
-			c, err := s.importPDF(data, e.File, importForm{Source: srcID, Package: filepath.Base(pkg.Path)})
+			form := importForm{Source: srcID, Package: filepath.Base(pkg.Path)}
+			if e.Sidecar != "" { // the .htm of a raster: its publication date becomes the validity
+				if htm, err := pkg.ReadMember(e.Sidecar); err == nil {
+					form.Validity = importer.ParseFGDCPublication(htm)
+				}
+			}
+			c, err := s.importPDF(data, e.File, form)
 			if err != nil {
 				st, msg := itemStatus(err)
 				it := jobs.Item{File: e.File, Status: st, Message: msg}

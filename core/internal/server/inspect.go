@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/geotiff"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/pdfgeo"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sources"
@@ -101,8 +102,9 @@ func (s *Server) handleInspect(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err)
 		return
 	}
-	if len(data) < 8 || string(data[:5]) != "%PDF-" {
-		writeErr(w, 400, errors.New("not a PDF file"))
+	isTIFF := geotiff.IsTIFF(data)
+	if !isTIFF && (len(data) < 8 || string(data[:5]) != "%PDF-") {
+		writeErr(w, 400, errors.New("not a PDF or GeoTIFF file"))
 		return
 	}
 	source := strings.TrimSpace(r.FormValue("source"))
@@ -114,7 +116,10 @@ func (s *Server) handleInspect(w http.ResponseWriter, r *http.Request) {
 
 	out := map[string]any{"file": base, "size": len(data), "source": source}
 	viewport, geo := "", false
-	if pg, err := pdfgeo.Read(data); err == nil && len(pg.Viewports) > 0 {
+	if isTIFF {
+		_, gerr := geotiff.ReadGeoref(data)
+		geo = gerr == nil
+	} else if pg, err := pdfgeo.Read(data); err == nil && len(pg.Viewports) > 0 {
 		geo = true
 		viewport = strings.TrimSpace(pg.Viewports[0].Name)
 	}

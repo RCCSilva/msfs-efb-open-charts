@@ -231,9 +231,35 @@ func (faa) Info() Info {
 	}
 }
 
-// Recognize reads the file name through the metadata of the cycle. Without metadata it cannot:
-// a d-TPP name is a number, not an airport.
+var (
+	// "Boston HEL", "Boston Downtown HEL", "Albuquerque SEC", "Atlanta TAC", "Caribbean 1 VFR"
+	faaVFRName = regexp.MustCompile(`(?i)^(.+?)[ _-]+(SEC|TAC|HEL|GCA|FLY|VFR|WAC)$`)
+	// "ENR_L01" (low), "ENR_H01" (high), "ENR_A01" (area), "ENR_AKL01", "ENR_P01"...
+	faaEnrouteName = regexp.MustCompile(`(?i)^ENR[_ -]?(AKL|AKH|AKP|L|H|A|P|C)(\d+)$`)
+)
+
+// faaRaster reads the name of a VFR or IFR enroute raster (a GeoTIFF), which carries the kind of
+// chart in its name; no metadata is needed.
+func faaRaster(stem string) (naming.Info, bool) {
+	base := strings.TrimSuffix(strings.TrimSpace(stem), filepath.Ext(stem))
+	if m := faaEnrouteName.FindStringSubmatch(base); m != nil {
+		kind := map[string]string{"L": "LOW ALTITUDE", "H": "HIGH ALTITUDE", "A": "AREA", "P": "PACIFIC", "C": "CARIBBEAN",
+			"AKL": "ALASKA LOW", "AKH": "ALASKA HIGH", "AKP": "ALASKA PLANNING"}[strings.ToUpper(m[1])]
+		return naming.Info{Type: "ENR", Title: strings.TrimSpace("ENROUTE " + kind + " " + m[2]), Sure: true}, true
+	}
+	if m := faaVFRName.FindStringSubmatch(base); m != nil {
+		return naming.Info{Type: strings.ToUpper(m[2]), Title: naming.Tidy(m[1]), Sure: true}, true
+	}
+	return naming.Info{}, false
+}
+
+// Recognize reads the file name. A d-TPP name is a number, not an airport, so it is read through
+// the metadata of the cycle (without it, it cannot be); a VFR or IFR raster carries its kind in
+// the name.
 func (faa) Recognize(stem string) (naming.Info, bool) {
+	if in, ok := faaRaster(stem); ok {
+		return in, true
+	}
 	m := faaMeta.Load()
 	if m == nil {
 		return naming.Info{}, false
@@ -243,7 +269,7 @@ func (faa) Recognize(stem string) (naming.Info, bool) {
 	if !ok {
 		return naming.Info{}, false
 	}
-	return naming.Info{ICAO: c.ICAO, Type: faaType(c.Code), Title: c.Name, Validity: m.From}, true
+	return naming.Info{ICAO: c.ICAO, Type: faaType(c.Code), Title: c.Name, Validity: m.From, Sure: true}, true
 }
 
 // Locate gives the addresses of the d-TPP of the cycle in force on a date and of the next one.
@@ -290,6 +316,8 @@ func (faa) OpenPackage(zipPath string) (*PackageInfo, error) {
 
 	m := faaMeta.Load()
 	info := &PackageInfo{Path: zipPath, Size: st.Size(), Modified: st.ModTime()}
+	tifs := map[string]*Entry{} // by lower-case stem; a raster has no airport (an empty ICAO)
+	sidecars := map[string]string{}
 	if mt := regexp.MustCompile(`_(\d{6})`).FindStringSubmatch(filepath.Base(zipPath)); mt != nil {
 		if t, err := time.Parse("060102", mt[1]); err == nil {
 			info.Date = t.Format("2006-01-02")
@@ -300,6 +328,18 @@ func (faa) OpenPackage(zipPath string) (*PackageInfo, error) {
 		base := path.Base(strings.ReplaceAll(f.Name, "\\", "/"))
 		if strings.EqualFold(base, "d-TPP_Metafile.xml") {
 			return nil, ErrFAAMetadataArchive
+		}
+		switch strings.ToLower(path.Ext(base)) {
+		case ".tif", ".tiff":
+			stem := strings.ToLower(strings.TrimSuffix(base, path.Ext(base)))
+			if in, ok := faaRaster(base); ok {
+				e := Entry{Member: f.Name, Type: in.Type, File: base, Size: f.UncompressedSize64}
+				tifs[stem] = &e
+			}
+			continue
+		case ".htm", ".html":
+			sidecars[strings.ToLower(strings.TrimSuffix(base, path.Ext(base)))] = f.Name
+			continue
 		}
 		if !strings.EqualFold(path.Ext(base), ".pdf") {
 			continue
@@ -317,6 +357,24 @@ func (faa) OpenPackage(zipPath string) (*PackageInfo, error) {
 		if a == nil {
 			a = &Airport{ICAO: e.ICAO, Types: map[string]int{}}
 			air[e.ICAO] = a
+		}
+		a.Count++
+		a.Types[e.Type]++
+	}
+	// VFR and IFR rasters: charts of a region, so they belong to no airport (an empty ICAO)
+	stems := make([]string, 0, len(tifs))
+	for stem := range tifs {
+		stems = append(stems, stem)
+	}
+	sort.Strings(stems)
+	for _, stem := range stems {
+		e := *tifs[stem]
+		e.Sidecar = sidecars[stem]
+		info.entries = append(info.entries, e)
+		a := air[""]
+		if a == nil {
+			a = &Airport{ICAO: "", Types: map[string]int{}}
+			air[""] = a
 		}
 		a.Count++
 		a.Types[e.Type]++

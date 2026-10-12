@@ -865,7 +865,7 @@
     const reviews = h('div');
     const packages = h('div');
     const drop = h('div', { class: 'drop' });
-    const file = h('input', { type: 'file', accept: '.pdf,.zip,application/pdf,application/zip', multiple: true, hidden: true });
+    const file = h('input', { type: 'file', accept: '.pdf,.zip,.tif,.tiff,application/pdf,application/zip', multiple: true, hidden: true });
     drop.append(t('dropPdf') + ' ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); file.click(); } }, t('choose')));
     const cards = [];
     const isZip = (name) => /\.zip$/i.test(name);

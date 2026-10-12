@@ -58,6 +58,6 @@ func IdentifyWith(sourceID, stem, file, viewport string, user *naming.Info) Iden
 		id.Title = naming.Tidy(stem)
 	}
 
-	id.Confident = id.Matched != "" || (by != "" && id.ICAO != "" && id.Type != "")
+	id.Confident = id.Matched != "" || (by != "" && id.ICAO != "" && id.Type != "") || (by != "" && info.Sure && id.Type != "")
 	return id
 }

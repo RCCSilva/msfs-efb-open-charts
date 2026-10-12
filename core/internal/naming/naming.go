@@ -18,6 +18,9 @@ type Info struct {
 	Type     string // "IAC", "SID", ... or ""
 	Title    string // "ILS X RWY 17R"
 	Validity string // "2026-08-06" (date in the file name), or ""
+	// Sure is set by a recognizer whose reading of the name is conclusive by itself (the FAA's
+	// raster names, or a d-TPP file found in the cycle's metadata), so no review is needed.
+	Sure bool
 }
 
 // Naming rules that belong to a provider live in that provider's source (see package sources).
@@ -112,6 +115,14 @@ func TypeWords(typ string) string {
 		return "carta aeronautica mundial world aeronautical"
 	case "CNAV", "CINAV":
 		return "navegacao visual visual navigation"
+	case "SEC":
+		return "seccional sectional vfr carta visual"
+	case "TAC":
+		return "area terminal terminal area chart vfr"
+	case "HEL":
+		return "helicoptero helicopter route chart vfr"
+	case "ENR":
+		return "enroute rota ifr baixa alta low high altitude"
 	case "ODP":
 		return "saida obstaculos obstacle departure procedure"
 	case "HOT":

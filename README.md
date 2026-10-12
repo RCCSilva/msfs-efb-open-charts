@@ -18,6 +18,8 @@ shows them inside the simulator's EFB, with your aircraft's live position on the
 - **Two viewer modes.** The chart overlaid on OpenStreetMap, or the chart alone — one toggle. A
   regional zoom (about 30 km around the aircraft), a clean view that hides every control, and a
   choice of aircraft symbol (plane or helicopter, in your colour).
+- **FAA (United States).** Terminal procedures (d-TPP, named through the cycle metadata) and VFR/IFR
+  GeoTIFF rasters (sectionals, TAC, helicopter, enroute).
 - **Live position** from the simulator through SimConnect.
 - **Chart sources.** *My PDFs* (built in) and *DECEA / AISWEB* (Brazil). The app never downloads
   from a provider by itself: it guides you to the official pages and recognises what you download.

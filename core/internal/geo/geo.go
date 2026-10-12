@@ -252,3 +252,85 @@ func FitAffine(src, dst [][2]float64) (Affine, error) {
 		D: v[0], E: v[1], F: v[2] - v[0]*cx - v[1]*cy,
 	}, nil
 }
+
+// ---- constructors and inverse, for sources that carry the projection as numbers (GeoTIFF) ----
+
+// NewLCC builds a Lambert Conformal Conic projection (degrees, metres). lat2 equal to lat1 is the
+// one-parallel form.
+func NewLCC(a, invF, lat0, lon0, lat1, lat2, k0, falseE, falseN float64) *Projection {
+	p := &Projection{Kind: KindLCC, A: a, InvF: invF, Lat0: lat0, Lon0: lon0, Lat1: lat1, Lat2: lat2,
+		K0: k0, FalseE: falseE, FalseN: falseN}
+	p.initLCC()
+	return p
+}
+
+// NewTM builds a (WGS84) Transverse Mercator projection, UTM when k0 is 0.9996.
+func NewTM(lon0, k0, falseE, falseN float64) *Projection {
+	return &Projection{Kind: KindTM, Lon0: lon0, K0: k0, FalseE: falseE, FalseN: falseN}
+}
+
+// NewGeographic is the plain latitude/longitude "projection" (x = lon, y = lat, in degrees).
+func NewGeographic() *Projection { return &Projection{Kind: KindGeographic} }
+
+// Inverse returns the latitude and longitude of projected coordinates. It exists for the
+// Lambert projection and the geographic one; others report ok=false.
+func (p *Projection) Inverse(x, y float64) (lat, lon float64, ok bool) {
+	switch p.Kind {
+	case KindGeographic:
+		return y, x, true
+	case KindLCC:
+		if p.lcc == nil {
+			return 0, 0, false
+		}
+		c := p.lcc
+		xp := (x - p.FalseE) / p.K0
+		yp := (y - p.FalseN) / p.K0
+		d := c.rho0 - yp
+		sgn := 1.0
+		if c.n < 0 {
+			sgn = -1
+		}
+		rho := sgn * math.Hypot(xp, d)
+		theta := math.Atan2(sgn*xp, sgn*d)
+		t := math.Pow(rho/(p.A*c.bigF), 1/c.n)
+		phi := math.Pi/2 - 2*math.Atan(t)
+		for i := 0; i < 8; i++ {
+			s := c.e * math.Sin(phi)
+			phi = math.Pi/2 - 2*math.Atan(t*math.Pow((1-s)/(1+s), c.e/2))
+		}
+		return phi * 180 / math.Pi, theta/c.n*180/math.Pi + p.Lon0, true
+	case KindTM:
+		return p.tmInverse(x, y)
+	}
+	return 0, 0, false
+}
+
+// tmInverse is the Kruger series of the Transverse Mercator projection, the inverse of tm.
+func (p *Projection) tmInverse(x, y float64) (float64, float64, bool) {
+	n := wgsN
+	beta := [3]float64{
+		n/2 - 2*n*n/3 + 37*math.Pow(n, 3)/96,
+		n*n/48 + math.Pow(n, 3)/15,
+		17 * math.Pow(n, 3) / 480,
+	}
+	delta := [3]float64{
+		2*n - 2*n*n/3 - 2*math.Pow(n, 3),
+		7*n*n/3 - 8*math.Pow(n, 3)/5,
+		56 * math.Pow(n, 3) / 15,
+	}
+	xi := (y - p.FalseN) / (p.K0 * wgsAA)
+	eta := (x - p.FalseE) / (p.K0 * wgsAA)
+	xi0, eta0 := xi, eta
+	for j := 1; j <= 3; j++ {
+		b := beta[j-1]
+		xi0 -= b * math.Sin(2*float64(j)*xi) * math.Cosh(2*float64(j)*eta)
+		eta0 -= b * math.Cos(2*float64(j)*xi) * math.Sinh(2*float64(j)*eta)
+	}
+	chi := math.Asin(math.Sin(xi0) / math.Cosh(eta0))
+	lat := chi
+	for j := 1; j <= 3; j++ {
+		lat += delta[j-1] * math.Sin(2*float64(j)*chi)
+	}
+	lon := p.Lon0 + math.Atan2(math.Sinh(eta0), math.Cos(xi0))*180/math.Pi
+	return lat * 180 / math.Pi, lon, true
+}
