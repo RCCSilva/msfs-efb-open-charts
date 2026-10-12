@@ -50,3 +50,17 @@ func TestPatternMistakesAreExplained(t *testing.T) {
 		}
 	}
 }
+
+func TestPatternReadsAnAIRACCycle(t *testing.T) {
+	p, err := ParsePattern("{icao}_{type}_{title}_{cycle}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := p.Match("SBSP_IAC_ILS-X-RWY-17R_2608")
+	if !ok || got.Validity != "2026-08-06" || got.ICAO != "SBSP" {
+		t.Fatalf("got %+v (%v)", got, ok)
+	}
+	if _, err := ParsePattern("{cycle}_{date}"); err == nil {
+		t.Fatal("a chart has one validity: a cycle and a date together must be refused")
+	}
+}

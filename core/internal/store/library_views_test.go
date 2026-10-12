@@ -71,3 +71,37 @@ func TestDeleteManyRemovesFromGroupsOnce(t *testing.T) {
 		t.Fatal("an invalid id must be refused")
 	}
 }
+
+func TestChartCycleIsDerivedFromItsDate(t *testing.T) {
+	lib, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	addChart(t, lib, "c1", "SBSP", "IAC")
+	c, _ := lib.Get("c1")
+	v := "2026-08-06"
+	u, err := lib.Update("c1", Patch{Validity: &v})
+	if err != nil || u.Cycle != "2608" || u.Validity != "2026-08-06" {
+		t.Fatalf("date -> %+v (%v)", u, err)
+	}
+	cy := "2610" // a cycle stands for its effective date
+	u, err = lib.Update("c1", Patch{Validity: &cy})
+	if err != nil || u.Validity != "2026-10-01" || u.Cycle != "2610" {
+		t.Fatalf("cycle -> %+v (%v)", u, err)
+	}
+	other := "2026-05-20" // not the first day of a cycle: the date stays, there is no cycle
+	u, err = lib.Update("c1", Patch{Validity: &other})
+	if err != nil || u.Cycle != "" || u.Validity != "2026-05-20" {
+		t.Fatalf("plain date -> %+v (%v)", u, err)
+	}
+	_ = c
+	if res := lib.Search(Query{Text: "2610"}); len(res) != 0 {
+		t.Fatalf("no chart has cycle 2610 now: %d", len(res))
+	}
+	if _, err := lib.Update("c1", Patch{Validity: &cy}); err != nil {
+		t.Fatal(err)
+	}
+	if res := lib.Search(Query{Text: "2610"}); len(res) != 1 {
+		t.Fatalf("a chart is found by its cycle: %d", len(res))
+	}
+}

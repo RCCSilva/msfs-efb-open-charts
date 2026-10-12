@@ -22,16 +22,19 @@ import (
 //	{date}            the date the chart is valid from; {date:FORMAT} fixes the format with the
 //	                  tokens YYYY, YY, MM and DD, for example {date:DD-MM-YYYY}. Without a format,
 //	                  YYYYMMDD and YYYY-MM-DD are understood. {validity} is the same thing.
+//	{cycle}           the AIRAC cycle written as four digits (2610); it stands for the date it takes effect
 //	{skip}            any text that is not needed
 type Pattern struct {
 	text   string
 	re     *regexp.Regexp
 	fields []string       // capture group names in order: icao, type, title, date
 	dates  map[int]string // group index -> date format ("" = automatic)
+	// cycleGroups are the capture groups that hold an AIRAC cycle, not a date
+	cycleGroups []int
 }
 
 // PlaceholderNames are the placeholders a pattern may use, for messages and for the UI.
-var PlaceholderNames = []string{"icao", "type", "title", "date", "validity", "skip"}
+var PlaceholderNames = []string{"icao", "type", "title", "date", "cycle", "validity", "skip"}
 
 var placeholderRe = regexp.MustCompile(`\{([^{}]*)\}`)
 
@@ -67,10 +70,19 @@ func ParsePattern(text string) (*Pattern, error) {
 			}
 		case "date", "validity":
 			name = "date"
+		case "cycle", "airac":
+			name = "cycle"
+			if arg != "" {
+				return nil, fmt.Errorf("{cycle} takes no format")
+			}
 		case "skip", "*", "ignore":
 			name = "skip"
 		default:
 			return nil, fmt.Errorf("unknown placeholder {%s}: use %s", text[loc[2]:loc[3]], "{icao}, {type}, {title}, {date} or {skip}")
+		}
+		if name == "cycle" {
+			name = "date" // a chart has one validity: a cycle and a date are the same field
+			p.cycleGroups = append(p.cycleGroups, group+1)
 		}
 		if name != "skip" {
 			if seen[name] {
@@ -90,6 +102,9 @@ func ParsePattern(text string) (*Pattern, error) {
 			re.WriteString(`.*?`)
 		case "date":
 			expr, err := dateRegexp(arg)
+			if len(p.cycleGroups) > 0 && p.cycleGroups[len(p.cycleGroups)-1] == group+1 {
+				expr, err = `\d{4}`, nil
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -162,6 +177,15 @@ func dateRegexp(format string) (string, error) {
 	return b.String(), nil
 }
 
+func (p *Pattern) isCycleGroup(g int) bool {
+	for _, c := range p.cycleGroups {
+		if c == g {
+			return true
+		}
+	}
+	return false
+}
+
 // Text returns the pattern as the user wrote it.
 func (p *Pattern) Text() string { return p.text }
 
@@ -186,7 +210,11 @@ func (p *Pattern) Match(name string) (Info, bool) {
 		case "title":
 			in.Title = Tidy(v)
 		case "date":
-			in.Validity = parseDateWith(v, p.dates[i+1])
+			if p.isCycleGroup(i + 1) {
+				in.Validity, _ = DateOfCycle(v)
+			} else {
+				in.Validity = parseDateWith(v, p.dates[i+1])
+			}
 		}
 	}
 	// "sbsp-adc" style titles repeat what the other fields already say

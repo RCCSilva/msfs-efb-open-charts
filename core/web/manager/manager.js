@@ -20,7 +20,7 @@
       pkgAllInfo: 'Prepares {n} charts, about {t}.', pkgAllWarn: 'Importing everything prepares every chart of the package on this computer (drawing each PDF as an image). It can take {t} and the computer will be busy meanwhile. You can leave this page open and keep using the app. Continue?',
       patTitle: 'Name pattern for your PDFs', patHelp: 'Name your PDFs the same way and the app reads the airport, type, title and date from the file name, so a whole folder is imported without asking. Write the pattern with placeholders.',
       patLegend: 'Placeholders', patIcao: 'airport code (4 letters)', patType: 'chart type (IAC, SID, STAR, ADC...)', patTitle2: 'the chart\'s name',
-      patDate: 'validity date; a format fixes it, for example {date:DD-MM-YYYY} (default: YYYYMMDD or YYYY-MM-DD)', patSkip: 'any text you do not need',
+      patDate: 'validity date; a format fixes it, for example {date:DD-MM-YYYY} (default: YYYYMMDD or YYYY-MM-DD). {cycle} reads an AIRAC cycle such as 2610', patSkip: 'any text you do not need',
       patRules: '"_", "-" and a space are interchangeable, and capitals do not matter. One pattern per line; the first that fits wins.',
       patExample: 'Example: {icao}_{type}_{title}_{date:YYYYMMDD} reads SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
       patPlaceholder: '{icao}_{type}_{title}_{date:YYYYMMDD}', patTestLabel: 'Test with a file name', patTestPlaceholder: 'SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
@@ -85,7 +85,7 @@
       stEfbLegacy: 'Old version (Local Moving Map) found: installing replaces it',
       stData: 'Data folder', stRestart: 'Restart the simulator for the EFB app change to take effect.',
       edSteam: 'Steam', edStore: 'Microsoft Store',
-      reviewTitle: 'Review before importing', icao: 'ICAO', ctype: 'Type', ctitle: 'Title', validity: 'Valid from', cname: 'Display name',
+      reviewTitle: 'Review before importing', icao: 'ICAO', ctype: 'Type', ctitle: 'Title', validity: 'AIRAC cycle or date', cname: 'Display name',
       importOne: 'Import', importAll: 'Import all', notGeo: 'This PDF has no georeferencing and cannot be used.', dup: 'Already in the library as',
       detected: 'Detected from', fromFile: 'the file name', fromPdf: 'the PDF title', nameAuto: 'Leave empty to build it from ICAO, type and title',
       disclaimer: 'For flight simulation only. Not for real-world aviation: using these charts or this software for real navigation or flight planning is prohibited.',
@@ -113,7 +113,7 @@
       pkgAllInfo: 'Prepara {n} cartas, cerca de {t}.', pkgAllWarn: 'Importar tudo prepara todas as cartas do pacote neste computador (cada PDF é desenhado como imagem). Pode levar {t}, e o computador ficará ocupado nesse tempo. Você pode deixar esta página aberta e continuar usando o aplicativo. Continuar?',
       patTitle: 'Padrão de nome dos seus PDFs', patHelp: 'Nomeie seus PDFs sempre do mesmo jeito e o aplicativo lê o aeródromo, o tipo, o título e a data pelo nome do arquivo, e uma pasta inteira é importada sem perguntar. Escreva o padrão com marcadores.',
       patLegend: 'Marcadores', patIcao: 'código do aeródromo (4 letras)', patType: 'tipo da carta (IAC, SID, STAR, ADC...)', patTitle2: 'o nome da carta',
-      patDate: 'data de validade; um formato a fixa, por exemplo {date:DD-MM-YYYY} (padrão: AAAAMMDD ou AAAA-MM-DD)', patSkip: 'qualquer texto que você não precisa',
+      patDate: 'data de validade; um formato a fixa, por exemplo {date:DD-MM-YYYY} (padrão: AAAAMMDD ou AAAA-MM-DD). {cycle} lê um ciclo AIRAC, como 2610', patSkip: 'qualquer texto que você não precisa',
       patRules: '"_", "-" e espaço valem o mesmo, e maiúsculas não importam. Um padrão por linha; vale o primeiro que servir.',
       patExample: 'Exemplo: {icao}_{type}_{title}_{date:YYYYMMDD} lê SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
       patPlaceholder: '{icao}_{type}_{title}_{date:YYYYMMDD}', patTestLabel: 'Teste com um nome de arquivo', patTestPlaceholder: 'SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
@@ -178,7 +178,7 @@
       stEfbLegacy: 'Versão antiga (Local Moving Map) encontrada: instalar substitui',
       stData: 'Pasta de dados', stRestart: 'Reinicie o simulador para a mudança no app do EFB valer.',
       edSteam: 'Steam', edStore: 'Microsoft Store',
-      reviewTitle: 'Revise antes de importar', icao: 'ICAO', ctype: 'Tipo', ctitle: 'Título', validity: 'Válida desde', cname: 'Nome exibido',
+      reviewTitle: 'Revise antes de importar', icao: 'ICAO', ctype: 'Tipo', ctitle: 'Título', validity: 'Ciclo AIRAC ou data', cname: 'Nome exibido',
       importOne: 'Importar', importAll: 'Importar todas', notGeo: 'Este PDF não tem georreferenciamento e não pode ser usado.', dup: 'Já está na biblioteca como',
       detected: 'Detectado a partir de', fromFile: 'do nome do arquivo', fromPdf: 'do título do PDF', nameAuto: 'Deixe vazio para montar com ICAO, tipo e título',
       disclaimer: 'Apenas para simulação aérea. Proibido o uso em aviação real: é vedado utilizar estas cartas ou este software para navegação ou planejamento de voo reais.',
@@ -332,7 +332,7 @@
     const [lI, icao] = field(t('icao'), c.icao, 'SBSP');
     const [lT, ctype] = field(t('ctype'), c.type, 'IAC');
     const [lTi, title] = field(t('ctitle'), c.title);
-    const [lV, validity] = field(t('validity'), c.validity, 'YYYY-MM-DD');
+    const [lV, validity] = field(t('validity'), c.cycle || c.validity, '2610 / YYYY-MM-DD');
     const err = h('div');
     const close = () => overlay.remove();
     const save = h('button', { class: 'btn primary', onclick: async () => {
@@ -424,7 +424,7 @@
       } });
       return h('tr', null,
         h('td', null, check),
-        h('td', null, h('strong', null, c.name), h('div', { class: 'muted' }, `${c.validity || ''}  ·  ${c.source}`)),
+        h('td', null, h('strong', null, c.name), h('div', { class: 'muted' }, `${c.cycle ? 'AIRAC ' + c.cycle : (c.validity || '')}  ·  ${c.source}`)),
         h('td', { class: 'actions' },
           h('button', { class: 'btn sm' + (inGroup ? ' in' : ''), title: inGroup ? t('removeFromGroup') : '', onclick: async () => {
             await setPin(c.id, !inGroup);
@@ -731,7 +731,7 @@
     const [lI, icao] = field(t('icao'), sg.icao);
     const [lT, ctype] = field(t('ctype'), sg.type);
     const [lTi, title] = field(t('ctitle'), sg.title);
-    const [lV, validity] = field(t('validity'), sg.validity, 'YYYY-MM-DD');
+    const [lV, validity] = field(t('validity'), sg.cycle || sg.validity, '2610 / YYYY-MM-DD');
     const [lN, name] = field(t('cname'), '', t('nameAuto'));
     const status = h('div');
     const btn = h('button', { class: 'btn primary', disabled: !ins.georeferenced, onclick: async () => {

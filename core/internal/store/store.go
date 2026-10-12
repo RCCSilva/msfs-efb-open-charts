@@ -33,8 +33,11 @@ type Chart struct {
 	Type     string `json:"type"`
 	Title    string `json:"title"`
 	Validity string `json:"validity"`
-	Width    int    `json:"width"`
-	Height   int    `json:"height"`
+	// Cycle is the AIRAC cycle ("2610") when Validity is the first day of one: the identifier that
+	// pilots know. It is derived, never stored, so it cannot disagree with the date.
+	Cycle  string `json:"cycle,omitempty"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
 	// MetersPerPixel and ErrorMeters tell how good the georeference is.
 	MetersPerPixel float64 `json:"metersPerPixel"`
 	ErrorMeters    float64 `json:"errorMeters"`
@@ -164,9 +167,13 @@ func readChart(dir, id string) (*Chart, error) {
 	return c, nil
 }
 
+// deriveCycle fills Cycle from Validity.
+func (c *Chart) deriveCycle() { c.Cycle = naming.CycleOfDate(c.Validity) }
+
 func (c *Chart) index() {
+	c.deriveCycle()
 	c.search = naming.Fold(strings.Join([]string{
-		c.ID, c.Name, c.ICAO, c.Type, c.Title, c.Source, c.Validity, naming.TypeWords(c.Type),
+		c.ID, c.Name, c.ICAO, c.Type, c.Title, c.Source, c.Validity, c.Cycle, naming.TypeWords(c.Type),
 	}, " "))
 }
 

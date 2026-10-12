@@ -29,14 +29,10 @@ import (
 // file once per cycle and gives it to the app; with it, every PDF of the cycle is recognised.
 
 const (
-	faaPage      = "https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dtpp/"
-	faaSearch    = "https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dtpp/search/"
-	faaSetURL    = "https://aeronav.faa.gov/upload_313-d/terminal/DDTPP%s_%s.zip"
-	faaCycleDays = 28
+	faaPage   = "https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dtpp/"
+	faaSearch = "https://www.faa.gov/air_traffic/flight_info/aeronav/digital_products/dtpp/search/"
+	faaSetURL = "https://aeronav.faa.gov/upload_313-d/terminal/DDTPP%s_%s.zip"
 )
-
-// faaAnchor is the effective date of a known d-TPP cycle (2610). Cycles repeat every 28 days.
-var faaAnchor = time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 
 // FAAChart is what the metadata says about one PDF.
 type FAAChart struct {
@@ -253,13 +249,15 @@ func (faa) Recognize(stem string) (naming.Info, bool) {
 // Locate gives the addresses of the d-TPP of the cycle in force on a date and of the next one.
 // They are the ones listed on the FAA page (verified against it), so they are shown as they are.
 func (faa) Locate(on time.Time) []Location {
-	cur := faaCycleStart(on)
+	// the d-TPP follows the international AIRAC calendar (package naming)
+	cur, _ := naming.AIRAC(on)
 	var out []Location
 	out = append(out, Location{
 		Kind: "search", Verified: true, Current: true, URL: faaSearch,
 		Label: Text{PT: "Busca de procedimentos da FAA (por aeroporto)", EN: "FAA terminal procedures search (by airport)"},
 	})
-	for i, c := range []time.Time{cur, cur.AddDate(0, 0, faaCycleDays)} {
+	next, _ := naming.NextAIRAC(on)
+	for i, c := range []time.Time{cur, next} {
 		tag := c.Format("060102")
 		cycleTxt := Text{PT: "ciclo de " + c.Format("02/01/2006"), EN: "cycle of " + c.Format("2006-01-02")}
 		if i == 1 {
@@ -272,15 +270,6 @@ func (faa) Locate(on time.Time) []Location {
 		})
 	}
 	return out
-}
-
-// faaCycleStart returns the effective date of the d-TPP cycle that contains on.
-func faaCycleStart(on time.Time) time.Time {
-	days := int(on.UTC().Sub(faaAnchor).Hours() / 24)
-	if days < 0 {
-		days -= faaCycleDays - 1
-	}
-	return faaAnchor.AddDate(0, 0, (days/faaCycleDays)*faaCycleDays)
 }
 
 // OpenPackage indexes one of the complete d-TPP zips (A to D): flat PDFs named by number. The

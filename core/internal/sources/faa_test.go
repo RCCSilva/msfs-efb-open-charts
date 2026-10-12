@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 const faaSampleXML = "\xef\xbb\xbf" + `<?xml version="1.0" encoding="utf-8" standalone="yes"?>
@@ -126,14 +125,5 @@ func TestFAAMetadataZipIsRecognisedAsSuch(t *testing.T) {
 	m, err := ReadFAAMetafileFromZip(zipPath)
 	if err != nil || m.Cycle != "2610" {
 		t.Fatalf("read from zip: %v %+v", err, m)
-	}
-}
-
-func TestFAACyclesAreEvery28Days(t *testing.T) {
-	d := func(s string) time.Time { x, _ := time.Parse("2006-01-02", s); return x }
-	for on, want := range map[string]string{"2026-10-01": "2026-10-01", "2026-10-28": "2026-10-01", "2026-10-29": "2026-10-29", "2026-09-10": "2026-09-03"} {
-		if got := faaCycleStart(d(on)).Format("2006-01-02"); got != want {
-			t.Errorf("cycle of %s = %s, want %s", on, got, want)
-		}
 	}
 }

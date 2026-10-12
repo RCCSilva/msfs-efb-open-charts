@@ -138,28 +138,6 @@ func dmy(s string) string {
 
 // ---- dynamic: the package of an AIRAC cycle
 
-// airacAnchor is a known effective date (AIRAC 2610). Cycles repeat every 28 days.
-var airacAnchor = time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-
-// AIRACCycle returns the effective date of the cycle that contains t, and its identifier
-// ("2610": year + ordinal of the cycle within the year).
-func AIRACCycle(t time.Time) (time.Time, string) {
-	t = time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
-	days := int(t.Sub(airacAnchor).Hours() / 24)
-	n := days / 28
-	if days < 0 && days%28 != 0 {
-		n--
-	}
-	eff := airacAnchor.AddDate(0, 0, 28*n)
-	// ordinal: step back to the first effective date of eff's year
-	first := eff
-	for first.AddDate(0, 0, -28).Year() == eff.Year() {
-		first = first.AddDate(0, 0, -28)
-	}
-	ord := int(eff.Sub(first).Hours()/24)/28 + 1
-	return eff, fmt.Sprintf("%02d%02d", eff.Year()%100, ord)
-}
-
 // Locate gives candidate addresses of the full package. The file name carries a date
 // (pacote-full-YYYYMMDD.zip) whose rule is not documented: a package named after the day it was
 // generated has been seen, so both the given day and the AIRAC cycle dates are offered.
@@ -183,11 +161,11 @@ func (decea) Locate(on time.Time) []Location {
 		})
 	}
 	day := time.Date(on.Year(), on.Month(), on.Day(), 0, 0, 0, 0, time.UTC)
-	cur, id := AIRACCycle(on)
+	cur, id := naming.AIRAC(on)
 	add(day, Text{PT: "Pacote completo de " + day.Format("02/01/2006"), EN: "Full package of " + day.Format("2006-01-02")}, id, true)
 	add(cur, Text{PT: "Pacote completo do ciclo " + id, EN: "Full package of cycle " + id}, id, false)
 	next := cur.AddDate(0, 0, 28)
-	_, nid := AIRACCycle(next)
+	_, nid := naming.AIRAC(next)
 	add(next, Text{PT: "Pacote completo do próximo ciclo " + nid, EN: "Full package of next cycle " + nid}, nid, false)
 	return out
 }

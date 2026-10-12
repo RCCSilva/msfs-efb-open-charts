@@ -79,6 +79,7 @@ type suggestion struct {
 	Type     string `json:"type"`
 	Title    string `json:"title"`
 	Validity string `json:"validity"`
+	Cycle    string `json:"cycle,omitempty"` // AIRAC cycle, when the date is the first day of one
 	Name     string `json:"name"`
 }
 
@@ -123,7 +124,7 @@ func (s *Server) handleInspect(w http.ResponseWriter, r *http.Request) {
 	out["recognizedBy"] = id.Recognizer
 	out["matched"] = id.Matched
 	out["confident"] = geo && id.Confident
-	sg := suggestion{ICAO: id.ICAO, Type: id.Type, Title: id.Title, Validity: id.Validity}
+	sg := suggestion{ICAO: id.ICAO, Type: id.Type, Title: id.Title, Validity: id.Validity, Cycle: naming.CycleOfDate(id.Validity)}
 	sg.Name = naming.Display(sg.ICAO, sg.Type, sg.Title)
 	out["suggestion"] = sg
 

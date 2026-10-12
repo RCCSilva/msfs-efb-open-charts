@@ -66,8 +66,11 @@ func (p Patch) normalise() (Patch, error) {
 	if p.Validity != nil {
 		v := strings.TrimSpace(*p.Validity)
 		if v != "" {
-			if _, err := time.Parse("2006-01-02", v); err != nil {
-				return out, InvalidError{"validity", "use the format YYYY-MM-DD, or leave it empty"}
+			// an AIRAC cycle ("2610") stands for the date it takes effect
+			if d, ok := naming.DateOfCycle(v); ok {
+				v = d
+			} else if _, err := time.Parse("2006-01-02", v); err != nil {
+				return out, InvalidError{"validity", "use an AIRAC cycle (for example 2610), a date YYYY-MM-DD, or leave it empty"}
 			}
 		}
 		out.Validity = &v
