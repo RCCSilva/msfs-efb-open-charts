@@ -1,0 +1,157 @@
+/* Open Charts viewer. Plain CSS, ASCII only (the sim's browser is old). Shared basics: map.css. */
+
+.hidden { display: none !important; }
+
+/* Always-visible reminder: simulation only. */
+.simnote {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 1200;
+  height: 16px;
+  background: rgba(130, 20, 20, 0.92);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+}
+.tool.on svg { fill: #ffd54a; stroke: #ffd54a; }
+.tool:disabled { opacity: 0.45; cursor: default; }
+
+.bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 1100;
+  padding: 24px 10px 0 10px;
+}
+
+.row { height: 44px; }
+
+#q {
+  float: left;
+  width: 38%;
+  height: 44px;
+  margin: 0 6px 0 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #111;
+  font-size: 15px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.tool {
+  float: left;
+  height: 44px;
+  min-width: 44px;
+  margin: 0 6px 0 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(20, 30, 40, 0.88);
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+.tool.wide { max-width: 22%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tool.on { background: rgba(35, 105, 190, 0.96); }
+.tool svg { width: 24px; height: 24px; fill: none; stroke: #fff; stroke-width: 2; vertical-align: middle; }
+
+.pins { margin-top: 6px; white-space: nowrap; overflow-x: auto; overflow-y: hidden; }
+.chip {
+  display: inline-block;
+  height: 32px;
+  margin: 0 6px 0 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #111;
+  font-size: 12px;
+  line-height: 32px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.chip.active { background: rgba(35, 105, 190, 0.96); color: #fff; }
+.hint { display: inline-block; color: #fff; font-size: 12px; line-height: 32px; text-shadow: 0 1px 2px #000; }
+
+.panel {
+  margin-top: 6px;
+  max-width: 560px;
+  max-height: 55%;
+  overflow-y: auto;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.item {
+  display: block;
+  height: 44px;
+  padding: 0 10px;
+  border-bottom: 1px solid #ddd;
+  color: #111;
+  font-size: 14px;
+  line-height: 44px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+}
+.item .pinbtn {
+  float: right;
+  height: 32px;
+  margin: 6px 0 0 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  background: #e6edf5;
+  color: #123;
+  font-size: 12px;
+  cursor: pointer;
+}
+.item .pinbtn.on { background: rgba(35, 105, 190, 0.96); color: #fff; }
+.item.current { font-weight: bold; }
+.empty { padding: 12px; color: #555; font-size: 13px; }
+
+.kbd {
+  margin-top: 6px;
+  padding: 6px;
+  max-width: 560px;
+  border-radius: 6px;
+  background: rgba(20, 30, 40, 0.92);
+}
+.kbd .krow { text-align: center; margin: 0 0 4px 0; }
+.kbd button {
+  display: inline-block;
+  width: 9%;
+  height: 40px;
+  margin: 0 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: #e9eef4;
+  color: #111;
+  font-size: 15px;
+  cursor: pointer;
+}
+.kbd button.k-wide { width: 24%; }
+
+/* The status line moves to the bottom so it never hides the bar. */
+.status { top: auto; bottom: 34px; left: 70px; } /* +24px: the EFB app no longer has its own bottom bar */
+.controls { z-index: 1000; }
+#attribution { z-index: 900; }
+
+/* Inside the EFB the page sits in a tablet whose bottom menu covers the lowest ~70px. */
+.controls { bottom: 104px; }
+#attribution { bottom: 96px; }
+
+.item.head { background: #eef2f6; font-size: 12px; color: #456; cursor: default; }

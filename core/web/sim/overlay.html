@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Local Moving Map - Chart overlay</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/map.css">
+  <link rel="stylesheet" href="/charts.css">
+  <!-- Must run before leaflet.js (see index.html). -->
+  <script>window.L_DISABLE_3D = true;</script>
+  <script src="/vendor/leaflet/leaflet.js"></script>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div id="status" class="status">Starting...</div>
+  <div id="chart-list" class="chart-list"></div>
+
+  <div id="controls" class="controls">
+    <button id="btn-zoom-in" type="button" aria-label="Zoom in">
+      <svg viewBox="0 0 32 32"><path d="M16 7v18M7 16h18"/></svg>
+    </button>
+    <button id="btn-zoom-out" type="button" aria-label="Zoom out">
+      <svg viewBox="0 0 32 32"><path d="M7 16h18"/></svg>
+    </button>
+    <button id="btn-follow" type="button" class="active" aria-label="Follow aircraft">
+      <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="7"/><path d="M16 3v6M16 23v6M3 16h6M23 16h6"/></svg>
+    </button>
+    <button id="btn-fit" type="button" aria-label="Zoom to chart">
+      <svg viewBox="0 0 32 32"><path d="M5 12V5h7M20 5h7v7M27 20v7h-7M12 27H5v-7"/></svg>
+    </button>
+    <button id="btn-opacity" type="button" aria-label="Chart opacity">
+      <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="10"/><path d="M16 6v20" /></svg>
+    </button>
+  </div>
+
+  <div class="attribution">&copy; OpenStreetMap contributors</div>
+
+  <script src="/geo.js"></script>
+  <script src="/overlay.js"></script>
+</body>
+</html>

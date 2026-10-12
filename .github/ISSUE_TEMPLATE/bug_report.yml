@@ -1,0 +1,97 @@
+name: Bug report / Reportar um bug
+description: Something does not work as expected / Algo não funciona como esperado
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Open Charts é apenas para simulação aérea / is for flight simulation only.**
+        Obrigado por reportar! Quanto mais detalhes, mais rápido conseguimos corrigir.
+        Thanks for reporting! The more detail, the faster we can fix it.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: O que aconteceu? / What happened?
+      description: Descreva o problema e o que você esperava. / Describe the problem and what you expected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Como reproduzir / Steps to reproduce
+      placeholder: |
+        1. Abrir ...
+        2. Clicar em ...
+        3. Ver o erro ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Onde ocorre? / Where does it happen?
+      options:
+        - Visualizador no simulador (EFB) / In-sim viewer (EFB)
+        - Gerenciador (navegador) / Manager (browser)
+        - Importação de PDF / PDF import
+        - Fontes (DECEA, Meus PDFs) / Sources
+        - Posição / SimConnect
+        - Instalador / Installer
+        - Ícone da bandeja / Tray icon
+        - Outro / Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Versão do Open Charts / Open Charts version
+      description: Veja em Sobre. / See the About page.
+      placeholder: "0.1.0 Open Beta"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: msfs
+    attributes:
+      label: Edição do MSFS / MSFS edition
+      options:
+        - MSFS 2024 (Steam)
+        - MSFS 2024 (Microsoft Store / Xbox app)
+        - Outra / Other
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows
+      placeholder: "Windows 11 23H2"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log / Logs
+      description: |
+        Cole o final do arquivo `%LOCALAPPDATA%\OpenCharts\opencharts.log` (ou anexe o arquivo).
+        Paste the end of `%LOCALAPPDATA%\OpenCharts\opencharts.log` (or attach the file).
+      render: text
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Capturas de tela e detalhes extras / Screenshots and extra details
+      description: Arraste imagens para cá. Se o problema for com uma carta específica, diga o nome (não anexe PDFs protegidos por termos de uso). / Drag images here. If it is about a specific chart, give its name (do not attach PDFs whose terms forbid redistribution).
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmações / Checks
+      options:
+        - label: Procurei nas issues existentes e não encontrei este problema. / I searched existing issues and did not find this problem.
+          required: true
+        - label: Não incluí informações pessoais ou chaves no relato. / I did not include personal information or keys.
+          required: true

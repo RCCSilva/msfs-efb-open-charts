@@ -1,0 +1,63 @@
+name: Feature request / Sugerir uma funcionalidade
+description: Suggest an idea or improvement / Sugira uma ideia ou melhoria
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Open Charts é apenas para simulação aérea / is for flight simulation only.**
+        Pedidos que dependam de uso em aviação real não serão aceitos. / Requests that depend on real-world aviation use will not be accepted.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Qual problema isso resolve? / What problem does it solve?
+      description: Conte o que você está tentando fazer e o que atrapalha hoje. / Tell us what you are trying to do and what gets in the way today.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Como você imagina que funcionaria? / How would you imagine it working?
+      description: Pode ser um esboço, um passo a passo ou uma referência de outro programa. / A sketch, a walkthrough or a reference to another program is fine.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas que você considerou / Alternatives considered
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área / Area
+      options:
+        - Visualizador no simulador (EFB) / In-sim viewer (EFB)
+        - Gerenciador / Manager
+        - Fontes de cartas (nova fonte ou melhoria) / Chart sources (new source or improvement)
+        - Importação e nomes das cartas / Import and chart naming
+        - Voos e cartas fixadas / Flights and pinned charts
+        - SimConnect / posição / SimConnect / position
+        - Instalação / Installation
+        - Outro / Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: source
+    attributes:
+      label: Se for uma nova fonte de cartas / If this is a new chart source
+      description: |
+        Provedor, país, onde as cartas são publicadas, formato (GeoPDF?) e se a política de uso permite o acesso.
+        Provider, country, where charts are published, format (GeoPDF?) and whether the usage policy allows access.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmações / Checks
+      options:
+        - label: Procurei nas issues existentes e não encontrei este pedido. / I searched existing issues and did not find this request.
+          required: true

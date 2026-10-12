@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Local Moving Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="/map.css">
+  <!--
+    MUST run before leaflet.js: MSFS' embedded browser (Coherent GT) mishandles
+    Leaflet's translate3d() layer positioning. This switches Leaflet to plain
+    left/top positioning. (Same fix the working "Simple Moving Map" EFB app uses.)
+  -->
+  <script>window.L_DISABLE_3D = true;</script>
+  <script src="/vendor/leaflet/leaflet.js"></script>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div id="status" class="status">Starting...</div>
+
+  <div id="controls" class="controls">
+    <!--
+      Icons are inline SVG on purpose: glyphs like U+2212 (minus) and U+25CE (bullseye)
+      are missing from MSFS' embedded browser font and render as empty boxes/nothing.
+    -->
+    <button id="btn-zoom-in" type="button" aria-label="Zoom in">
+      <svg viewBox="0 0 32 32"><path d="M16 7v18M7 16h18"/></svg>
+    </button>
+    <button id="btn-zoom-out" type="button" aria-label="Zoom out">
+      <svg viewBox="0 0 32 32"><path d="M7 16h18"/></svg>
+    </button>
+    <button id="btn-follow" type="button" class="active" aria-label="Follow aircraft">
+      <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="7"/><path d="M16 3v6M16 23v6M3 16h6M23 16h6"/></svg>
+    </button>
+  </div>
+
+  <div class="attribution">&copy; OpenStreetMap contributors</div>
+
+  <script src="/map.js"></script>
+</body>
+</html>
