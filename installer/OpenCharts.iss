@@ -44,8 +44,8 @@ ptbr.RunOpen=Abrir o Open Charts agora
 en.RunOpen=Open Open Charts now
 ptbr.Disclaimer=Apenas para simulação aérea. É vedado o uso em aviação real.
 en.Disclaimer=For flight simulation only. Use in real-world aviation is prohibited.
-ptbr.AskDeleteData=Apagar também a biblioteca de cartas e os voos (%1)?%n%nEscolha "Não" para manter seus dados.
-en.AskDeleteData=Also delete the chart library and flights (%1)?%n%nChoose "No" to keep your data.
+ptbr.AskDeleteData=Apagar também a biblioteca de cartas e os grupos (%1)?%n%nEscolha "Não" para manter seus dados.
+en.AskDeleteData=Also delete the chart library and groups (%1)?%n%nChoose "No" to keep your data.
 
 [Tasks]
 Name: "efb"; Description: "{cm:TaskEfb}"; GroupDescription: "MSFS"

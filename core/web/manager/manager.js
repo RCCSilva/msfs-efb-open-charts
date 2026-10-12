@@ -4,15 +4,15 @@
 
   const STR = {
     en: {
-      library: 'Library', sources: 'Sources', flights: 'Flights', back: '< Sources',
-      flight: 'Flight', newFlight: 'New flight', flightName: 'Flight name',
+      library: 'Library', sources: 'Sources', groups: 'Groups', back: '< Sources',
+      group: 'Group', newGroup: 'New group', groupName: 'Group name',
       search: 'Search by ICAO, type or name...', all: 'All', charts: 'charts',
-      addToFlight: '+ Add to flight', inFlight: 'In flight', addSelected: 'Add selected to flight',
-      removeFromFlight: 'Remove from this flight', confirmDel: 'Delete this chart from the library?', newName: 'New name',
+      addToGroup: '+ Add to group', inGroup: 'In group', addSelected: 'Add selected to group',
+      removeFromGroup: 'Remove from this group', confirmDel: 'Delete this chart from the library?', newName: 'New name',
       rename: 'Rename', del: 'Delete', chartOnly: 'Chart only', onMap: 'On map',
-      thisFlight: 'Charts in this flight', noPins: 'Nothing here yet. Use "Add to flight" in the library.',
+      thisGroup: 'Charts in this group', noPins: 'Nothing here yet. Use "Add to group" in the library.',
       noCharts: 'No charts yet. Open Sources to add some.', addCharts: 'Add charts (Sources)',
-      current: 'Current', makeCurrent: 'Use this flight', pinnedN: 'pinned',
+      current: 'Current', makeCurrent: 'Use this group', pinnedN: 'pinned',
       dropPdf: 'Drop here the PDFs you downloaded from this source (several at once). Known files are named and imported automatically. Or', choose: 'choose files',
       inbox: 'Inbox folder', inboxHelp: 'Files placed in this folder are picked up when you click the button.',
       importInbox: 'Import PDFs from the inbox', noInbox: 'The inbox is empty.',
@@ -38,7 +38,7 @@
       portHelp: 'Default {n}. Change it if another program uses it. Afterwards update the EFB app and restart the simulator.',
       portFixed: 'The address was set with -addr on the command line; these options are off.',
       lanLabel: 'Other devices', lanOn: 'Allowed: tablet and phone on the same Wi-Fi can connect', lanOff: 'Only this computer',
-      lanHelp: 'Scan the QR code with the tablet or phone. They can view and manage charts and flights, but never change this computer.',
+      lanHelp: 'Scan the QR code with the tablet or phone. They can view and manage charts and groups, but never change this computer.',
       lanFirewall: 'If Windows asks about the firewall, allow Open Charts on private networks.',
       lanNoAddress: 'No network address found. Connect to a Wi-Fi or Ethernet network.',
       lanVirtual: 'virtual adapter', lanRotate: 'Generate a new access key', lanRotateConfirm: 'Devices already connected will have to scan the QR code again. Continue?',
@@ -74,15 +74,15 @@
       aboutLicense: 'Open source, MIT licence.', version: 'Version'
     },
     pt: {
-      library: 'Biblioteca', sources: 'Fontes', flights: 'Voos', back: '< Fontes',
-      flight: 'Voo', newFlight: 'Novo voo', flightName: 'Nome do voo',
+      library: 'Biblioteca', sources: 'Fontes', groups: 'Grupos', back: '< Fontes',
+      group: 'Grupo', newGroup: 'Novo grupo', groupName: 'Nome do grupo',
       search: 'Buscar por ICAO, tipo ou nome...', all: 'Todas', charts: 'cartas',
-      addToFlight: '+ Adicionar ao voo', inFlight: 'No voo', addSelected: 'Adicionar selecionadas ao voo',
-      removeFromFlight: 'Tirar deste voo', confirmDel: 'Excluir esta carta da biblioteca?', newName: 'Novo nome',
+      addToGroup: '+ Adicionar ao grupo', inGroup: 'No grupo', addSelected: 'Adicionar selecionadas ao grupo',
+      removeFromGroup: 'Tirar deste grupo', confirmDel: 'Excluir esta carta da biblioteca?', newName: 'Novo nome',
       rename: 'Renomear', del: 'Excluir', chartOnly: 'Só a carta', onMap: 'No mapa',
-      thisFlight: 'Cartas deste voo', noPins: 'Nada aqui ainda. Use "Adicionar ao voo" na biblioteca.',
+      thisGroup: 'Cartas deste grupo', noPins: 'Nada aqui ainda. Use "Adicionar ao grupo" na biblioteca.',
       noCharts: 'Nenhuma carta ainda. Abra Fontes para adicionar.', addCharts: 'Adicionar cartas (Fontes)',
-      current: 'Atual', makeCurrent: 'Usar este voo', pinnedN: 'fixadas',
+      current: 'Atual', makeCurrent: 'Usar este grupo', pinnedN: 'fixadas',
       dropPdf: 'Solte aqui os PDFs que você baixou desta fonte (vários de uma vez). Os arquivos conhecidos são nomeados e importados automaticamente. Ou', choose: 'escolha arquivos',
       inbox: 'Pasta de entrada', inboxHelp: 'Arquivos colocados nesta pasta são importados quando você clicar no botão.',
       importInbox: 'Importar PDFs da pasta de entrada', noInbox: 'A pasta de entrada está vazia.',
@@ -108,7 +108,7 @@
       portHelp: 'Padrão {n}. Troque se outro programa usar. Depois, atualize o app do EFB e reinicie o simulador.',
       portFixed: 'O endereço foi definido com -addr na linha de comando; estas opções ficam desativadas.',
       lanLabel: 'Outros dispositivos', lanOn: 'Permitido: tablet e celular na mesma rede Wi-Fi podem conectar', lanOff: 'Somente este computador',
-      lanHelp: 'Leia o QR code com o tablet ou o celular. Eles veem e gerenciam cartas e voos, mas nunca alteram este computador.',
+      lanHelp: 'Leia o QR code com o tablet ou o celular. Eles veem e gerenciam cartas e grupos, mas nunca alteram este computador.',
       lanFirewall: 'Se o Windows perguntar sobre o firewall, permita o Open Charts em redes privadas.',
       lanNoAddress: 'Nenhum endereço de rede encontrado. Conecte-se a uma rede Wi-Fi ou cabeada.',
       lanVirtual: 'adaptador virtual', lanRotate: 'Gerar nova chave de acesso', lanRotateConfirm: 'Os dispositivos já conectados precisarão ler o QR code de novo. Continuar?',
@@ -214,11 +214,11 @@
   }
 
   // ---- state and routing
-  const state = { flights: { current: '', flights: [] } };
+  const state = { groups: { current: '', groups: [] } };
   const view = document.getElementById('view');
-  const currentFlight = () => state.flights.flights.find((f) => f.id === state.flights.current) || { id: '', name: '-', pins: [] };
+  const currentGroup = () => state.groups.groups.find((f) => f.id === state.groups.current) || { id: '', name: '-', pins: [] };
 
-  async function loadFlights() { state.flights = await api('GET', '/api/flights'); }
+  async function loadGroups() { state.groups = await api('GET', '/api/groups'); }
 
   function parseRoute() {
     const [name, arg] = (location.hash || '#library').slice(1).split('/');
@@ -232,17 +232,17 @@
     if (state.local === undefined) {
       try { state.local = (await api('GET', '/api/health')).local !== false; } catch (e) { state.local = true; }
     }
-    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'flights', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
+    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
       h('button', { class: id === tab ? 'on' : '', onclick: () => go('#' + id) }, t(id))).concat([
         // The map (same page the EFB shows) opens in its own tab, outside the simulator too.
         h('a', { class: 'navlink', href: '/viewer.html?lang=' + lang, target: '_blank', rel: 'noopener' }, t('map') + ' \u2197')]));
     try {
-      await loadFlights();
-      drawFlightBar();
+      await loadGroups();
+      drawGroupBar();
       drawFooter();
       if (r.name === 'sources') await renderSources();
       else if (r.name === 'source') await renderSource(r.arg);
-      else if (r.name === 'flights') await renderFlights();
+      else if (r.name === 'groups') await renderGroups();
       else if (r.name === 'setup') await renderSetup();
       else if (r.name === 'about') renderAbout();
       else await renderLibrary();
@@ -251,20 +251,20 @@
     }
   }
 
-  // ---- flight bar: the flight everything refers to (also the one the viewer uses)
-  function drawFlightBar() {
-    const sel = h('select', null, state.flights.flights.map((f) => h('option', { value: f.id }, `${f.name} (${f.pins.length})`)));
-    sel.value = state.flights.current;
+  // ---- group bar: the group everything refers to (also the one the viewer uses)
+  function drawGroupBar() {
+    const sel = h('select', null, state.groups.groups.map((f) => h('option', { value: f.id }, `${f.name} (${f.pins.length})`)));
+    sel.value = state.groups.current;
     sel.addEventListener('change', async () => {
-      await api('PUT', '/api/flights/current', { id: sel.value });
+      await api('PUT', '/api/groups/current', { id: sel.value });
       render();
     });
-    document.getElementById('flightbar').replaceChildren(
-      h('span', { class: 'lbl' }, t('flight') + ':'), sel,
+    document.getElementById('groupbar').replaceChildren(
+      h('span', { class: 'lbl' }, t('group') + ':'), sel,
       h('button', { class: 'btn sm', onclick: async () => {
-        const n = prompt(t('flightName'), `${t('flight')} ${state.flights.flights.length + 1}`);
-        if (n && n.trim()) { await api('POST', '/api/flights', { name: n.trim() }); render(); }
-      } }, '+ ' + t('newFlight')));
+        const n = prompt(t('groupName'), `${t('group')} ${state.groups.groups.length + 1}`);
+        if (n && n.trim()) { await api('POST', '/api/groups', { name: n.trim() }); render(); }
+      } }, '+ ' + t('newGroup')));
   }
 
   // ---- Edit a chart's properties. The server validates and generates the name; this only collects.
@@ -310,8 +310,8 @@
 
   // ---- Library
   async function renderLibrary() {
-    const flight = currentFlight();
-    const pins = new Set(flight.pins);
+    const group = currentGroup();
+    const pins = new Set(group.pins);
     const all = await api('GET', '/api/charts?limit=1000');
     const byId = new Map(all.map((c) => [c.id, c]));
     const selected = new Set();
@@ -324,20 +324,20 @@
     const side = h('div', { class: 'card side' });
 
     async function setPin(id, on) {
-      await api(on ? 'PUT' : 'DELETE', `/api/flights/${encodeURIComponent(flight.id)}/pins/${encodeURIComponent(id)}`);
+      await api(on ? 'PUT' : 'DELETE', `/api/groups/${encodeURIComponent(group.id)}/pins/${encodeURIComponent(id)}`);
       on ? pins.add(id) : pins.delete(id);
     }
 
     function drawSide() {
-      const list = flight.pins.filter((id) => pins.has(id)).concat([...pins].filter((id) => !flight.pins.includes(id)));
+      const list = group.pins.filter((id) => pins.has(id)).concat([...pins].filter((id) => !group.pins.includes(id)));
       side.replaceChildren(
-        h('h3', null, `${t('thisFlight')} (${pins.size})`),
-        h('div', { class: 'muted', style: 'margin-bottom:6px' }, flight.name),
+        h('h3', null, `${t('thisGroup')} (${pins.size})`),
+        h('div', { class: 'muted', style: 'margin-bottom:6px' }, group.name),
         ...(list.length ? list.map((id) => {
           const c = byId.get(id);
           return h('div', { class: 'item' },
             h('span', { class: 't', title: c ? c.name : id }, c ? c.name : id),
-            h('button', { class: 'btn sm', title: t('removeFromFlight'), onclick: async () => { await setPin(id, false); drawAll(); } }, '✕'));
+            h('button', { class: 'btn sm', title: t('removeFromGroup'), onclick: async () => { await setPin(id, false); drawAll(); } }, '✕'));
         }) : [h('div', { class: 'muted' }, t('noPins'))]));
     }
 
@@ -347,7 +347,7 @@
     }
 
     function row(c) {
-      const inFlight = pins.has(c.id);
+      const inGroup = pins.has(c.id);
       const check = h('input', { type: 'checkbox', checked: selected.has(c.id), onchange: (e) => {
         e.target.checked ? selected.add(c.id) : selected.delete(c.id);
         drawBulk();
@@ -356,10 +356,10 @@
         h('td', null, check),
         h('td', null, h('strong', null, c.name), h('div', { class: 'muted' }, `${c.validity || ''}  ·  ${c.source}`)),
         h('td', { class: 'actions' },
-          h('button', { class: 'btn sm' + (inFlight ? ' in' : ''), title: inFlight ? t('removeFromFlight') : '', onclick: async () => {
-            await setPin(c.id, !inFlight);
+          h('button', { class: 'btn sm' + (inGroup ? ' in' : ''), title: inGroup ? t('removeFromGroup') : '', onclick: async () => {
+            await setPin(c.id, !inGroup);
             drawAll();
-          } }, inFlight ? '✓ ' + t('inFlight') : t('addToFlight')), ' ',
+          } }, inGroup ? '✓ ' + t('inGroup') : t('addToGroup')), ' ',
           h('details', { class: 'more' }, h('summary', { class: 'btn sm' }, '⋯'),
             h('div', { class: 'menu' },
               h('a', { href: '/viewer.html?chart=' + encodeURIComponent(c.id) + '&mode=chart&lang=' + lang, target: '_blank' }, t('chartOnly')),
@@ -387,7 +387,7 @@
       for (const id of selected) if (!pins.has(id)) await setPin(id, true);
       selected.clear();
       drawAll();
-      drawFlightBar();
+      drawGroupBar();
       toast(t('done'));
     });
     let timer = null;
@@ -759,31 +759,31 @@
         h('button', { class: 'btn', onclick: read }, t('readPackage'))), out, prog);
   }
 
-  // ---- Flights: all flights and what is pinned in each
-  async function renderFlights() {
+  // ---- Groups: all groups and what is pinned in each
+  async function renderGroups() {
     const all = await api('GET', '/api/charts?limit=1000');
     const byId = new Map(all.map((c) => [c.id, c]));
-    const cards = state.flights.flights.map((f) => h('div', { class: 'card' },
+    const cards = state.groups.groups.map((f) => h('div', { class: 'card' },
       h('div', { class: 'row' },
         h('h3', { class: 'grow' }, `${f.name} (${f.pins.length} ${t('pinnedN')})`),
-        f.id === state.flights.current ? h('span', { class: 'badge ok' }, t('current')) :
-          h('button', { class: 'btn sm', onclick: async () => { await api('PUT', '/api/flights/current', { id: f.id }); render(); } }, t('makeCurrent')),
+        f.id === state.groups.current ? h('span', { class: 'badge ok' }, t('current')) :
+          h('button', { class: 'btn sm', onclick: async () => { await api('PUT', '/api/groups/current', { id: f.id }); render(); } }, t('makeCurrent')),
         h('button', { class: 'btn sm', onclick: async () => {
           const n = prompt(t('newName'), f.name);
-          if (n && n.trim()) { await api('PATCH', '/api/flights/' + encodeURIComponent(f.id), { name: n.trim() }); render(); }
+          if (n && n.trim()) { await api('PATCH', '/api/groups/' + encodeURIComponent(f.id), { name: n.trim() }); render(); }
         } }, t('rename')),
-        h('button', { class: 'btn sm danger', disabled: state.flights.flights.length < 2, onclick: async () => {
-          if (confirm(t('confirmDel'))) { await api('DELETE', '/api/flights/' + encodeURIComponent(f.id)); render(); }
+        h('button', { class: 'btn sm danger', disabled: state.groups.groups.length < 2, onclick: async () => {
+          if (confirm(t('confirmDel'))) { await api('DELETE', '/api/groups/' + encodeURIComponent(f.id)); render(); }
         } }, t('del'))),
       f.pins.length ? f.pins.map((id) => {
         const c = byId.get(id);
         return h('div', { class: 'row' }, h('span', { class: 'grow' }, c ? c.name : id),
           h('button', { class: 'btn sm', onclick: async () => {
-            await api('DELETE', `/api/flights/${encodeURIComponent(f.id)}/pins/${encodeURIComponent(id)}`);
+            await api('DELETE', `/api/groups/${encodeURIComponent(f.id)}/pins/${encodeURIComponent(id)}`);
             render();
           } }, '✕'));
       }) : h('div', { class: 'muted' }, t('noPins'))));
-    view.replaceChildren(h('h2', null, t('flights')), ...cards);
+    view.replaceChildren(h('h2', null, t('groups')), ...cards);
   }
 
   // ---- Setup: status checklist, EFB app install, start with the simulator

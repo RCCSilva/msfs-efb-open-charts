@@ -53,7 +53,7 @@ change it in the manager (**Setup → Port and local network**); the EFB app is 
 address with **Update**.
 
 In the same place you can allow **other devices on your Wi-Fi** (a tablet, a phone): turn it on and
-scan the QR code. Those devices can view and manage charts and flights, but never change this
+scan the QR code. Those devices can view and manage charts and groups, but never change this
 computer's settings, and they need the key carried by the QR code.
 
 ## Repository layout
@@ -62,7 +62,7 @@ computer's settings, and they need the key carried by the QR code.
 |---|---|
 | `core/` | Go code: server, importer, sources, SimConnect, tray, web UI |
 | `core/web/sim` | The viewer that runs in the simulator's EFB (ES5, Coherent GT) |
-| `core/web/manager` | The manager UI (library, sources, flights, setup) |
+| `core/web/manager` | The manager UI (library, sources, groups, setup) |
 | `core/internal/setup/efbpkg` | The EFB app, embedded in the executable |
 | `installer/` | Installer script and build |
 | `AGENTS.md` | Guide for contributors and coding agents |

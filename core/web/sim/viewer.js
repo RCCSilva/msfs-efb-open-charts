@@ -5,7 +5,7 @@
     overlay  the chart warped over OpenStreetMap tiles (Leaflet map, Web Mercator)
     chart    the chart image alone, aircraft placed with the chart's georeference (CRS.Simple)
   Search finds charts by ICAO, type, words ("sao paulo", "ils 17r"); a chart can be pinned to the
-  current flight, and pinned charts are one tap away in the bar.
+  current group, and pinned charts are one tap away in the bar.
 
   Debug: /viewer.html?chart=<id>&mode=chart|overlay&at=<lat>,<lon>[,<heading>]&lang=pt|en
 */
@@ -26,11 +26,11 @@
   var STR = {
     en: {
       search: 'Search charts: SBSP, ILS, sao paulo...',
-      noPins: 'Search a chart and pin it to this flight.',
+      noPins: 'Search a chart and pin it to this group.',
       noResults: 'No charts found.',
       pin: 'Pin', pinned: 'Pinned',
       modeOverlay: 'On map', modeChart: 'Chart only',
-      flight: 'Flight', newFlight: 'New flight',
+      group: 'Group', newGroup: 'New group',
       waitSim: 'Waiting for MSFS (SimConnect)...',
       waitPos: 'Connected - waiting for position (start a flight)',
       unreachable: 'Server unreachable',
@@ -40,8 +40,8 @@
       loadFail: 'Could not load the chart',
       fixed: 'FIXED',
       simNote: 'FLIGHT SIMULATION ONLY - NOT FOR REAL-WORLD AVIATION',
-      starPin: 'Pin this chart to the flight', starUnpin: 'Remove this chart from the flight',
-      thisFlight: 'Charts in this flight', noPinsHere: 'No charts pinned in this flight.', remove: 'Remove',
+      starPin: 'Pin this chart to the group', starUnpin: 'Remove this chart from the group',
+      thisGroup: 'Charts in this group', noPinsHere: 'No charts pinned in this group.', remove: 'Remove',
       viewWithMap: 'With map', viewChartOnly: 'Chart only', blendMap: 'Map', blendChart: 'Chart',
       blendTitle: 'Chart over the map', otherGroup: 'Other',
       prevChart: 'Scroll left', nextChart: 'Scroll right', closeChart: 'Close chart',
@@ -49,11 +49,11 @@
     },
     pt: {
       search: 'Buscar cartas: SBSP, ILS, sao paulo...',
-      noPins: 'Busque uma carta e fixe neste voo.',
+      noPins: 'Busque uma carta e fixe neste grupo.',
       noResults: 'Nenhuma carta encontrada.',
       pin: 'Fixar', pinned: 'Fixada',
       modeOverlay: 'No mapa', modeChart: 'Só a carta',
-      flight: 'Voo', newFlight: 'Novo voo',
+      group: 'Grupo', newGroup: 'Novo grupo',
       waitSim: 'Aguardando o MSFS (SimConnect)...',
       waitPos: 'Conectado - aguardando posição (inicie um voo)',
       unreachable: 'Servidor inacessível',
@@ -63,8 +63,8 @@
       loadFail: 'Não foi possível carregar a carta',
       fixed: 'FIXO',
       simNote: 'APENAS SIMULAÇÃO AÉREA - PROIBIDO O USO EM AVIAÇÃO REAL',
-      starPin: 'Fixar esta carta no voo', starUnpin: 'Tirar esta carta do voo',
-      thisFlight: 'Cartas deste voo', noPinsHere: 'Nenhuma carta fixada neste voo.', remove: 'Tirar',
+      starPin: 'Fixar esta carta no grupo', starUnpin: 'Tirar esta carta do grupo',
+      thisGroup: 'Cartas deste grupo', noPinsHere: 'Nenhuma carta fixada neste grupo.', remove: 'Tirar',
       viewWithMap: 'Com mapa', viewChartOnly: 'S\u00f3 a carta', blendMap: 'Mapa', blendChart: 'Carta',
       blendTitle: 'Carta sobre o mapa', otherGroup: 'Outras',
       prevChart: 'Rolar para a esquerda', nextChart: 'Rolar para a direita', closeChart: 'Fechar carta',
@@ -76,11 +76,11 @@
   var qEl = el('q');
   var pinsEl = el('pins');
   var resultsEl = el('results');
-  var flightsEl = el('flights');
+  var groupsEl = el('groups');
   var kbdEl = el('kbd');
   var statusEl = el('status');
   var followBtn = el('btn-follow');
-  var flightBtn = el('btn-flight');
+  var groupBtn = el('btn-group');
   var viewOverlayBtn = el('view-overlay');
   var viewChartBtn = el('view-chart');
   var blendBtn = el('btn-blend');
@@ -140,8 +140,8 @@
   var planeRot = null;
   var chartLayer = null;
   var active = null;            // { meta, img }
-  var flights = { current: '', flights: [] };
-  var pinned = [];              // chart objects of the current flight, in pin order
+  var groups = { current: '', groups: [] };
+  var pinned = [];              // chart objects of the current group, in pin order
   var follow = true;
   var followJustEnabled = false;
   var lastKey = null;
@@ -609,32 +609,32 @@
     return false;
   }
 
-  function currentFlight() {
-    for (var i = 0; i < flights.flights.length; i++) {
-      if (flights.flights[i].id === flights.current) return flights.flights[i];
+  function currentGroup() {
+    for (var i = 0; i < groups.groups.length; i++) {
+      if (groups.groups[i].id === groups.current) return groups.groups[i];
     }
     return null;
   }
 
-  function loadFlights(cb) {
-    getJson('/api/flights', function (st) {
-      if (st) flights = st;
-      var fl = currentFlight();
-      flightBtn.textContent = fl ? fl.name : '-';
-      flightBtn.title = t('flight');
+  function loadGroups(cb) {
+    getJson('/api/groups', function (st) {
+      if (st) groups = st;
+      var fl = currentGroup();
+      groupBtn.textContent = fl ? fl.name : '-';
+      groupBtn.title = t('group');
       if (!fl || !fl.pins.length) {
         pinned = [];
-        lastSignature = signatureOf(flights, []);
+        lastSignature = signatureOf(groups, []);
         renderPins();
         if (cb) cb();
         return;
       }
-      getJson('/api/charts?flight=' + encodeURIComponent(fl.id) + '&limit=200', function (list) {
+      getJson('/api/charts?group=' + encodeURIComponent(fl.id) + '&limit=200', function (list) {
         var byId = {};
         (list || []).forEach(function (c) { byId[c.id] = c; });
         pinned = [];
         fl.pins.forEach(function (id) { if (byId[id]) pinned.push(byId[id]); });   // pin order
-        lastSignature = signatureOf(flights, list || []);
+        lastSignature = signatureOf(groups, list || []);
         syncActiveName();
         renderPins();
         if (cb) cb();
@@ -653,37 +653,37 @@
     }
   }
 
-  // Cheap periodic check: reload the flight and its pinned charts only when something changed
-  // (names, pins, current flight), so the strip is not rebuilt for nothing.
+  // Cheap periodic check: reload the group and its pinned charts only when something changed
+  // (names, pins, current group), so the strip is not rebuilt for nothing.
   var lastSignature = '';
   function signatureOf(st, list) {
-    return st.current + '|' + JSON.stringify(st.flights.map(function (f) { return [f.id, f.name, f.pins]; })) + '|' +
+    return st.current + '|' + JSON.stringify(st.groups.map(function (f) { return [f.id, f.name, f.pins]; })) + '|' +
       JSON.stringify((list || []).map(function (c) { return [c.id, c.name]; }));
   }
   function softRefresh() {
     // Not gated on document.hidden: inside the simulator the frame may report itself hidden
     // even while it is on screen. Two tiny requests every 15 s are cheap.
     if (lastSignature === '') return;   // nothing on screen yet
-    getJson('/api/flights', function (st) {
+    getJson('/api/groups', function (st) {
       if (!st) return;
       var cur = null;
-      for (var i = 0; i < st.flights.length; i++) if (st.flights[i].id === st.current) cur = st.flights[i];
+      for (var i = 0; i < st.groups.length; i++) if (st.groups[i].id === st.current) cur = st.groups[i];
       var check = function (list) {
-        if (signatureOf(st, list) !== lastSignature) loadFlights();
+        if (signatureOf(st, list) !== lastSignature) loadGroups();
       };
       if (!cur || !cur.pins.length) { check([]); return; }
-      getJson('/api/charts?limit=200&flight=' + encodeURIComponent(cur.id), function (list) {
+      getJson('/api/charts?limit=200&group=' + encodeURIComponent(cur.id), function (list) {
         if (list) check(list);
       });
     });
   }
 
   function togglePin(chart, done) {
-    var fl = currentFlight();
+    var fl = currentGroup();
     if (!fl) return;
-    var url = '/api/flights/' + encodeURIComponent(fl.id) + '/pins/' + encodeURIComponent(chart.id);
+    var url = '/api/groups/' + encodeURIComponent(fl.id) + '/pins/' + encodeURIComponent(chart.id);
     request(isPinned(chart.id) ? 'DELETE' : 'PUT', url, null, function () {
-      loadFlights(done);
+      loadGroups(done);
     });
   }
 
@@ -730,18 +730,18 @@
   }
 
   // [{key, label, items:[chart]}] in order of first appearance, charts keep their pin order
-  function groupPinned() {
-    var groups = [];
+  function pinnedByAirport() {
+    var airports = [];
     var byKey = {};
     pinned.forEach(function (c) {
       var key = c.icao || '';
       if (!byKey[key]) {
         byKey[key] = { key: key, label: key || t('otherGroup'), items: [] };
-        groups.push(byKey[key]);
+        airports.push(byKey[key]);
       }
       byKey[key].items.push(c);
     });
-    return groups;
+    return airports;
   }
 
   function activeIndex() {
@@ -819,7 +819,7 @@
     closeBtn.style.display = active ? '' : 'none';
   }
 
-  // The star pins/unpins the chart on screen for the current flight.
+  // The star pins/unpins the chart on screen for the current group.
   function updateStar() {
     var on = !!active && isPinned(active.meta.id);
     starBtn.disabled = !active;
@@ -855,7 +855,7 @@
       return;
     }
     var activeChip = null;
-    groupPinned().forEach(function (g) {
+    pinnedByAirport().forEach(function (g) {
       var wrap = document.createElement('span');
       wrap.className = 'group';
       var lbl = document.createElement('span');
@@ -925,7 +925,7 @@
     var seq = ++searchSeq;
     getJson('/api/charts?limit=12&q=' + encodeURIComponent(q), function (list) {
       if (seq !== searchSeq || list === null) return;
-      flightsEl.className = 'panel hidden';
+      groupsEl.className = 'panel hidden';
       renderResults(list);
     });
   }
@@ -937,65 +937,65 @@
 
   function hidePanels() {
     resultsEl.className = 'panel hidden';
-    flightsEl.className = 'panel hidden';
+    groupsEl.className = 'panel hidden';
   }
 
-  // ---- flights panel ----
-  function showFlights() {
-    if (flightsEl.className.indexOf('hidden') < 0) { flightsEl.className = 'panel hidden'; return; }
+  // ---- groups panel ----
+  function showGroups() {
+    if (groupsEl.className.indexOf('hidden') < 0) { groupsEl.className = 'panel hidden'; return; }
     resultsEl.className = 'panel hidden';
-    drawFlights();
+    drawGroups();
   }
 
-  function drawFlights() {
-    clear(flightsEl);
-    flightsEl.className = 'panel';
-    flights.flights.forEach(function (f) {
+  function drawGroups() {
+    clear(groupsEl);
+    groupsEl.className = 'panel';
+    groups.groups.forEach(function (f) {
       var row = document.createElement('div');
-      row.className = 'item' + (f.id === flights.current ? ' current' : '');
+      row.className = 'item' + (f.id === groups.current ? ' current' : '');
       row.textContent = f.name + '  (' + f.pins.length + ')';
       row.addEventListener('click', function () {
-        request('PUT', '/api/flights/current', { id: f.id }, function () {
-          flightsEl.className = 'panel hidden';
-          loadFlights();
+        request('PUT', '/api/groups/current', { id: f.id }, function () {
+          groupsEl.className = 'panel hidden';
+          loadGroups();
         });
       });
-      flightsEl.appendChild(row);
+      groupsEl.appendChild(row);
     });
     var add = document.createElement('div');
     add.className = 'item';
-    add.textContent = '+ ' + t('newFlight');
+    add.textContent = '+ ' + t('newGroup');
     add.addEventListener('click', function () {
-      var n = flights.flights.length + 1;
-      request('POST', '/api/flights', { name: t('flight') + ' ' + n }, function () {
-        flightsEl.className = 'panel hidden';
-        loadFlights();
+      var n = groups.groups.length + 1;
+      request('POST', '/api/groups', { name: t('group') + ' ' + n }, function () {
+        groupsEl.className = 'panel hidden';
+        loadGroups();
       });
     });
-    flightsEl.appendChild(add);
+    groupsEl.appendChild(add);
 
-    // The charts pinned to the current flight, each with a button to take it out.
+    // The charts pinned to the current group, each with a button to take it out.
     var head = document.createElement('div');
     head.className = 'item head';
-    head.textContent = t('thisFlight') + ' (' + pinned.length + ')';
-    flightsEl.appendChild(head);
+    head.textContent = t('thisGroup') + ' (' + pinned.length + ')';
+    groupsEl.appendChild(head);
     if (!pinned.length) {
       var none = document.createElement('div');
       none.className = 'empty';
       none.textContent = t('noPinsHere');
-      flightsEl.appendChild(none);
+      groupsEl.appendChild(none);
     }
     pinned.forEach(function (c) {
       var r = document.createElement('div');
       r.className = 'item' + (active && active.meta.id === c.id ? ' current' : '');
       var x = button('pinbtn', t('remove'), function (ev) {
         if (ev.stopPropagation) ev.stopPropagation();
-        togglePin({ id: c.id }, function () { drawFlights(); });
+        togglePin({ id: c.id }, function () { drawGroups(); });
       });
       r.appendChild(x);
       r.appendChild(document.createTextNode(label(c.name)));
       r.addEventListener('click', function () { openChart(c.id); });
-      flightsEl.appendChild(r);
+      groupsEl.appendChild(r);
     });
   }
 
@@ -1065,7 +1065,7 @@
     var hidden = kbdEl.className.indexOf('hidden') >= 0;
     kbdEl.className = hidden ? 'kbd' : 'kbd hidden';
   });
-  flightBtn.addEventListener('click', showFlights);
+  groupBtn.addEventListener('click', showGroups);
   viewOverlayBtn.addEventListener('click', function () { setMode('overlay'); });
   viewChartBtn.addEventListener('click', function () { setMode('chart'); });
   pinPrev.addEventListener('click', function () { scrollStrip(-1); });
@@ -1147,7 +1147,7 @@
     window.setInterval(checkSize, 1000);
     poll();
     watchDom();
-    loadFlights(function () {
+    loadGroups(function () {
       if (params.q) runSearch();
       var want = params.chart || saved.chart || store('chart');
       var closedByUser = !params.chart && saved.chart === '' && !!saved.mode;

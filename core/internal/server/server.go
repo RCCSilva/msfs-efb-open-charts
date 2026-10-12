@@ -1,5 +1,5 @@
 // Package server is the local HTTP server: the viewer pages for the simulator, the chart API,
-// flights/pins, PDF import and an OpenStreetMap tile cache.
+// groups/pins, PDF import and an OpenStreetMap tile cache.
 package server
 
 import (
@@ -90,14 +90,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/import", s.handleImport)
 	mux.HandleFunc("GET /charts/{id}/{file}", s.handleChartFile)
 
-	// flights and pins
-	mux.HandleFunc("GET /api/flights", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, s.lib.Flights()) })
-	mux.HandleFunc("POST /api/flights", s.handleCreateFlight)
-	mux.HandleFunc("PUT /api/flights/current", s.handleSetCurrent)
-	mux.HandleFunc("PATCH /api/flights/{id}", s.handleRenameFlight)
-	mux.HandleFunc("DELETE /api/flights/{id}", s.handleDeleteFlight)
-	mux.HandleFunc("PUT /api/flights/{id}/pins/{chart}", s.handlePin)
-	mux.HandleFunc("DELETE /api/flights/{id}/pins/{chart}", s.handleUnpin)
+	// groups and pins
+	mux.HandleFunc("GET /api/groups", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, s.lib.Groups()) })
+	mux.HandleFunc("POST /api/groups", s.handleCreateGroup)
+	mux.HandleFunc("PUT /api/groups/current", s.handleSetCurrent)
+	mux.HandleFunc("PATCH /api/groups/{id}", s.handleRenameGroup)
+	mux.HandleFunc("DELETE /api/groups/{id}", s.handleDeleteGroup)
+	mux.HandleFunc("PUT /api/groups/{id}/pins/{chart}", s.handlePin)
+	mux.HandleFunc("DELETE /api/groups/{id}/pins/{chart}", s.handleUnpin)
 
 	s.registerSourceRoutes(mux)
 	s.registerSetupRoutes(mux)
@@ -164,9 +164,9 @@ func (s *Server) handlePosition(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	query := store.Query{Text: q.Get("q"), Type: q.Get("type"), ICAO: q.Get("icao"), Source: q.Get("source")}
-	if f := q.Get("flight"); f != "" {
-		for _, fl := range s.lib.Flights().Flights {
-			if fl.ID == f || (f == "current" && fl.ID == s.lib.Flights().Current) {
+	if f := q.Get("group"); f != "" {
+		for _, fl := range s.lib.Groups().Groups {
+			if fl.ID == f || (f == "current" && fl.ID == s.lib.Groups().Current) {
 				query.IDs = append([]string{}, fl.Pins...)
 				if query.IDs == nil {
 					query.IDs = []string{}
@@ -331,12 +331,12 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, c)
 }
 
-func (s *Server) handleCreateFlight(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name string `json:"name"`
 	}
 	_ = readJSON(r, &body)
-	f, err := s.lib.CreateFlight(body.Name)
+	f, err := s.lib.CreateGroup(body.Name)
 	if err != nil {
 		writeErr(w, 500, err)
 		return
@@ -356,10 +356,10 @@ func (s *Server) handleSetCurrent(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusFor(err), err)
 		return
 	}
-	writeJSON(w, 200, s.lib.Flights())
+	writeJSON(w, 200, s.lib.Groups())
 }
 
-func (s *Server) handleRenameFlight(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleRenameGroup(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name string `json:"name"`
 	}
@@ -367,19 +367,19 @@ func (s *Server) handleRenameFlight(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err)
 		return
 	}
-	if err := s.lib.RenameFlight(r.PathValue("id"), body.Name); err != nil {
+	if err := s.lib.RenameGroup(r.PathValue("id"), body.Name); err != nil {
 		writeErr(w, statusFor(err), err)
 		return
 	}
-	writeJSON(w, 200, s.lib.Flights())
+	writeJSON(w, 200, s.lib.Groups())
 }
 
-func (s *Server) handleDeleteFlight(w http.ResponseWriter, r *http.Request) {
-	if err := s.lib.DeleteFlight(r.PathValue("id")); err != nil {
+func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
+	if err := s.lib.DeleteGroup(r.PathValue("id")); err != nil {
 		writeErr(w, statusFor(err), err)
 		return
 	}
-	writeJSON(w, 200, s.lib.Flights())
+	writeJSON(w, 200, s.lib.Groups())
 }
 
 func (s *Server) handlePin(w http.ResponseWriter, r *http.Request) {
@@ -387,7 +387,7 @@ func (s *Server) handlePin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusFor(err), err)
 		return
 	}
-	writeJSON(w, 200, s.lib.Flights())
+	writeJSON(w, 200, s.lib.Groups())
 }
 
 func (s *Server) handleUnpin(w http.ResponseWriter, r *http.Request) {
@@ -395,7 +395,7 @@ func (s *Server) handleUnpin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, statusFor(err), err)
 		return
 	}
-	writeJSON(w, 200, s.lib.Flights())
+	writeJSON(w, 200, s.lib.Groups())
 }
 
 func statusFor(err error) int {

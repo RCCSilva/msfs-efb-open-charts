@@ -67,7 +67,7 @@ func TestThisComputerIsAlwaysAllowed(t *testing.T) {
 		t.Fatalf("wrong port: %d, want 403", r.Code)
 	}
 	// a web page in the user's browser must not be able to drive the API
-	if r := do(h, reqOpt{from: "127.0.0.1", host: "127.0.0.1:43210", method: "POST", path: "/api/flights", origin: "https://evil.example"}); r.Code != 403 {
+	if r := do(h, reqOpt{from: "127.0.0.1", host: "127.0.0.1:43210", method: "POST", path: "/api/groups", origin: "https://evil.example"}); r.Code != 403 {
 		t.Fatalf("foreign origin: %d, want 403", r.Code)
 	}
 	if r := do(h, reqOpt{from: "::1", host: "[::1]:43210"}); r.Code != 200 {
@@ -151,11 +151,11 @@ func TestOtherDevicesMayUseTheNormalApi(t *testing.T) {
 		t.Fatalf("/viewer.html: %d", r.Code)
 	}
 	// a write from a page of another site is refused; from our own page it is accepted
-	bad := do(h, reqOpt{from: "192.168.0.50", host: host, cookie: testToken, method: "PUT", path: "/api/flights/current", origin: "http://evil.example"})
+	bad := do(h, reqOpt{from: "192.168.0.50", host: host, cookie: testToken, method: "PUT", path: "/api/groups/current", origin: "http://evil.example"})
 	if bad.Code != 403 {
 		t.Fatalf("foreign origin write: %d, want 403", bad.Code)
 	}
-	ok := do(h, reqOpt{from: "192.168.0.50", host: host, cookie: testToken, method: "PUT", path: "/api/flights/current", origin: "http://" + host})
+	ok := do(h, reqOpt{from: "192.168.0.50", host: host, cookie: testToken, method: "PUT", path: "/api/groups/current", origin: "http://" + host})
 	if ok.Code == 403 || ok.Code == 401 {
 		t.Fatalf("same-origin write blocked: %d", ok.Code)
 	}

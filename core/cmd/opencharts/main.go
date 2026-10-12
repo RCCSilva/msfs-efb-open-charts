@@ -80,7 +80,7 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "setup" {
 		os.Exit(runSetupCommand(os.Args[2:]))
 	}
-	data := flag.String("data", defaultDataDir(), "data directory (library, flights, tile cache, settings)")
+	data := flag.String("data", defaultDataDir(), "data directory (library, groups, tile cache, settings)")
 	addrFlag := flag.String("addr", "", "listen address, overriding the settings (loopback only), for example 127.0.0.1:8080")
 	lat := flag.Float64("lat", -23.5505, "fixed aircraft latitude")
 	lon := flag.Float64("lon", -46.6333, "fixed aircraft longitude")

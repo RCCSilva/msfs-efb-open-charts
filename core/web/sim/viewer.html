@@ -17,19 +17,19 @@
   <div id="simnote" class="simnote"></div>
 
   <div id="bar" class="bar">
-    <!-- Row 1: find a chart, pin it, choose the flight -->
+    <!-- Row 1: find a chart, pin it, choose the group -->
     <div class="row">
       <input id="q" type="text" autocomplete="off" spellcheck="false">
-      <button id="btn-star" type="button" class="tool" aria-label="Pin to flight">
+      <button id="btn-star" type="button" class="tool" aria-label="Pin to group">
         <svg viewBox="0 0 32 32"><path d="M11 4h10l-1 9 4 5H8l4-5z"/><path d="M16 18v10"/></svg>
       </button>
       <button id="btn-kbd" type="button" class="tool" aria-label="Keyboard">
         <svg viewBox="0 0 32 32"><rect x="3" y="9" width="26" height="14" rx="2"/><path d="M7 14h2M12 14h2M17 14h2M22 14h3M9 19h14"/></svg>
       </button>
-      <button id="btn-flight" type="button" class="tool wide"></button>
+      <button id="btn-group" type="button" class="tool wide"></button>
     </div>
 
-    <!-- Row 2: the pinned charts of the flight, grouped by airport, with previous / next -->
+    <!-- Row 2: the pinned charts of the group, grouped by airport, with previous / next -->
     <div class="strip">
       <button id="pin-prev" type="button" class="chev" aria-label="Scroll left">
         <svg viewBox="0 0 32 32"><path d="M20 6l-10 10 10 10"/></svg>
@@ -42,7 +42,7 @@
     </div>
 
     <div id="results" class="panel hidden"></div>
-    <div id="flights" class="panel hidden"></div>
+    <div id="groups" class="panel hidden"></div>
     <div id="kbd" class="kbd hidden"></div>
   </div>
 

@@ -1,12 +1,12 @@
 // Package store is the chart library on disk plus an in-memory search index, and the
-// flights (named sets of pinned charts).
+// groups (named sets of pinned charts).
 //
 // Layout under the data directory:
 //
 //	library/<id>/chart.png   rasterised chart
 //	library/<id>/chart.json  georeference + metadata (what the viewers read)
 //	library/<id>/source.pdf  the original PDF (kept so it can be re-imported)
-//	flights.json             flights and the current flight
+//	groups.json             groups and the current group
 package store
 
 import (
@@ -44,17 +44,19 @@ type Chart struct {
 	search string // folded haystack
 }
 
-// Flight is a named set of pinned charts.
-type Flight struct {
+// Group is a named set of pinned charts.
+type Group struct {
 	ID      string   `json:"id"`
 	Name    string   `json:"name"`
 	Pins    []string `json:"pins"`
 	Created string   `json:"created"`
 }
 
-type flightsFile struct {
-	Current string   `json:"current"`
-	Flights []Flight `json:"flights"`
+type groupsFile struct {
+	Current string  `json:"current"`
+	Groups  []Group `json:"groups"`
+	// Legacy: before groups, the same list was called "flights" (in flights.json).
+	Flights []Group `json:"flights,omitempty"`
 }
 
 // Library is safe for concurrent use.
@@ -62,8 +64,8 @@ type Library struct {
 	dir string
 	mu  sync.RWMutex
 
-	charts  map[string]*Chart
-	flights flightsFile
+	charts map[string]*Chart
+	groups groupsFile
 }
 
 // Open loads (or creates) a library in dir.
@@ -75,7 +77,7 @@ func Open(dir string) (*Library, error) {
 	if err := l.reload(); err != nil {
 		return nil, err
 	}
-	if err := l.loadFlights(); err != nil {
+	if err := l.loadGroups(); err != nil {
 		return nil, err
 	}
 	return l, nil
@@ -220,7 +222,7 @@ func (l *Library) Get(id string) (*Chart, bool) {
 	return c, ok
 }
 
-// Delete removes a chart from disk, from the index and from every flight's pins.
+// Delete removes a chart from disk, from the index and from every group's pins.
 func (l *Library) Delete(id string) error {
 	if !ValidID(id) {
 		return fmt.Errorf("invalid chart id")
@@ -234,11 +236,11 @@ func (l *Library) Delete(id string) error {
 		return err
 	}
 	delete(l.charts, id)
-	for i := range l.flights.Flights {
-		f := &l.flights.Flights[i]
+	for i := range l.groups.Groups {
+		f := &l.groups.Groups[i]
 		f.Pins = removeStr(f.Pins, id)
 	}
-	return l.saveFlightsLocked()
+	return l.saveGroupsLocked()
 }
 
 // Rename changes the display name (stored in chart.json).
@@ -281,7 +283,7 @@ type Query struct {
 	Type   string
 	ICAO   string
 	Source string
-	IDs    []string // restrict to these ids (e.g. a flight's pins)
+	IDs    []string // restrict to these ids (e.g. a group's pins)
 }
 
 // Search returns charts ordered by relevance (then by ICAO, type, name). Every word of Text must
@@ -368,22 +370,29 @@ func (l *Library) Count() int {
 	return len(l.charts)
 }
 
-// ---------------------------------------------------------------- flights
+// ---------------------------------------------------------------- groups
 
-func (l *Library) flightsPath() string { return filepath.Join(l.dir, "flights.json") }
+func (l *Library) groupsPath() string { return filepath.Join(l.dir, "groups.json") }
 
-func (l *Library) loadFlights() error {
-	raw, err := os.ReadFile(l.flightsPath())
-	if err == nil {
-		if err := json.Unmarshal(raw, &l.flights); err != nil {
-			return fmt.Errorf("flights.json: %w", err)
-		}
+func (l *Library) loadGroups() error {
+	raw, err := os.ReadFile(l.groupsPath())
+	if errors.Is(err, os.ErrNotExist) {
+		raw, err = os.ReadFile(filepath.Join(l.dir, "flights.json")) // older libraries
 	}
-	if len(l.flights.Flights) == 0 {
-		l.flights.Flights = []Flight{{ID: "flight-1", Name: "Flight 1", Pins: []string{}, Created: now()}}
+	if err == nil {
+		if err := json.Unmarshal(raw, &l.groups); err != nil {
+			return fmt.Errorf("groups.json: %w", err)
+		}
+		if len(l.groups.Groups) == 0 && len(l.groups.Flights) > 0 {
+			l.groups.Groups = l.groups.Flights
+		}
+		l.groups.Flights = nil
+	}
+	if len(l.groups.Groups) == 0 {
+		l.groups.Groups = []Group{{ID: "group-1", Name: "Group 1", Pins: []string{}, Created: now()}}
 	}
 	if l.currentIndex() < 0 {
-		l.flights.Current = l.flights.Flights[0].ID
+		l.groups.Current = l.groups.Groups[0].ID
 	}
 	return nil
 }
@@ -391,61 +400,61 @@ func (l *Library) loadFlights() error {
 func now() string { return time.Now().UTC().Format(time.RFC3339) }
 
 func (l *Library) currentIndex() int {
-	for i, f := range l.flights.Flights {
-		if f.ID == l.flights.Current {
+	for i, f := range l.groups.Groups {
+		if f.ID == l.groups.Current {
 			return i
 		}
 	}
 	return -1
 }
 
-func (l *Library) saveFlightsLocked() error {
-	raw, err := json.MarshalIndent(l.flights, "", "  ")
+func (l *Library) saveGroupsLocked() error {
+	raw, err := json.MarshalIndent(l.groups, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := l.flightsPath() + ".tmp"
+	tmp := l.groupsPath() + ".tmp"
 	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, l.flightsPath())
+	return os.Rename(tmp, l.groupsPath())
 }
 
-// FlightsState is what the API returns.
-type FlightsState struct {
-	Current string   `json:"current"`
-	Flights []Flight `json:"flights"`
+// GroupsState is what the API returns.
+type GroupsState struct {
+	Current string  `json:"current"`
+	Groups  []Group `json:"groups"`
 }
 
-// Flights returns a copy of the current state.
-func (l *Library) Flights() FlightsState {
+// Groups returns a copy of the current state.
+func (l *Library) Groups() GroupsState {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	st := FlightsState{Current: l.flights.Current, Flights: make([]Flight, len(l.flights.Flights))}
-	for i, f := range l.flights.Flights {
+	st := GroupsState{Current: l.groups.Current, Groups: make([]Group, len(l.groups.Groups))}
+	for i, f := range l.groups.Groups {
 		f.Pins = append([]string{}, f.Pins...)
-		st.Flights[i] = f
+		st.Groups[i] = f
 	}
 	return st
 }
 
-// CreateFlight adds a flight and makes it current.
-func (l *Library) CreateFlight(name string) (Flight, error) {
+// CreateGroup adds a group and makes it current.
+func (l *Library) CreateGroup(name string) (Group, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		name = fmt.Sprintf("Flight %d", len(l.flights.Flights)+1)
+		name = fmt.Sprintf("Group %d", len(l.groups.Groups)+1)
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	id := fmt.Sprintf("flight-%d", time.Now().UnixNano()/1e6)
-	f := Flight{ID: id, Name: name, Pins: []string{}, Created: now()}
-	l.flights.Flights = append(l.flights.Flights, f)
-	l.flights.Current = id
-	return f, l.saveFlightsLocked()
+	id := fmt.Sprintf("group-%d", time.Now().UnixNano()/1e6)
+	f := Group{ID: id, Name: name, Pins: []string{}, Created: now()}
+	l.groups.Groups = append(l.groups.Groups, f)
+	l.groups.Current = id
+	return f, l.saveGroupsLocked()
 }
 
-func (l *Library) flightIndex(id string) int {
-	for i, f := range l.flights.Flights {
+func (l *Library) groupIndex(id string) int {
+	for i, f := range l.groups.Groups {
 		if f.ID == id {
 			return i
 		}
@@ -453,65 +462,65 @@ func (l *Library) flightIndex(id string) int {
 	return -1
 }
 
-// SetCurrent selects the current flight.
+// SetCurrent selects the current group.
 func (l *Library) SetCurrent(id string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.flightIndex(id) < 0 {
+	if l.groupIndex(id) < 0 {
 		return os.ErrNotExist
 	}
-	l.flights.Current = id
-	return l.saveFlightsLocked()
+	l.groups.Current = id
+	return l.saveGroupsLocked()
 }
 
-// RenameFlight changes a flight's name.
-func (l *Library) RenameFlight(id, name string) error {
+// RenameGroup changes a group's name.
+func (l *Library) RenameGroup(id, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return errors.New("empty name")
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	i := l.flightIndex(id)
+	i := l.groupIndex(id)
 	if i < 0 {
 		return os.ErrNotExist
 	}
-	l.flights.Flights[i].Name = name
-	return l.saveFlightsLocked()
+	l.groups.Groups[i].Name = name
+	return l.saveGroupsLocked()
 }
 
-// DeleteFlight removes a flight (the last one cannot be removed).
-func (l *Library) DeleteFlight(id string) error {
+// DeleteGroup removes a group (the last one cannot be removed).
+func (l *Library) DeleteGroup(id string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	i := l.flightIndex(id)
+	i := l.groupIndex(id)
 	if i < 0 {
 		return os.ErrNotExist
 	}
-	if len(l.flights.Flights) == 1 {
-		return errors.New("cannot delete the only flight")
+	if len(l.groups.Groups) == 1 {
+		return errors.New("cannot delete the only group")
 	}
-	l.flights.Flights = append(l.flights.Flights[:i], l.flights.Flights[i+1:]...)
-	if l.flights.Current == id {
-		l.flights.Current = l.flights.Flights[0].ID
+	l.groups.Groups = append(l.groups.Groups[:i], l.groups.Groups[i+1:]...)
+	if l.groups.Current == id {
+		l.groups.Current = l.groups.Groups[0].ID
 	}
-	return l.saveFlightsLocked()
+	return l.saveGroupsLocked()
 }
 
-// Pin adds a chart to a flight; Unpin removes it.
-func (l *Library) Pin(flightID, chartID string) error { return l.setPin(flightID, chartID, true) }
+// Pin adds a chart to a group; Unpin removes it.
+func (l *Library) Pin(groupID, chartID string) error { return l.setPin(groupID, chartID, true) }
 
-// Unpin removes a chart from a flight.
-func (l *Library) Unpin(flightID, chartID string) error { return l.setPin(flightID, chartID, false) }
+// Unpin removes a chart from a group.
+func (l *Library) Unpin(groupID, chartID string) error { return l.setPin(groupID, chartID, false) }
 
-func (l *Library) setPin(flightID, chartID string, pin bool) error {
+func (l *Library) setPin(groupID, chartID string, pin bool) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	i := l.flightIndex(flightID)
+	i := l.groupIndex(groupID)
 	if i < 0 {
 		return os.ErrNotExist
 	}
-	f := &l.flights.Flights[i]
+	f := &l.groups.Groups[i]
 	if pin {
 		if _, ok := l.charts[chartID]; !ok {
 			return os.ErrNotExist
@@ -525,7 +534,7 @@ func (l *Library) setPin(flightID, chartID string, pin bool) error {
 	} else {
 		f.Pins = removeStr(f.Pins, chartID)
 	}
-	return l.saveFlightsLocked()
+	return l.saveGroupsLocked()
 }
 
 func removeStr(s []string, v string) []string {

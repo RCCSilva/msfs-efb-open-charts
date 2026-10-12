@@ -49,9 +49,9 @@ ol.guide { margin: 8px 0 0; padding-left: 20px; }
 .btn { display: inline-flex; align-items: center; }
 a.btn { text-decoration: none; }
 
-/* ---- v2: flight bar, library split, source pages */
-.flightbar { background: var(--card); border-bottom: 1px solid var(--line); padding: 8px 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.flightbar .lbl { color: var(--muted); }
+/* ---- v2: group bar, library split, source pages */
+.groupbar { background: var(--card); border-bottom: 1px solid var(--line); padding: 8px 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.groupbar .lbl { color: var(--muted); }
 .split { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
 @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
 .side { position: sticky; top: 118px; }

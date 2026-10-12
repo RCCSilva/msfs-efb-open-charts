@@ -15,7 +15,7 @@ One Go program (no cgo) that runs in the Windows tray:
   in-sim viewer;
 - a PDF importer (PDFium compiled to WebAssembly, run by wazero) that renders GeoPDF charts to PNG
   and extracts the georeference;
-- a library of charts with search, flights and pins;
+- a library of charts with search, groups and pins;
 - a SimConnect client (official `SimConnect.dll`, loaded at run time) for the live position;
 - an installer for the EFB app (an iframe that embeds the viewer) and an Inno Setup installer.
 
@@ -27,7 +27,7 @@ One Go program (no cgo) that runs in the Windows tray:
 | `core/internal/geo` | Projections (Transverse Mercator, Lambert Conformal Conic), affine fit |
 | `core/internal/pdfgeo` | Reads the `/VP` georeference of a GeoPDF (pdfcpu) |
 | `core/internal/importer` | Renders a PDF and writes the image + `chart.json` |
-| `core/internal/store` | Library on disk, search, flights and pins |
+| `core/internal/store` | Library on disk, search, groups and pins |
 | `core/internal/sources` | Chart sources: built-in `manual` and `decea-br` |
 | `core/internal/naming` | Name display, accent folding, type words (generic parts only) |
 | `core/internal/server` | HTTP handlers, import/inspect flow, lazy renderer, setup API |
