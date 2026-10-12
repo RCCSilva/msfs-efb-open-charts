@@ -100,3 +100,14 @@ nav .navlink:hover { background: var(--bg); text-decoration: none; }
 .bar.indet i { position: absolute; width: 35%; animation: oc-indet 1.1s ease-in-out infinite; }
 @keyframes oc-indet { 0% { left: -35%; } 100% { left: 100%; } }
 .bar i { transition: width .25s ease; }
+
+/* modal dialog */
+.modal { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, 0.45); display: flex;
+  align-items: center; justify-content: center; padding: 20px; }
+.modalbox { width: 100%; max-width: 520px; margin: 0; }
+
+/* QR codes of the local network */
+.qrgrid { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; }
+.qrcard { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; text-align: center; max-width: 210px; }
+.qrcard img { background: #fff; border-radius: 8px; display: block; margin: 0 auto 8px; }
+.urlbox { word-break: break-all; font-size: 12px; }

@@ -10,7 +10,8 @@ manager and in-sim moving map for Microsoft Flight Simulator 2024 (0.1.1 Open Be
 
 One Go program (no cgo) that runs in the Windows tray:
 
-- an HTTP server on `127.0.0.1:8080` (loopback only) serving the chart API, the manager UI and the
+- an HTTP server on `127.0.0.1:43210` by default (port and network access are in `settings.json`)
+  serving the chart API, the manager UI and the
   in-sim viewer;
 - a PDF importer (PDFium compiled to WebAssembly, run by wazero) that renders GeoPDF charts to PNG
   and extracts the georeference;
@@ -47,7 +48,7 @@ cd core; go vet ./...; go test ./...
 powershell -File installer\build.ps1 -Version 0.1.1
 
 # run for development, serving the UI from disk so web edits need no rebuild
-build\opencharts.exe -web core\web -data core\data2 -addr 127.0.0.1:8080 -no-tray
+build\opencharts.exe -web core\web -data core\data2 -no-tray
 ```
 
 Useful flags: `-fixed -lat N -lon N -hdg N` (no simulator), `-no-import`, `-no-tray`,
@@ -117,8 +118,17 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
 
 ## Security and policy
 
-- The server listens on loopback only and rejects foreign `Host` and `Origin` headers. Keep that
-  guard in front of every route. `/api/health` is the only endpoint with permissive CORS.
+- By default the server listens on loopback only and rejects foreign `Host` and `Origin` headers.
+  Keep the guard (`internal/server/access.go`) in front of every route; its rules are tested in
+  `access_test.go`. `/api/health` is the only endpoint with permissive CORS.
+- Other devices of the local network are served only when the user turns that on. They must come
+  from a private address, address the server by IP, and carry the key from the QR code (a cookie).
+  They never reach the system pages: `/api/setup*`, `/api/settings`, `/api/lan/*` and the package
+  reader. Add any new endpoint that changes the computer or reads arbitrary paths to
+  `localOnlyPath`.
+- The port and the network option can change while the program runs (`Server.Rebind`): never cache
+  the listen address; ask `Server.port()` / `LocalURL()`. The EFB app has the address written into
+  it at install time, so a port change must be followed by an EFB app update (the manager says so).
 - Endpoints that write outside the data folder (`/api/setup/*`) are limited to detected simulator
   folders and need an explicit user action in the UI.
 - **Never fetch from a chart provider automatically.** DECEA/AISWEB forbids automated collection

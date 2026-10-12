@@ -42,7 +42,7 @@
       thisFlight: 'Charts in this flight', noPinsHere: 'No charts pinned in this flight.', remove: 'Remove',
       viewWithMap: 'With map', viewChartOnly: 'Chart only', blendMap: 'Map', blendChart: 'Chart',
       blendTitle: 'How much of the chart shows over the map', otherGroup: 'Other',
-      prevChart: 'Previous chart', nextChart: 'Next chart'
+      prevChart: 'Scroll left', nextChart: 'Scroll right', closeChart: 'Close chart'
     },
     pt: {
       search: 'Buscar cartas: SBSP, ILS, sao paulo...',
@@ -64,7 +64,7 @@
       thisFlight: 'Cartas deste voo', noPinsHere: 'Nenhuma carta fixada neste voo.', remove: 'Tirar',
       viewWithMap: 'Com mapa', viewChartOnly: 'S\u00f3 a carta', blendMap: 'Mapa', blendChart: 'Carta',
       blendTitle: 'Quanto da carta aparece sobre o mapa', otherGroup: 'Outras',
-      prevChart: 'Carta anterior', nextChart: 'Pr\u00f3xima carta'
+      prevChart: 'Rolar para a esquerda', nextChart: 'Rolar para a direita', closeChart: 'Fechar carta'
     }
   };
 
@@ -81,9 +81,9 @@
   var viewChartBtn = el('view-chart');
   var opacityBox = el('opacity-box');
   var blendSteps = el('blend-steps');
+  var closeBtn = el('btn-close');
   var pinPrev = el('pin-prev');
   var pinNext = el('pin-next');
-  var pinCount = el('pin-count');
   var attribEl = el('attribution');
   var starBtn = el('btn-star');
   var simNoteEl = el('simnote');
@@ -525,7 +525,8 @@
   function openChart(id, fallback) {
     setStatus(t('loading'), 'warn');
     hidePanels();
-    getJson('/charts/' + encodeURIComponent(id) + '/chart.json', function (meta) {
+    // v=<time>: never trust a chart.json cached by an older server (it kept names for an hour)
+    getJson('/charts/' + encodeURIComponent(id) + '/chart.json?v=' + Date.now(), function (meta) {
       if (!meta) { loadFailed(id, fallback); return; }
       var img = new Image();
       img.onload = function () {
@@ -534,6 +535,7 @@
         setFollow(!debugAt);
         buildMap();
         renderPins();
+        updateCloseButton();
         saveState();
       };
       img.onerror = function () { loadFailed(id, fallback); };
@@ -561,6 +563,7 @@
       flightBtn.title = t('flight');
       if (!fl || !fl.pins.length) {
         pinned = [];
+        lastSignature = signatureOf(flights, []);
         renderPins();
         if (cb) cb();
         return;
@@ -570,8 +573,46 @@
         (list || []).forEach(function (c) { byId[c.id] = c; });
         pinned = [];
         fl.pins.forEach(function (id) { if (byId[id]) pinned.push(byId[id]); });   // pin order
+        lastSignature = signatureOf(flights, list || []);
+        syncActiveName();
         renderPins();
         if (cb) cb();
+      });
+    });
+  }
+
+  // A chart renamed or edited in the manager shows its new name here without reloading the page.
+  function syncActiveName() {
+    if (!active) return;
+    for (var i = 0; i < pinned.length; i++) {
+      if (pinned[i].id === active.meta.id && pinned[i].name && pinned[i].name !== active.meta.name) {
+        active.meta.name = pinned[i].name;
+        if (lastFix) showAircraft(lastFix);
+      }
+    }
+  }
+
+  // Cheap periodic check: reload the flight and its pinned charts only when something changed
+  // (names, pins, current flight), so the strip is not rebuilt for nothing.
+  var lastSignature = '';
+  function signatureOf(st, list) {
+    return st.current + '|' + JSON.stringify(st.flights.map(function (f) { return [f.id, f.name, f.pins]; })) + '|' +
+      JSON.stringify((list || []).map(function (c) { return [c.id, c.name]; }));
+  }
+  function softRefresh() {
+    // Not gated on document.hidden: inside the simulator the frame may report itself hidden
+    // even while it is on screen. Two tiny requests every 15 s are cheap.
+    if (lastSignature === '') return;   // nothing on screen yet
+    getJson('/api/flights', function (st) {
+      if (!st) return;
+      var cur = null;
+      for (var i = 0; i < st.flights.length; i++) if (st.flights[i].id === st.current) cur = st.flights[i];
+      var check = function (list) {
+        if (signatureOf(st, list) !== lastSignature) loadFlights();
+      };
+      if (!cur || !cur.pins.length) { check([]); return; }
+      getJson('/api/charts?limit=200&flight=' + encodeURIComponent(cur.id), function (list) {
+        if (list) check(list);
       });
     });
   }
@@ -658,12 +699,73 @@
     return -1;
   }
 
-  function stepChart(delta) {
-    if (!pinned.length) return;
-    var i = activeIndex();
-    var next = i < 0 ? (delta > 0 ? 0 : pinned.length - 1) : i + delta;
-    if (next < 0 || next >= pinned.length) return;
-    openChart(pinned[next].id);
+  // The arrows only move the strip so that every chart can be reached; choosing a chart is
+  // always a tap on the chart itself. Disabled at either end.
+  function updateStripArrows() {
+    var max = pinsEl.scrollWidth - pinsEl.clientWidth;
+    pinPrev.disabled = pinsEl.scrollLeft <= 1;
+    pinNext.disabled = pinsEl.scrollLeft >= max - 1;
+  }
+
+  // Eased scroll (about a quarter of a second) over roughly half the strip: short enough to
+  // follow with the eye, so the user sees that the strip is moving.
+  var stripAnim = null;
+  function scrollStrip(dir) {
+    if (stripAnim) window.cancelAnimationFrame(stripAnim);
+    var max = pinsEl.scrollWidth - pinsEl.clientWidth;
+    var from = pinsEl.scrollLeft;
+    var to = Math.max(0, Math.min(max, from + dir * Math.max(100, Math.round(pinsEl.clientWidth * 0.5))));
+    var t0 = null;
+    var DURATION = 260;
+    var frames = 0;
+    var done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      stripAnim = null;
+      pinsEl.scrollLeft = to;
+      updateStripArrows();
+    }
+    function step(ts) {
+      if (done) return;
+      frames += 1;
+      if (t0 === null) t0 = ts;
+      var k = Math.min(1, (ts - t0) / DURATION);
+      var eased = 1 - Math.pow(1 - k, 3);
+      pinsEl.scrollLeft = from + (to - from) * eased;
+      if (k < 1) {
+        stripAnim = window.requestAnimationFrame(step);
+      } else {
+        finish();
+      }
+    }
+    stripAnim = window.requestAnimationFrame(step);
+    // Frames are not delivered while the page reports itself hidden: do not leave the arrow
+    // dead, jump to the target instead.
+    window.setTimeout(function () { if (frames === 0) finish(); }, 150);
+    window.setTimeout(finish, DURATION + 400);
+  }
+
+  // Leave the chart on screen. A chart that is not pinned has no chip to tap, so this is the
+  // way out; the viewer remembers that nothing was open.
+  function closeChart() {
+    if (!active) return;
+    active = null;
+    lastKey = null;
+    store('chart', '');
+    if (!debugAt) request('PUT', '/api/viewer-state', { chart: '', mode: mode, lang: lang }, null);
+    try {
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname + '?mode=' + mode + '&lang=' + lang);
+      }
+    } catch (e) { /* ignore */ }
+    buildMap();
+    renderPins();
+    updateCloseButton();
+  }
+
+  function updateCloseButton() {
+    closeBtn.style.display = active ? '' : 'none';
   }
 
   // The star pins/unpins the chart on screen for the current flight.
@@ -674,15 +776,18 @@
     starBtn.title = on ? t('starUnpin') : t('starPin');
   }
 
+  // true while a chart is being opened by tapping its chip: the strip must not move then
+  var openedFromStrip = false;
+
   function renderPins() {
     updateStar();
+    var keepScroll = pinsEl.scrollLeft;
     clear(pinsEl);
     if (!pinned.length) {
       var hint = document.createElement('span');
       hint.className = 'hint';
       hint.textContent = t('noPins');
       pinsEl.appendChild(hint);
-      pinCount.textContent = '';
       pinPrev.disabled = true;
       pinNext.disabled = true;
       return;
@@ -697,28 +802,35 @@
       wrap.appendChild(lbl);
       g.items.forEach(function (c) {
         var isActive = !!active && active.meta.id === c.id;
-        var b = button('chip' + (isActive ? ' active' : ''), chipLabel(c), function () { openChart(c.id); });
+        var b = button('chip' + (isActive ? ' active' : ''), chipLabel(c), function () {
+          openedFromStrip = true;
+          openChart(c.id);
+        });
         b.title = label(c.name);
         if (isActive) activeChip = b;
         wrap.appendChild(b);
       });
       pinsEl.appendChild(wrap);
     });
-    var idx = activeIndex();
-    pinCount.textContent = (idx >= 0 ? (idx + 1) : '-') + '/' + pinned.length;
-    pinPrev.disabled = idx <= 0;
-    pinNext.disabled = idx >= pinned.length - 1;
-    // Keep the chart on screen visible inside the scrolling strip. Widths settle after layout and
-    // after the web font loads, so the position is applied now and again shortly after.
-    if (activeChip) {
+    // Same position as before the re-render: tapping a chip never moves the strip.
+    pinsEl.scrollLeft = keepScroll;
+    updateStripArrows();
+    // A chart opened some other way (search, first load) is brought into view, but only when it
+    // is not already visible. Widths settle after layout and after the web font loads, so this is
+    // checked again shortly after.
+    if (activeChip && !openedFromStrip) {
       var reveal = function () {
-        var left = activeChip.offsetLeft - 56;
-        pinsEl.scrollLeft = left > 0 ? left : 0;
+        var viewL = pinsEl.scrollLeft;
+        var viewR = viewL + pinsEl.clientWidth;
+        var l = activeChip.offsetLeft;
+        var r = l + activeChip.offsetWidth;
+        if (l < viewL + 4 || r > viewR - 4) pinsEl.scrollLeft = Math.max(0, l - 56);
       };
       reveal();
-      window.setTimeout(reveal, 60);
-      window.setTimeout(reveal, 500);
+      window.setTimeout(function () { reveal(); updateStripArrows(); }, 60);
+      window.setTimeout(function () { reveal(); updateStripArrows(); }, 500);
     }
+    openedFromStrip = false;
   }
 
   function renderResults(list) {
@@ -866,6 +978,10 @@
   qEl.placeholder = t('search');
   viewOverlayBtn.setAttribute('aria-label', t('viewWithMap'));
   viewChartBtn.setAttribute('aria-label', t('viewChartOnly'));
+  el('close-label').textContent = t('closeChart');
+  closeBtn.setAttribute('aria-label', t('closeChart'));
+  closeBtn.addEventListener('click', closeChart);
+  updateCloseButton();
   el('blend-map').textContent = t('blendMap');
   el('blend-chart').textContent = t('blendChart');
   blendSteps.title = t('blendTitle');
@@ -888,8 +1004,9 @@
   flightBtn.addEventListener('click', showFlights);
   viewOverlayBtn.addEventListener('click', function () { setMode('overlay'); });
   viewChartBtn.addEventListener('click', function () { setMode('chart'); });
-  pinPrev.addEventListener('click', function () { stepChart(-1); });
-  pinNext.addEventListener('click', function () { stepChart(1); });
+  pinPrev.addEventListener('click', function () { scrollStrip(-1); });
+  pinNext.addEventListener('click', function () { scrollStrip(1); });
+  pinsEl.addEventListener('scroll', updateStripArrows);
   el('btn-zoom-in').addEventListener('click', function () { map.zoomIn(1, { animate: false }); });
   el('btn-zoom-out').addEventListener('click', function () { map.zoomOut(1, { animate: false }); });
   followBtn.addEventListener('click', function () { setFollow(!follow); });
@@ -903,6 +1020,8 @@
   };
 
   if (params.q) { qEl.value = params.q; }
+  window.setInterval(softRefresh, 15000);
+
   function start(saved) {
     saved = saved || {};
     if (!params.mode && (saved.mode === 'chart' || saved.mode === 'overlay')) mode = saved.mode;
@@ -919,9 +1038,10 @@
     loadFlights(function () {
       if (params.q) runSearch();
       var want = params.chart || saved.chart || store('chart');
+      var closedByUser = !params.chart && saved.chart === '' && !!saved.mode;
       if (want) {
         openChart(want);
-      } else if (pinned.length) {
+      } else if (pinned.length && !closedByUser) {
         openChart(pinned[0].id);
       }
     });

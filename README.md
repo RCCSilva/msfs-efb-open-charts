@@ -43,8 +43,18 @@ This runs the tests, builds `build\opencharts.exe`, and produces
 To work on the web UI without rebuilding:
 
 ```powershell
-build\opencharts.exe -web core\web -data core\data2 -addr 127.0.0.1:8080
+build\opencharts.exe -web core\web -data core\data2
 ```
+
+## Port and other devices
+
+Open Charts listens on **port 43210** of this computer (a port other programs rarely use). You can
+change it in the manager (**Setup → Port and local network**); the EFB app is then told the new
+address with **Update**.
+
+In the same place you can allow **other devices on your Wi-Fi** (a tablet, a phone): turn it on and
+scan the QR code. Those devices can view and manage charts and flights, but never change this
+computer's settings, and they need the key carried by the QR code.
 
 ## Repository layout
 

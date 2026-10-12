@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
 )
 
@@ -29,7 +31,7 @@ func runSetupCommand(args []string) int {
 	fail := 0
 	switch args[0] {
 	case "install-efb":
-		url := "http://127.0.0.1:8080/"
+		url := "http://127.0.0.1:" + strconv.Itoa(settings.Load(defaultDataDir()).Port) + "/"
 		if len(args) > 1 {
 			url = args[1]
 		}

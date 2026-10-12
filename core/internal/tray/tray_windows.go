@@ -13,8 +13,8 @@ import (
 
 // Config describes the tray entry.
 type Config struct {
-	URL    string        // manager address, opened by click / "Open"
-	MapURL string        // map page (the in-sim viewer in a browser tab)
+	URL    func() string // manager address, opened by click / "Open" (asked when used: the port can change)
+	MapURL func() string // map page (the in-sim viewer in a browser tab)
 	Status func() string // short line shown in the menu (e.g. simulator state)
 	Quit   func()        // called when the user picks "Quit"; the tray exits afterwards
 }
@@ -28,7 +28,7 @@ func Run(c Config) {
 		systray.SetIcon(icon())
 		systray.SetTitle("Open Charts")
 		systray.SetTooltip("Open Charts")
-		systray.SetOnTapped(func() { Open(c.URL) })
+		systray.SetOnTapped(func() { Open(c.URL()) })
 
 		open := systray.AddMenuItem("Open manager / Abrir gerenciador", "")
 		openMap := systray.AddMenuItem("Open map / Abrir mapa", "")
@@ -49,9 +49,9 @@ func Run(c Config) {
 				select {
 				case <-t.C:
 				case <-open.ClickedCh:
-					Open(c.URL)
+					Open(c.URL())
 				case <-openMap.ClickedCh:
-					Open(c.MapURL)
+					Open(c.MapURL())
 				case <-quit.ClickedCh:
 					if c.Quit != nil {
 						c.Quit()

@@ -31,12 +31,12 @@
 
     <!-- Row 2: the pinned charts of the flight, grouped by airport, with previous / next -->
     <div class="strip">
-      <button id="pin-prev" type="button" class="chev" aria-label="Previous chart">
+      <button id="pin-prev" type="button" class="chev" aria-label="Scroll left">
         <svg viewBox="0 0 32 32"><path d="M20 6l-10 10 10 10"/></svg>
       </button>
-      <div id="pins" class="pins"></div>
-      <span id="pin-count" class="count"></span>
-      <button id="pin-next" type="button" class="chev" aria-label="Next chart">
+      <!-- The wrapper clips the scroller's own scrollbar, which must never be visible -->
+      <div class="pinswrap"><div id="pins" class="pins"></div></div>
+      <button id="pin-next" type="button" class="chev" aria-label="Scroll right">
         <svg viewBox="0 0 32 32"><path d="M12 6l10 10-10 10"/></svg>
       </button>
     </div>
@@ -66,6 +66,10 @@
 
   <!-- Display: how the chart is shown -->
   <div id="display" class="display">
+    <button id="btn-close" type="button" class="closebtn" aria-label="Close chart">
+      <svg viewBox="0 0 32 32"><path d="M8 8l16 16M24 8L8 24"/></svg>
+      <span id="close-label"></span>
+    </button>
     <div class="seg">
       <button id="view-overlay" type="button" class="segbtn" aria-label="With map">
         <svg viewBox="0 0 32 32"><path d="M16 5l11 6-11 6-11-6z"/><path d="M5 17l11 6 11-6"/><path d="M5 22l11 6 11-6"/></svg>

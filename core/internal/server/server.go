@@ -50,7 +50,8 @@ type Server struct {
 	tiles       *tileCache
 	jobs        *jobs.Manager
 	staged      stagedStore
-	addr        string
+	net         netState // listening, port and network access, see access.go
+	addr        string   // the address being listened on; guarded by net.mu
 }
 
 // New builds a server. newRenderer may be nil (import then returns 503).
@@ -68,7 +69,8 @@ func (s *Server) Handler() http.Handler {
 		// worth protecting, so it is the only endpoint that allows cross-origin reads.
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		p := s.position()
-		writeJSON(w, 200, map[string]any{"ok": true, "charts": s.lib.Count(), "importer": s.canImport(),
+		writeJSON(w, 200, map[string]any{"ok": true, "app": "open-charts", "local": isLocalRequest(r),
+			"charts": s.lib.Count(), "importer": s.canImport(),
 			"simConnected": p.Connected || p.Valid, "simulated": p.Source == "fixed"})
 	})
 	mux.HandleFunc("GET /api/position", s.handlePosition)
@@ -78,7 +80,7 @@ func (s *Server) Handler() http.Handler {
 	// charts
 	mux.HandleFunc("GET /api/charts", s.handleSearch)
 	mux.HandleFunc("GET /api/charts/{id}", s.handleChart)
-	mux.HandleFunc("PATCH /api/charts/{id}", s.handleRenameChart)
+	mux.HandleFunc("PATCH /api/charts/{id}", s.handleUpdateChart)
 	mux.HandleFunc("DELETE /api/charts/{id}", s.handleDeleteChart)
 	mux.HandleFunc("POST /api/import/inspect", s.handleInspect)
 	mux.HandleFunc("POST /api/import", s.handleImport)
@@ -95,6 +97,7 @@ func (s *Server) Handler() http.Handler {
 
 	s.registerSourceRoutes(mux)
 	s.registerSetupRoutes(mux)
+	s.registerAccessRoutes(mux)
 
 	// OpenStreetMap tiles (cached; the sim only talks to localhost over plain http)
 	mux.HandleFunc("GET /tiles/{z}/{x}/{file}", s.tiles.handle)
@@ -107,39 +110,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /manager/", noCache(http.StripPrefix("/manager/", http.FileServer(http.FS(web.Manager())))))
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/manager/", http.StatusFound) })
 
-	return guard(mux, s.addr)
+	return s.guard(mux)
 }
 
 // ------------------------------------------------------------------ middleware
-
-// guard rejects requests that do not look like they come from our own pages: a web page
-// open in the user's browser must not be able to drive this local API (DNS rebinding, CSRF).
-func guard(next http.Handler, addr string) http.Handler {
-	_, port, _ := strings.Cut(addr, ":")
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		host := strings.ToLower(r.Host)
-		if h, p, ok := strings.Cut(host, ":"); ok {
-			host = h
-			if port != "" && p != port {
-				http.Error(w, "forbidden host", http.StatusForbidden)
-				return
-			}
-		}
-		if host != "127.0.0.1" && host != "localhost" && host != "[::1]" {
-			http.Error(w, "forbidden host", http.StatusForbidden)
-			return
-		}
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			if o := r.Header.Get("Origin"); o != "" {
-				if !strings.HasPrefix(o, "http://127.0.0.1") && !strings.HasPrefix(o, "http://localhost") {
-					http.Error(w, "forbidden origin", http.StatusForbidden)
-					return
-				}
-			}
-		}
-		next.ServeHTTP(w, r)
-	})
-}
 
 func noCache(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -218,19 +192,28 @@ func (s *Server) handleChart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, c)
 }
 
-func (s *Server) handleRenameChart(w http.ResponseWriter, r *http.Request) {
+// handleUpdateChart changes the editable properties of a chart (icao, type, title, validity).
+// The name is generated from ICAO, type and title; a name in the body overrides that.
+// All validation lives in store.Library.Update.
+func (s *Server) handleUpdateChart(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name string `json:"name"`
+		ICAO     *string `json:"icao"`
+		Type     *string `json:"type"`
+		Title    *string `json:"title"`
+		Validity *string `json:"validity"`
+		Name     *string `json:"name"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, 400, err)
 		return
 	}
-	if err := s.lib.Rename(r.PathValue("id"), body.Name); err != nil {
+	c, err := s.lib.Update(r.PathValue("id"), store.Patch{
+		ICAO: body.ICAO, Type: body.Type, Title: body.Title, Validity: body.Validity, Name: body.Name,
+	})
+	if err != nil {
 		writeErr(w, statusFor(err), err)
 		return
 	}
-	c, _ := s.lib.Get(r.PathValue("id"))
 	writeJSON(w, 200, c)
 }
 
@@ -253,7 +236,10 @@ func (s *Server) handleChartFile(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	// A chart's name, ICAO, type, title and validity can be edited, and a chart can be imported
+	// again under the same id: the browser must revalidate (a cheap 304 on localhost) instead of
+	// showing a copy it kept for an hour.
+	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeFile(w, r, path)
 }
 

@@ -25,16 +25,21 @@ func (s *Server) exePath() string {
 	return p
 }
 
-func (s *Server) serverURL() string { return "http://" + s.addr + "/" }
+// serverURL is the address the EFB app must use: this computer, the current port.
+func (s *Server) serverURL() string { return s.LocalURL() }
 
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	installs := setup.Detect(s.exePath())
+	for i := range installs {
+		e := &installs[i].EFB
+		e.URLMismatch = e.Installed && e.ServerURL != "" && e.ServerURL != s.serverURL()
+	}
 	if installs == nil {
 		installs = []setup.Install{}
 	}
 	p := s.position()
 	writeJSON(w, 200, map[string]any{
-		"exe": s.exePath(), "dataDir": s.lib.Dir(), "addr": s.addr, "serverURL": s.serverURL(),
+		"exe": s.exePath(), "dataDir": s.lib.Dir(), "addr": s.listenAddr(), "serverURL": s.serverURL(),
 		"efbVersion": setup.EFBVersion, "installs": installs,
 		"sim": map[string]any{"source": p.Source, "connected": p.Connected || p.Valid, "receiving": p.Valid, "detail": p.Detail},
 	})
@@ -104,11 +109,17 @@ func (s *Server) handleAutoStart(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("unknown simulator installation"))
 		return
 	}
-	args := []string{"-data", s.lib.Dir(), "-addr", s.addr}
-	for i, a := range args {
-		if strings.ContainsAny(a, " \t") {
-			args[i] = `"` + a + `"`
+	// Only what differs from the defaults goes into EXE.xml: the port and the network option
+	// come from settings.json, so changing them in the manager needs no EXE.xml edit.
+	var args []string
+	s.net.mu.RLock()
+	defDir := s.net.defaultDataDir
+	s.net.mu.RUnlock()
+	if dir := s.lib.Dir(); dir != defDir {
+		if strings.ContainsAny(dir, " \t") {
+			dir = `"` + dir + `"`
 		}
+		args = []string{"-data", dir}
 	}
 	if err := setup.SetAutoStart(body.ExeXML, s.exePath(), args, body.Enabled); err != nil {
 		writeErr(w, 400, err)

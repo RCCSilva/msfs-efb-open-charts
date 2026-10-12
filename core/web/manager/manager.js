@@ -27,6 +27,18 @@
       tabCatalog: 'Visual charts (catalog)', tabPackage: 'Aerodromes (package)', tabFiles: 'Add files',
       stepsFiles: 'Add what you downloaded', capCatalog: 'Catalog', capPackage: 'Package', capLocate: 'By date', capUpload: 'Upload',
       about: 'About', setup: 'Setup', map: 'Map',
+      netTitle: 'Port and local network', portLabel: 'Port', apply: 'Apply', portApplied: 'Port changed',
+      portHelp: 'Default {n}. Change it if another program uses it. Afterwards update the EFB app and restart the simulator.',
+      portFixed: 'The address was set with -addr on the command line; these options are off.',
+      lanLabel: 'Other devices', lanOn: 'Allowed: tablet and phone on the same Wi-Fi can connect', lanOff: 'Only this computer',
+      lanHelp: 'Scan the QR code with the tablet or phone. They can view and manage charts and flights, but never change this computer.',
+      lanFirewall: 'If Windows asks about the firewall, allow Open Charts on private networks.',
+      lanNoAddress: 'No network address found. Connect to a Wi-Fi or Ethernet network.',
+      lanVirtual: 'virtual adapter', lanRotate: 'Generate a new access key', lanRotateConfirm: 'Devices already connected will have to scan the QR code again. Continue?',
+      stEfbUrl: 'The EFB app points to another address',
+      editChart: 'Edit properties', save: 'Save', cancel: 'Cancel', saved: 'Saved',
+      editHelp: 'The display name is generated from ICAO, type and title.',
+      editWarnSource: 'Source and georeference cannot be changed.',
       sUploading: 'Uploading the file', sAnalyzing: 'Reading the PDF and identifying the chart',
       sWaiting: 'Waiting for the previous file', sEngine: 'Starting the PDF engine (first import only)',
       sRender: 'Rendering and georeferencing the chart', sSave: 'Saving to the library',
@@ -78,6 +90,18 @@
       tabCatalog: 'Cartas visuais (catálogo)', tabPackage: 'Aeródromos (pacote)', tabFiles: 'Adicionar arquivos',
       stepsFiles: 'Adicione o que você baixou', capCatalog: 'Catálogo', capPackage: 'Pacote', capLocate: 'Por data', capUpload: 'Envio',
       about: 'Sobre', setup: 'Configuração', map: 'Mapa',
+      netTitle: 'Porta e rede local', portLabel: 'Porta', apply: 'Aplicar', portApplied: 'Porta alterada',
+      portHelp: 'Padrão {n}. Troque se outro programa usar. Depois, atualize o app do EFB e reinicie o simulador.',
+      portFixed: 'O endereço foi definido com -addr na linha de comando; estas opções ficam desativadas.',
+      lanLabel: 'Outros dispositivos', lanOn: 'Permitido: tablet e celular na mesma rede Wi-Fi podem conectar', lanOff: 'Somente este computador',
+      lanHelp: 'Leia o QR code com o tablet ou o celular. Eles veem e gerenciam cartas e voos, mas nunca alteram este computador.',
+      lanFirewall: 'Se o Windows perguntar sobre o firewall, permita o Open Charts em redes privadas.',
+      lanNoAddress: 'Nenhum endereço de rede encontrado. Conecte-se a uma rede Wi-Fi ou cabeada.',
+      lanVirtual: 'adaptador virtual', lanRotate: 'Gerar nova chave de acesso', lanRotateConfirm: 'Os dispositivos já conectados precisarão ler o QR code de novo. Continuar?',
+      stEfbUrl: 'O app do EFB aponta para outro endereço',
+      editChart: 'Editar propriedades', save: 'Salvar', cancel: 'Cancelar', saved: 'Salvo',
+      editHelp: 'O nome exibido é gerado a partir de ICAO, tipo e título.',
+      editWarnSource: 'A fonte e a georreferência não podem ser alteradas.',
       sUploading: 'Enviando o arquivo', sAnalyzing: 'Lendo o PDF e identificando a carta',
       sWaiting: 'Aguardando o arquivo anterior', sEngine: 'Iniciando o motor de PDF (só na primeira importação)',
       sRender: 'Renderizando e georreferenciando a carta', sSave: 'Salvando na biblioteca',
@@ -191,7 +215,10 @@
   async function render() {
     const r = parseRoute();
     const tab = r.name === 'source' ? 'sources' : r.name;
-    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'flights', 'setup', 'about'].map((id) =>
+    if (state.local === undefined) {
+      try { state.local = (await api('GET', '/api/health')).local !== false; } catch (e) { state.local = true; }
+    }
+    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'flights', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
       h('button', { class: id === tab ? 'on' : '', onclick: () => go('#' + id) }, t(id))).concat([
         // The map (same page the EFB shows) opens in its own tab, outside the simulator too.
         h('a', { class: 'navlink', href: '/viewer.html?lang=' + lang, target: '_blank', rel: 'noopener' }, t('map') + ' \u2197')]));
@@ -224,6 +251,47 @@
         const n = prompt(t('flightName'), `${t('flight')} ${state.flights.flights.length + 1}`);
         if (n && n.trim()) { await api('POST', '/api/flights', { name: n.trim() }); render(); }
       } }, '+ ' + t('newFlight')));
+  }
+
+  // ---- Edit a chart's properties. The server validates and generates the name; this only collects.
+  function editChart(c) {
+    const field = (label, val, ph) => {
+      const input = h('input', { type: 'text', value: val || '', placeholder: ph || '' });
+      return [h('label', { class: 'muted' }, label), input];
+    };
+    const [lI, icao] = field(t('icao'), c.icao, 'SBSP');
+    const [lT, ctype] = field(t('ctype'), c.type, 'IAC');
+    const [lTi, title] = field(t('ctitle'), c.title);
+    const [lV, validity] = field(t('validity'), c.validity, 'YYYY-MM-DD');
+    const err = h('div');
+    const close = () => overlay.remove();
+    const save = h('button', { class: 'btn primary', onclick: async () => {
+      save.disabled = true;
+      err.replaceChildren();
+      try {
+        await api('PATCH', '/api/charts/' + encodeURIComponent(c.id), {
+          icao: icao.value, type: ctype.value, title: title.value, validity: validity.value
+        });
+        close();
+        toast(t('saved'));
+        render();
+      } catch (e) {
+        err.replaceChildren(h('span', { class: 'badge bad' }, e.message));
+        save.disabled = false;
+      }
+    } }, t('save'));
+    const overlay = h('div', { class: 'modal', onclick: (e) => { if (e.target === overlay) close(); } },
+      h('div', { class: 'card modalbox' },
+        h('h3', null, t('editChart')),
+        h('div', { class: 'muted', style: 'margin-bottom:8px' }, c.name),
+        h('div', { class: 'formgrid' }, lI, icao, lT, ctype, lTi, title, lV, validity),
+        h('div', { class: 'muted' }, t('editHelp')),
+        h('div', { class: 'muted' }, t('editWarnSource')),
+        err,
+        h('div', { class: 'row end', style: 'margin-top:12px' },
+          h('button', { class: 'btn', onclick: close }, t('cancel')), save)));
+    document.body.appendChild(overlay);
+    icao.focus();
   }
 
   // ---- Library
@@ -282,10 +350,7 @@
             h('div', { class: 'menu' },
               h('a', { href: '/viewer.html?chart=' + encodeURIComponent(c.id) + '&mode=chart&lang=' + lang, target: '_blank' }, t('chartOnly')),
               h('a', { href: '/viewer.html?chart=' + encodeURIComponent(c.id) + '&mode=overlay&lang=' + lang, target: '_blank' }, t('onMap')),
-              h('button', { onclick: async () => {
-                const n = prompt(t('newName'), c.name);
-                if (n && n.trim()) { await api('PATCH', '/api/charts/' + encodeURIComponent(c.id), { name: n.trim() }); render(); }
-              } }, t('rename')),
+              h('button', { onclick: () => editChart(c) }, t('editChart')),
               h('button', { class: 'danger', onclick: async () => {
                 if (confirm(t('confirmDel'))) { await api('DELETE', '/api/charts/' + encodeURIComponent(c.id)); render(); }
               } }, t('del'))))));
@@ -726,6 +791,64 @@
       row(t('stSim'), simText),
       row(t('stData'), h('span', { class: 'muted' }, st.dataDir)))];
 
+  // ---- Local network and port. The server validates and applies; this only collects and shows.
+  async function networkCard(st) {
+    let net;
+    try { net = await api('GET', '/api/settings'); } catch (e) { return null; }
+    const body = h('div');
+    const portInput = h('input', { type: 'text', value: String(net.port), style: 'width:110px' });
+    const apply = h('button', { class: 'btn primary', disabled: net.fixed, onclick: async () => {
+      const p = parseInt(portInput.value, 10);
+      try {
+        await api('PUT', '/api/settings', { port: p });
+        toast(t('portApplied'));
+        // the page itself is served on the old port: go to the new address
+        const here = new URL(location.href);
+        here.port = String(p);
+        setTimeout(() => { location.href = here.toString(); }, 600);
+      } catch (e) { toast(e.message); }
+    } }, t('apply'));
+
+    const lanBtn = h('button', { class: 'btn sm' + (net.lan ? '' : ' primary'), disabled: net.fixed, onclick: async () => {
+      try { await api('PUT', '/api/settings', { lan: !net.lan }); toast(t('done')); } catch (e) { toast(e.message); }
+      renderSetup();
+    } }, net.lan ? t('btnDisable') : t('btnEnable'));
+
+    body.append(
+      h('div', { class: 'row setuprow' }, h('div', { class: 'setuplbl' }, t('portLabel')),
+        h('div', { class: 'grow' }, h('div', { class: 'row' }, portInput, apply)),
+      ),
+      h('div', { class: 'muted' }, t('portHelp').replace('{n}', String(net.defaultPort))),
+      ...(net.fixed ? [h('div', { class: 'badge warn' }, t('portFixed'))] : []),
+      h('div', { class: 'row setuprow' }, h('div', { class: 'setuplbl' }, t('lanLabel')),
+        h('div', { class: 'grow' }, net.lan ? h('span', null, h('span', { class: 'badge ok' }, '✓'), ' ', t('lanOn')) : h('span', { class: 'muted' }, t('lanOff'))),
+        lanBtn));
+
+    if (net.lan) {
+      body.append(h('div', { class: 'muted' }, t('lanHelp')), h('div', { class: 'muted' }, t('lanFirewall')));
+      const real = net.addresses.filter((a) => !a.virtual);
+      const list = real.length ? real : net.addresses;   // virtual adapters only when nothing else exists
+      if (!list.length) body.append(h('div', { class: 'badge warn' }, t('lanNoAddress')));
+      const wrap = h('div', { class: 'qrgrid' });
+      list.forEach((a) => wrap.append(h('div', { class: 'qrcard' },
+        h('img', { src: a.qr + '&t=' + Date.now(), alt: 'QR', width: 168, height: 168 }),
+        h('div', null, h('strong', null, a.ip)),
+        h('div', { class: 'muted' }, a.name + (a.virtual ? ' · ' + t('lanVirtual') : '')),
+        h('div', { class: 'muted urlbox' }, a.url))));
+      body.append(wrap,
+        h('div', { class: 'row', style: 'margin-top:10px' },
+          h('button', { class: 'btn sm', onclick: async () => {
+            if (!confirm(t('lanRotateConfirm'))) return;
+            try { await api('POST', '/api/lan/token'); toast(t('done')); } catch (e) { toast(e.message); }
+            renderSetup();
+          } }, t('lanRotate'))));
+    }
+    return h('div', { class: 'card' }, h('h3', null, t('netTitle')), body);
+  }
+
+    const netCard = await networkCard(st);
+    if (netCard) cards.push(netCard);
+
     async function act(fn, done) {
       try { await fn(); toast(done || t('done')); } catch (e) { toast(e.message); }
       renderSetup();
@@ -734,6 +857,7 @@
     for (const inst of st.installs) {
       const efb = inst.efb;
       const efbText = !efb.installed ? warn(efb.legacy ? t('stEfbLegacy') : t('stEfbNo')) :
+        efb.urlMismatch ? warn(t('stEfbUrl') + ': ' + efb.serverURL + ' → ' + st.serverURL) :
         efb.upToDate ? ok(t('stEfbOk') + ' (' + efb.version + ')') :
           warn(t('stEfbOld') + ' (' + efb.version + ' \u2192 ' + st.efbVersion + ')');
       const efbBtns = h('span', null,

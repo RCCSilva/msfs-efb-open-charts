@@ -28,7 +28,7 @@
 
   // 127.0.0.1 on purpose (not "localhost"): avoids IPv6/::1 resolution, and the
   // server only listens on 127.0.0.1. Change the port here AND in the server (PORT).
-  var SERVER_URL = 'http://127.0.0.1:8080/';
+  var SERVER_URL = 'http://127.0.0.1:43210/';
 
   // Page of the server shown in the frame: '' = base map (index.html),
   // 'charts.html' = aircraft over the georeferenced chart (charts/library).

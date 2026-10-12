@@ -7,6 +7,7 @@ require (
 	github.com/klippa-app/go-pdfium v1.21.3
 	github.com/pdfcpu/pdfcpu v0.16.2
 	golang.org/x/text v0.43.0
+	rsc.io/qr v0.2.0
 )
 
 require (

@@ -1,25 +1,32 @@
 // opencharts: local chart manager and in-sim viewer server.
 //
-//	opencharts [-data DIR] [-addr 127.0.0.1:8080] [-lat N -lon N -hdg N]
+//	opencharts [-data DIR] [-addr 127.0.0.1:PORT] [-fixed -lat N -lon N -hdg N]
 //
 // Serves the viewer for the MSFS EFB iframe, the manager UI, the chart API and the library.
 // The aircraft position comes from SimConnect; -fixed (with -lat/-lon/-hdg) uses a fixed test
-// position instead. "opencharts setup ..." is used by the installer.
+// position instead. The port and the access from other devices of the local network are options
+// of the manager (settings.json); -addr overrides them for development.
+// "opencharts setup ..." is used by the installer.
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/server"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/simconnect"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/tray"
@@ -33,12 +40,48 @@ func defaultDataDir() string {
 	return "opencharts-data"
 }
 
+// portOfInstalledEFB returns the port the installed EFB app is configured for, or 0.
+func portOfInstalledEFB() int {
+	exe, err := os.Executable()
+	if err != nil {
+		return 0
+	}
+	for _, in := range setup.Detect(exe) {
+		raw := setup.InstalledServerURL(in.Community)
+		if raw == "" {
+			continue
+		}
+		u, err := url.Parse(raw)
+		if err != nil {
+			continue
+		}
+		if p, err := strconv.Atoi(u.Port()); err == nil && settings.ValidatePort(p) == nil {
+			return p
+		}
+	}
+	return 0
+}
+
+// alreadyRunning asks whatever listens on the port whether it is Open Charts.
+func alreadyRunning(port string) bool {
+	c := http.Client{Timeout: 1500 * time.Millisecond}
+	resp, err := c.Get("http://127.0.0.1:" + port + "/api/health")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	var h struct {
+		App string `json:"app"`
+	}
+	return json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&h) == nil && h.App == "open-charts"
+}
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "setup" {
 		os.Exit(runSetupCommand(os.Args[2:]))
 	}
-	data := flag.String("data", defaultDataDir(), "data directory (library, flights, tile cache)")
-	addr := flag.String("addr", "127.0.0.1:8080", "listen address (keep it on 127.0.0.1)")
+	data := flag.String("data", defaultDataDir(), "data directory (library, flights, tile cache, settings)")
+	addrFlag := flag.String("addr", "", "listen address, overriding the settings (loopback only), for example 127.0.0.1:8080")
 	lat := flag.Float64("lat", -23.5505, "fixed aircraft latitude")
 	lon := flag.Float64("lon", -46.6333, "fixed aircraft longitude")
 	hdg := flag.Float64("hdg", 45, "fixed aircraft heading (true)")
@@ -49,11 +92,6 @@ func main() {
 	openAtStart := flag.Bool("open", false, "open the manager in the browser at start")
 	noImport := flag.Bool("no-import", false, "do not start the PDF importer (faster start)")
 	flag.Parse()
-
-	host, _, err := net.SplitHostPort(*addr)
-	if err != nil || (host != "127.0.0.1" && host != "localhost" && host != "::1") {
-		log.Fatalf("refusing to listen on %q: use a loopback address", *addr)
-	}
 
 	// Log to a file too: with the tray there is usually no console window.
 	_ = os.MkdirAll(*data, 0o755)
@@ -110,25 +148,62 @@ func main() {
 		}
 	}
 
-	managerURL := "http://" + *addr + "/"
-	ln, err := net.Listen("tcp", *addr)
-	if err != nil {
-		// Most likely Open Charts is already running: just bring up its manager.
-		log.Printf("cannot listen on %s (%v): already running? opening %s", *addr, err, managerURL)
-		tray.Open(managerURL)
-		return
-	}
-	srv := server.New(lib, factory, pos, *addr)
-	defer srv.Close()
-	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		if err := httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
-			log.Fatal(err)
+	// ---- where to listen: the settings, unless -addr says otherwise
+	cfg := settings.Load(*data)
+	if _, err := os.Stat(filepath.Join(*data, settings.FileName)); err != nil {
+		// First run with settings. Someone who installed an earlier version has the EFB app
+		// pointing at its port (8080): keep that port, so nothing breaks until they choose to move.
+		if p := portOfInstalledEFB(); p != 0 {
+			log.Printf("keeping port %d, the one the installed EFB app uses", p)
+			cfg.Port = p
 		}
-	}()
-	log.Printf("listening on %s", managerURL)
+		_ = cfg.Save(*data) // also keeps the generated key
+	}
+	fixedAddr := *addrFlag != ""
+	listenAddr := cfg.ListenAddr()
+	if fixedAddr {
+		host, _, err := net.SplitHostPort(*addrFlag)
+		if err != nil || (host != "127.0.0.1" && host != "localhost" && host != "::1") {
+			log.Fatalf("refusing to listen on %q with -addr: use a loopback address (the network option is in the manager)", *addrFlag)
+		}
+		listenAddr = *addrFlag
+	}
+	ln, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		_, port, _ := net.SplitHostPort(listenAddr)
+		if alreadyRunning(port) {
+			log.Printf("Open Charts is already running on port %s: opening its manager", port)
+			tray.Open("http://127.0.0.1:" + port + "/")
+			return
+		}
+		if fixedAddr {
+			log.Fatalf("cannot listen on %s: %v", listenAddr, err)
+		}
+		// Another program holds our port: take the next free one and remember it. The EFB app
+		// is told the new address from the manager (Setup).
+		ln = nil
+		for p := cfg.Port + 1; p < cfg.Port+50 && p <= 65535; p++ {
+			c2 := cfg
+			c2.Port = p
+			if l, e := net.Listen("tcp", c2.ListenAddr()); e == nil {
+				log.Printf("port %d is in use by another program: using %d", cfg.Port, p)
+				ln, cfg = l, c2
+				_ = cfg.Save(*data)
+				break
+			}
+		}
+		if ln == nil {
+			log.Fatalf("cannot listen on %s: %v", listenAddr, err)
+		}
+	}
+
+	srv := server.New(lib, factory, pos, ln.Addr().String())
+	srv.UseSettings(*data, defaultDataDir(), cfg, fixedAddr)
+	defer srv.Close()
+	srv.Serve(ln)
+	log.Printf("listening on %s (network access: %v)", ln.Addr(), cfg.LAN && !fixedAddr)
 	if *openAtStart {
-		tray.Open(managerURL)
+		tray.Open(srv.LocalURL())
 	}
 
 	if *noTray {
@@ -146,10 +221,15 @@ func main() {
 		}
 		return "MSFS: waiting for the simulator"
 	}
-	tray.Run(tray.Config{URL: managerURL, MapURL: managerURL + "viewer.html", Status: status, Quit: func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_ = httpSrv.Shutdown(ctx)
-	}})
+	tray.Run(tray.Config{
+		URL:    srv.LocalURL,
+		MapURL: func() string { return srv.LocalURL() + "viewer.html" },
+		Status: status,
+		Quit: func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			_ = srv.Shutdown(ctx)
+		},
+	})
 	log.Printf("bye")
 }

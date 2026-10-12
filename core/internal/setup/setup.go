@@ -42,11 +42,15 @@ type Install struct {
 
 // EFB describes the state of the EFB app in a Community folder.
 type EFB struct {
-	Installed bool   `json:"installed"`
-	Legacy    bool   `json:"legacy"` // the old "Local Moving Map" package is present
-	Version   string `json:"version,omitempty"`
-	UpToDate  bool   `json:"upToDate"`
-	Path      string `json:"path"`
+	Installed bool `json:"installed"`
+	Legacy    bool `json:"legacy"` // the old "Local Moving Map" package is present
+	// ServerURL is the address written into the installed app. If it differs from where the
+	// server really is (the port changed), the app cannot reach it until it is updated.
+	ServerURL   string `json:"serverURL,omitempty"`
+	URLMismatch bool   `json:"urlMismatch"`
+	Version     string `json:"version,omitempty"`
+	UpToDate    bool   `json:"upToDate"`
+	Path        string `json:"path"`
 }
 
 var installedPathRe = regexp.MustCompile(`(?m)^\s*InstalledPackagesPath\s+"([^"]+)"`)
@@ -99,6 +103,7 @@ func EFBState(community string) EFB {
 		return st
 	}
 	st.Installed = true
+	st.ServerURL = readServerURL(dir)
 	var m struct {
 		Version string `json:"package_version"`
 	}
@@ -120,7 +125,7 @@ func ValidCommunity(p string) error {
 }
 
 // InstallEFB writes the app into community/local-moving-map-efb. serverURL (e.g.
-// "http://127.0.0.1:8080/") is written into the app's configuration.
+// "http://127.0.0.1:43210/") is written into the app's configuration.
 func InstallEFB(community, serverURL string) error {
 	if err := ValidCommunity(community); err != nil {
 		return err
@@ -281,4 +286,32 @@ func SetAutoStart(exeXML, exePath string, args []string, enable bool) error {
 		return err
 	}
 	return os.Rename(tmp, exeXML)
+}
+
+var serverURLRe = regexp.MustCompile(`var SERVER_URL = '([^']*)';`)
+
+// InstalledServerURL returns the address written into the EFB app installed in a Community
+// folder, whether it is the current package or the one of the earlier "Local Moving Map" name.
+func InstalledServerURL(community string) string {
+	if u := readServerURL(filepath.Join(community, EFBPackageName)); u != "" {
+		return u
+	}
+	return readServerURLFile(filepath.Join(community, legacyPackageName,
+		"html_ui", "efb_ui", "efb_apps", "LocalMovingMap", "LocalMovingMap.js"))
+}
+
+// readServerURL returns the SERVER_URL written into the installed EFB app ("" if unreadable).
+func readServerURL(packageDir string) string {
+	return readServerURLFile(filepath.Join(packageDir, filepath.FromSlash(efbAppDir), "OpenCharts.js"))
+}
+
+func readServerURLFile(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	if m := serverURLRe.FindSubmatch(b); m != nil {
+		return string(m[1])
+	}
+	return ""
 }

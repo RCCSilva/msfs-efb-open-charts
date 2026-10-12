@@ -4,8 +4,8 @@ package tray
 
 // Config describes the tray entry (unused outside Windows).
 type Config struct {
-	URL    string
-	MapURL string
+	URL    func() string
+	MapURL func() string
 	Status func() string
 	Quit   func()
 }

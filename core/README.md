@@ -7,7 +7,7 @@ searchable, pins them per flight, and serves a viewer that runs inside the MSFS 
 ## Run
 
 ```
-opencharts.exe                      # http://127.0.0.1:8080/  (manager)  /viewer.html (in-sim page)
+opencharts.exe                      # http://127.0.0.1:43210/  (manager)  /viewer.html (in-sim page)
 opencharts.exe -data D:\charts      # library location (default %LOCALAPPDATA%\OpenCharts)
 opencharts.exe -fixed -lat -23.62 -lon -46.65 -hdg 170   # no simulator: fixed aircraft position
 opencharts.exe -simconnect-dll "C:\...\SimConnect.dll"   # explicit DLL (default: MSFS SDK folders)

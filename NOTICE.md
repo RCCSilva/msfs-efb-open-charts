@@ -10,6 +10,7 @@ each under its own license.
 | [wazero](https://github.com/tetratelabs/wazero) | WebAssembly runtime without cgo | Apache-2.0 |
 | [pdfcpu](https://github.com/pdfcpu/pdfcpu) | Reading PDF structure (georeference) | Apache-2.0 |
 | [fyne.io/systray](https://github.com/fyne-io/systray) | System tray icon | Apache-2.0 |
+| [rsc.io/qr](https://pkg.go.dev/rsc.io/qr) | QR code of the local-network address | BSD-3-Clause |
 | [golang.org/x/text](https://pkg.go.dev/golang.org/x/text) | Text normalisation (accents) | BSD-3-Clause |
 | [Leaflet](https://leafletjs.com/) | Map in the viewer | BSD-2-Clause |
 | [Noto Sans](https://github.com/notofonts/latin-greek-cyrillic) | Font of the in-sim viewer (`core/web/sim/fonts`) | SIL Open Font License 1.1 |
