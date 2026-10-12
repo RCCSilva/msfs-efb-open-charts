@@ -16,8 +16,6 @@
 
   <!-- A black band as tall as the simulator tablet's own header: nothing is drawn under it. -->
   <div class="topband"></div>
-  <!-- The simulation-only notice sits at the lower right, always visible. -->
-  <div id="simnote" class="simnote"></div>
 
   <!-- Clean view: hides every control, so only the chart or the map is left. Always visible. -->
   <button id="btn-clean" type="button" class="cleanbtn" aria-label="Hide controls">
@@ -100,7 +98,12 @@
     </button>
   </div>
 
-  <div id="attribution" class="attribution">&copy; OpenStreetMap contributors</div>
+  <!-- Lower right corner, at most 30% of the width (the tablet's own menu is below): the map credit and
+       the simulation-only notice, which must always be visible. -->
+  <div class="brcorner">
+    <div id="attribution" class="attribution">&copy; OpenStreetMap contributors</div>
+    <div id="simnote" class="simnote"></div>
+  </div>
 
   <script src="/geo.js"></script>
   <script src="/viewer.js"></script>
