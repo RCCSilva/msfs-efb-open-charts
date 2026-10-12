@@ -67,6 +67,11 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   (`var`, no arrow functions, no `fetch`, no template literals), use XHR, SVG icons only, no CSS
   animations or 3D transforms. Leaflet runs with `L_DISABLE_3D = true`. Defer layout until the
   viewport has a size (the iframe can be 0×0 at load).
+  Measured on a real simulator (the viewer reports it; see Setup → "Viewer browsers"):
+  `CoherentGT/2.0` with a Chrome 49 engine, **no WebGL and no WebGL2**, pixel ratio 1, an EFB
+  viewport of about 468×696 CSS px, and touch events reported. So the map must be **raster**:
+  vector tiles (MapLibre, OpenFreeMap, MapTiler vector styles) cannot be drawn in the simulator;
+  they would need to be rasterised on the server. Phones and tablets do have WebGL.
 - **Manager UI (`core/web/manager`):** modern plain JS, no build step, no framework. Never use
   `innerHTML` with data; build nodes with the `h()` helper and `textContent`. Every user-visible
   string goes through the pt/en table.
