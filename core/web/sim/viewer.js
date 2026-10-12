@@ -1205,6 +1205,18 @@
     snapshot.h_frames = frames;
     snapshot.h_maxTimerGapMs = Math.round(maxGap);
     snapshot.h_hidden = document.hidden ? 1 : 0;
+    // What this browser really does with the CSS the map library uses (not what its version says).
+    var probe = document.createElement('div');
+    probe.style.mixBlendMode = 'plus-lighter';
+    snapshot.h_plusLighterAccepted = probe.style.mixBlendMode === 'plus-lighter' ? 1 : 0;
+    probe.style.mixBlendMode = 'multiply';
+    snapshot.h_blendModesKnown = probe.style.mixBlendMode === 'multiply' ? 1 : 0;
+    snapshot.h_cssSupportsApi = (window.CSS && typeof window.CSS.supports === 'function') ? 1 : 0;
+    var oneTile = document.querySelector('#map img.leaflet-tile');
+    if (oneTile) {
+      var bm = window.getComputedStyle(oneTile).mixBlendMode;
+      snapshot.h_tileBlendNormal = bm === 'normal' ? 1 : 0;
+    }
     var pane = document.querySelector('#map .leaflet-map-pane');
     if (pane) {
       var pr = pane.getBoundingClientRect();
