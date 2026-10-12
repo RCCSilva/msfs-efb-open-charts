@@ -4,7 +4,7 @@ A local aeronautical chart manager and in-sim moving map for **Microsoft Flight 
 
 > **For flight simulation only. Use in real-world aviation is prohibited.**
 
-Open Charts turns georeferenced chart PDFs (GeoPDF) into searchable, per-flight chart sets and
+Open Charts turns georeferenced chart PDFs (GeoPDF) into searchable chart groups and
 shows them inside the simulator's EFB, with your aircraft's live position on the chart.
 
 ## Features
@@ -13,8 +13,11 @@ shows them inside the simulator's EFB, with your aircraft's live position on the
   aircraft can be placed on it. No cgo, no external tools.
 - **Searchable library.** Find charts by ICAO, type or words (`sbsp`, `ils 17`, `sao paulo`).
   Names are generated from the file and the chart (`SBSP · IAC · ILS X RWY 17R`) and can be edited.
-- **Pinned charts per flight.** Keep a set of charts for each flight and switch with one tap.
-- **Two viewer modes.** The chart overlaid on OpenStreetMap, or the chart alone — one toggle.
+- **Chart groups.** Pin charts into groups (one per flight, or origin / destination / route / alternate:
+  your call) and switch groups with one tap. The viewer shows one group at a time.
+- **Two viewer modes.** The chart overlaid on OpenStreetMap, or the chart alone — one toggle. A
+  regional zoom (about 30 km around the aircraft), a clean view that hides every control, and a
+  choice of aircraft symbol (plane or helicopter, in your colour).
 - **Live position** from the simulator through SimConnect.
 - **Chart sources.** *My PDFs* (built in) and *DECEA / AISWEB* (Brazil). The app never downloads
   from a provider by itself: it guides you to the official pages and recognises what you download.
