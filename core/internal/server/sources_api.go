@@ -2,9 +2,11 @@ package server
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +25,7 @@ func (s *Server) registerSourceRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/jobs/{id}", s.handleJob)
 	mux.HandleFunc("GET /api/inbox", s.handleInbox)
 	mux.HandleFunc("POST /api/inbox/scan", s.handleInboxScan)
+	mux.HandleFunc("POST /api/inbox/upload", s.handleInboxUpload)
 }
 
 // catalogRow is a catalog item plus whether it is already in the library.
@@ -280,4 +283,89 @@ func (s *Server) handleInboxScan(w http.ResponseWriter, r *http.Request) {
 	})
 	snap, _ := s.jobs.Get(job.ID())
 	writeJSON(w, 202, map[string]any{"job": snap, "zips": zips})
+}
+
+// maxInboxUpload bounds one uploaded file: a chart is a few MB, a full package some hundreds.
+const maxInboxUpload = 2 << 30
+
+var unsafeNameChars = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
+
+// inboxName turns a client file name into one safe to create in the inbox: its base name only, no
+// characters Windows refuses, and a .pdf or .zip extension. It returns "" for anything else.
+func inboxName(raw string) string {
+	name := raw
+	if i := strings.LastIndexAny(name, `/\`); i >= 0 {
+		name = name[i+1:]
+	}
+	name = strings.TrimSpace(unsafeNameChars.ReplaceAllString(name, "_"))
+	name = strings.Trim(name, ". ")
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".pdf", ".zip":
+		if len(name) > 4 && len(name) <= 200 {
+			return name
+		}
+	}
+	return ""
+}
+
+// handleInboxUpload receives one PDF or ZIP and keeps it in the inbox folder, so what the user
+// downloaded can be added from the browser. The body is streamed to disk (a package is big).
+// The answer says where the file is, so the UI can read the package or import the PDF.
+func (s *Server) handleInboxUpload(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxInboxUpload)
+	mr, err := r.MultipartReader()
+	if err != nil {
+		writeErr(w, 400, errors.New("expected a multipart upload"))
+		return
+	}
+	for {
+		part, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		if part.FormName() != "file" {
+			continue
+		}
+		name := inboxName(part.FileName())
+		if name == "" {
+			writeErr(w, 400, errors.New("only .pdf and .zip files can be added"))
+			return
+		}
+		dir := s.inboxDir()
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			writeErr(w, 500, err)
+			return
+		}
+		dst := filepath.Join(dir, name)
+		tmp := dst + ".part"
+		f, err := os.Create(tmp)
+		if err != nil {
+			writeErr(w, 500, err)
+			return
+		}
+		n, err := io.Copy(f, part)
+		cerr := f.Close()
+		if err == nil {
+			err = cerr
+		}
+		if err == nil {
+			err = os.Rename(tmp, dst)
+		}
+		if err != nil {
+			_ = os.Remove(tmp)
+			writeErr(w, 500, err)
+			return
+		}
+		kind := "pdf"
+		if strings.EqualFold(filepath.Ext(name), ".zip") {
+			kind = "zip"
+		}
+		writeJSON(w, 201, map[string]any{"name": name, "path": dst, "kind": kind, "size": n})
+		return
+	}
+	writeErr(w, 400, errors.New("no file in the request"))
 }

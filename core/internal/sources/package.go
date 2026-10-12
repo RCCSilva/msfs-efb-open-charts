@@ -75,7 +75,8 @@ func openDeceaPackage(path string) (*PackageInfo, error) {
 	}
 	air := map[string]*Airport{}
 	for _, f := range zr.File {
-		m := memberRe.FindStringSubmatch(f.Name)
+		// some Windows tools write the folders with a backslash; the member keeps its real name
+		m := memberRe.FindStringSubmatch(strings.ReplaceAll(f.Name, "\\", "/"))
 		if m == nil {
 			continue
 		}

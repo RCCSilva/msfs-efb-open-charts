@@ -18,6 +18,7 @@ const (
 	deceaPolicyURL = "https://ajuda.decea.mil.br/app/uploads/2019/04/Pol%C3%ADtica-de-Uso-POR.pdf"
 	deceaBase      = "https://aisweb.decea.mil.br/cartas/visuais/"
 	deceaHub       = "https://aisweb.decea.mil.br/?i=cartas&p=visuais"
+	deceaCharts    = "https://aisweb.decea.mil.br/?i=cartas" // the charts page: it has the "Pacote completo" button
 	deceaPackage   = "https://static-aisweb.decea.mil.br/cartas/pacote/pacote-full-%s.zip"
 	deceaCatalogAt = "2026-10-11"
 )
@@ -30,7 +31,7 @@ type decea struct{}
 func (decea) Info() Info {
 	return Info{
 		ID:       "decea-br",
-		Homepage: deceaHub,
+		Homepage: deceaCharts,
 		Name:     Text{PT: "DECEA / AISWEB (Brasil)", EN: "DECEA / AISWEB (Brazil)"},
 		Description: Text{
 			PT: "Cartas aeronáuticas oficiais do Brasil. O aplicativo guia você até os arquivos; o download é feito por você.",
@@ -47,9 +48,10 @@ func (decea) Info() Info {
 			},
 		},
 		Guide: []Text{
-			{PT: "Para cartas visuais (REA, WAC...), use o catálogo: cada item abre a página oficial.", EN: "For visual charts (REA, WAC...), use the catalog: each item opens the official page."},
-			{PT: "Para aeródromos (ADC, IAC, SID, STAR...), baixe o pacote completo do ciclo AIRAC no AISWEB.", EN: "For aerodromes (ADC, IAC, SID, STAR...), download the full package of the AIRAC cycle from AISWEB."},
-			{PT: "Informe o arquivo .zip baixado: o aplicativo lista os aeródromos e você escolhe o que importar.", EN: "Point the app to the downloaded .zip: it lists the aerodromes and you choose what to import."},
+			{PT: "Abra a página de cartas do AISWEB (link abaixo). Nela há o botão \"Pacote completo\", com todas as cartas de aeródromo do ciclo (ADC, IAC, SID, STAR...), e as cartas visuais (REA, WAC...).", EN: "Open the AISWEB charts page (link below). It has a \"Pacote completo\" (full package) button with all the aerodrome charts of the cycle (ADC, IAC, SID, STAR...), and the visual charts (REA, WAC...)."},
+			{PT: "Você pode baixar o pacote completo (.zip) ou as cartas uma a uma (PDF). O aplicativo entende os dois.", EN: "You can download the full package (.zip) or the charts one by one (PDF). The app understands both."},
+			{PT: "Coloque o que baixou na área \"Adicione o que você baixou\", logo abaixo. Os PDFs são identificados e importados sozinhos; de um .zip você escolhe os aeródromos.", EN: "Put what you downloaded in the \"Add what you downloaded\" area just below. PDFs are recognised and imported by themselves; from a .zip you choose the aerodromes."},
+			{PT: "Tudo fica salvo apenas no seu computador.", EN: "Everything stays on your computer only."},
 		},
 	}
 }

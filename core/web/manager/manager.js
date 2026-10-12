@@ -13,9 +13,11 @@
       thisGroup: 'Charts in this group', noPins: 'Nothing here yet. Use "Add to group" in the library.',
       noCharts: 'No charts yet. Open Sources to add some.', addCharts: 'Add charts (Sources)',
       current: 'Current', makeCurrent: 'Use this group', pinnedN: 'pinned',
-      dropPdf: 'Drop here the PDFs you downloaded from this source (several at once). Known files are named and imported automatically. Or', choose: 'choose files',
-      inbox: 'Inbox folder', inboxHelp: 'Files placed in this folder are picked up when you click the button.',
-      importInbox: 'Import PDFs from the inbox', noInbox: 'The inbox is empty.',
+      dropPdf: 'Drop here what you downloaded: PDFs (several at once) and/or a .zip package. Known files are named and imported automatically. Or', choose: 'choose files',
+      linksTitle: 'Official links', linkHub: 'AISWEB: charts page', linkHubNote: 'click "Pacote completo" for the full package (.zip)', exVisual: 'Example of a visual chart',
+      pkgFrom: 'Package', pkgChoose: 'Choose the aerodromes to import.', pkgNone: 'Nothing of this package was recognised.',
+      inbox: 'Inbox folder', inboxHelp: 'What you add here stays in this folder, on this computer. PDFs are imported when you click the button; for a .zip, read it and choose the aerodromes.',
+      importInbox: 'Import the PDFs of the inbox', noInbox: 'The inbox is empty.',
       imported: 'imported', skipped: 'skipped', failed: 'failed', done: 'Done', error: 'Error',
       builtin: 'Built in', noAuto: 'No automatic download', policyLink: 'Usage policy', official: 'Official page',
       howTo: 'How to get charts from this source', locate: 'Where to get the package',
@@ -87,9 +89,11 @@
       thisGroup: 'Cartas deste grupo', noPins: 'Nada aqui ainda. Use "Adicionar ao grupo" na biblioteca.',
       noCharts: 'Nenhuma carta ainda. Abra Fontes para adicionar.', addCharts: 'Adicionar cartas (Fontes)',
       current: 'Atual', makeCurrent: 'Usar este grupo', pinnedN: 'fixadas',
-      dropPdf: 'Solte aqui os PDFs que você baixou desta fonte (vários de uma vez). Os arquivos conhecidos são nomeados e importados automaticamente. Ou', choose: 'escolha arquivos',
-      inbox: 'Pasta de entrada', inboxHelp: 'Arquivos colocados nesta pasta são importados quando você clicar no botão.',
-      importInbox: 'Importar PDFs da pasta de entrada', noInbox: 'A pasta de entrada está vazia.',
+      dropPdf: 'Solte aqui o que você baixou: PDFs (vários de uma vez) e/ou um pacote .zip. Arquivos conhecidos são nomeados e importados automaticamente. Ou', choose: 'escolha os arquivos',
+      linksTitle: 'Links oficiais', linkHub: 'AISWEB: página de cartas', linkHubNote: 'clique em "Pacote completo" para baixar o pacote (.zip)', exVisual: 'Exemplo de carta visual',
+      pkgFrom: 'Pacote', pkgChoose: 'Escolha os aeródromos que quer importar.', pkgNone: 'Nada deste pacote foi reconhecido.',
+      inbox: 'Pasta de entrada', inboxHelp: 'O que você adiciona aqui fica nesta pasta, no seu computador. Os PDFs são importados quando você clicar no botão; de um .zip, leia o pacote e escolha os aeródromos.',
+      importInbox: 'Importar os PDFs da pasta de entrada', noInbox: 'A pasta de entrada está vazia.',
       imported: 'importadas', skipped: 'ignoradas', failed: 'com erro', done: 'Concluído', error: 'Erro',
       builtin: 'Embutida', noAuto: 'Sem download automático', policyLink: 'Política de uso', official: 'Página oficial',
       howTo: 'Como obter cartas desta fonte', locate: 'Onde obter o pacote',
@@ -434,36 +438,41 @@
     if (!s) { view.replaceChildren(h('div', { class: 'card' }, 'Unknown source')); return; }
     const caps = s.capabilities || [];
     const inbox = await api('GET', '/api/inbox');
-    const sections = [];
-    const content = h('div');
 
+    // 1. who the source is and how to get its charts (the guide is the source's own, in order)
     const head = h('div', { class: 'card' },
       h('a', { class: 'back', href: '#sources' }, t('back')),
       h('div', { class: 'row' },
         h('h2', { class: 'grow', style: 'margin:0' }, tx(s.name)),
         s.builtin ? h('span', { class: 'badge' }, t('builtin')) : null,
         !s.policy.automatedFetch && !s.builtin ? h('span', { class: 'badge warn' }, t('noAuto')) : null,
-        s.policy.url ? h('a', { href: s.policy.url, target: '_blank', rel: 'noreferrer' }, t('policyLink')) : null,
-        s.homepage ? h('a', { href: s.homepage, target: '_blank', rel: 'noreferrer' }, t('official')) : null),
+        s.policy.url ? h('a', { href: s.policy.url, target: '_blank', rel: 'noreferrer' }, t('policyLink')) : null),
       h('div', { class: 'muted' }, tx(s.description)),
       h('div', { class: 'muted' }, tx(s.policy.notes)),
       s.guide && s.guide.length ? h('div', null, h('h3', { style: 'margin-top:12px' }, t('howTo')),
         h('ol', { class: 'steps' }, s.guide.map((g) => h('li', null, tx(g))))) : null);
 
-    if (caps.includes('catalog')) sections.push(['catalog', t('tabCatalog'), () => catalogPanel(s)]);
-    if (caps.includes('package')) sections.push(['package', t('tabPackage'), () => packagePanel(s, inbox, true)]);
-    const filesCard = filesPanel(s, inbox);
+    // 2. official links with examples: the page of the source, one visual chart, the package of the cycle.
+    // They only open the official site; the file is downloaded by the user.
+    const links = h('div', { class: 'card' }, h('h3', null, t('linksTitle')));
+    const linkRow = (label, href, note, unverified) => h('div', { class: 'row' },
+      h('a', { href, target: '_blank', rel: 'noreferrer' }, label),
+      note ? h('span', { class: 'muted' }, note) : null,
+      unverified ? h('span', { class: 'badge warn' }, t('unverified')) : null);
+    if (s.homepage) links.appendChild(linkRow(t('linkHub'), s.homepage, t('linkHubNote')));
+    // each request answers with its rows; they are added in a fixed order whatever arrives first
+    const none = () => [];
+    const visual = (kind) => caps.includes('catalog')
+      ? api('GET', '/api/sources/' + s.id + '/catalog?limit=1&type=' + kind).then((r) =>
+        r.items.map((it) => linkRow(t('exVisual') + ' ' + it.type + ': ' + it.name, it.url, it.file))).catch(none)
+      : Promise.resolve([]);
+    const groups = await Promise.all([visual('REA'), visual('WAC')]);
+    const rows = groups.flat();
+    rows.forEach((r) => links.appendChild(r));
+    const linksShown = !!s.homepage || rows.length > 0;
 
-    let active = sections.length ? sections[0][0] : '';
-    const seg = h('div', { class: 'seg' });
-    async function show(key) {
-      active = key;
-      seg.replaceChildren(...sections.map(([k, label]) => h('button', { class: k === active ? 'on' : '', onclick: () => show(k) }, label)));
-      content.replaceChildren(await sections.find((x) => x[0] === key)[2]());
-    }
-    if (!sections.length) { view.replaceChildren(head, filesCard); return; }
-    view.replaceChildren(head, filesCard, seg, content);
-    await show(active);
+    // 3. what the user downloaded goes here, PDFs and packages alike
+    view.replaceChildren(head, ...(linksShown ? [links] : []), filesPanel(s, inbox));
   }
 
   // Upload PDFs on behalf of a source (recognition and naming use that source's rules).
@@ -549,25 +558,6 @@
     throw e;
   }
 
-  async function uploadFiles(source, files, log, extra) {
-    for (const f of files) {
-      const row = progressRow(f.name);
-      log.appendChild(row.el);
-      const fd = new FormData();
-      fd.append('file', f);
-      fd.append('source', source);
-      fd.append('async', '1');
-      for (const key of Object.keys(extra || {})) if (extra[key]) fd.append(key, extra[key]);
-      try {
-        const snap = await xhrPost('/api/import', fd, (p) => row.update(t('sUploading'), p), () => row.update(t('sAnalyzing'), null));
-        const item = await runImport(null, row, Promise.resolve(snap));
-        row.ok(item.name);
-      } catch (e) {
-        if (e.skipped) row.warn(f.name + ': ' + e.message); else row.fail(f.name + ': ' + e.message);
-      }
-    }
-  }
-
   // Dropped PDFs are inspected first; the user confirms or edits what was detected.
   function reviewCard(s, ins) {
     const sg = ins.suggestion;
@@ -616,13 +606,32 @@
 
   function filesPanel(s, inbox) {
     const reviews = h('div');
+    const packages = h('div');
     const drop = h('div', { class: 'drop' });
-    const file = h('input', { type: 'file', accept: '.pdf,application/pdf', multiple: true, hidden: true });
+    const file = h('input', { type: 'file', accept: '.pdf,.zip,application/pdf,application/zip', multiple: true, hidden: true });
     drop.append(t('dropPdf') + ' ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); file.click(); } }, t('choose')));
     const cards = [];
+    const isZip = (name) => /\.zip$/i.test(name);
+
+    // A package is kept in the inbox (so it can be read again) and shown right here.
+    async function addPackage(f) {
+      const row = progressRow(f.name);
+      reviews.appendChild(row.el);
+      const fd = new FormData();
+      fd.append('file', f);
+      try {
+        const saved = await xhrPost('/api/inbox/upload', fd, (p) => row.update(t('sUploading'), p), () => row.update(t('sAnalyzing'), null));
+        row.stop();
+        reviews.removeChild(row.el);
+        packages.prepend(packageView(s, saved.path, saved.name));
+      } catch (e) {
+        row.fail(f.name + ': ' + e.message);
+      }
+    }
 
     async function inspectFiles(files) {
       for (const f of files) {
+        if (isZip(f.name)) { await addPackage(f); continue; }
         const row = progressRow(f.name);
         reviews.appendChild(row.el);
         const fd = new FormData();
@@ -663,6 +672,7 @@
 
     const prog = h('div');
     const pdfs = inbox.files.filter((f) => f.kind === 'pdf');
+    const zips = inbox.files.filter((f) => f.kind === 'zip');
     const scan = h('button', { class: 'btn', disabled: pdfs.length === 0, onclick: async () => {
       const r = await api('POST', '/api/inbox/scan?source=' + encodeURIComponent(s.id));
       if (r.job) await waitJob(r.job.id, (j) => prog.replaceChildren(progress(j)));
@@ -672,89 +682,28 @@
     return h('div', null,
       h('div', { class: 'card' }, h('h3', null, t('stepsFiles')), drop, file),
       reviews,
+      packages,
       h('div', { class: 'card' },
         h('h3', null, t('inbox')),
         h('div', { class: 'muted' }, inbox.dir),
         h('div', { class: 'muted' }, t('inboxHelp')),
-        h('div', null, pdfs.length ? pdfs.map((f) => h('div', null, f.name)) : h('div', { class: 'muted' }, t('noInbox'))),
+        h('div', null, pdfs.length + zips.length
+          ? [...pdfs.map((f) => h('div', null, f.name)),
+            ...zips.map((z) => h('div', { class: 'row' }, h('span', { class: 'grow' }, z.name),
+              h('button', { class: 'btn sm', onclick: () => packages.prepend(packageView(s, z.path, z.name)) }, t('readPackage'))))]
+          : h('div', { class: 'muted' }, t('noInbox'))),
         h('div', { class: 'row', style: 'margin-top:8px' }, scan), prog));
   }
 
-  function catalogPanel(s) {
-    const q = h('input', { type: 'text', placeholder: t('search') });
-    const body = h('tbody');
-    const info = h('span', { class: 'muted' });
-    async function load() {
-      const r = await api('GET', `/api/sources/${s.id}/catalog?limit=40&q=${encodeURIComponent(q.value)}`);
-      info.textContent = `${r.total} · ${t('snapshot')} ${r.snapshot}`;
-      body.replaceChildren(...r.items.map((it) => {
-        const log = h('div');
-        const picker = h('input', { type: 'file', accept: '.pdf,application/pdf', hidden: true });
-        picker.addEventListener('change', async () => {
-          await uploadFiles(s.id, [...picker.files], log, { type: it.type, title: it.name, validity: it.effective });
-          load();
-        });
-        return h('tr', null,
-          h('td', null, h('span', { class: 'badge' }, it.type)),
-          h('td', null, it.name, h('div', { class: 'muted' }, `${it.number} · ${it.effective} · ${it.file}`), log),
-          h('td', { class: 'actions' },
-            it.installed ? h('span', { class: 'badge ok' }, '✓ ' + t('installed')) : [
-              h('a', { class: 'btn sm', href: it.url, target: '_blank', rel: 'noreferrer' }, t('openOfficial')), ' ',
-              h('button', { class: 'btn sm primary', onclick: () => picker.click() }, t('addFile')), picker]));
-      }));
-    }
-    let timer = null;
-    q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 200); });
-    load();
-    return h('div', { class: 'card' }, h('h3', null, t('catalog')), h('div', { class: 'muted' }, t('catalogHelp')),
-      h('div', { class: 'row', style: 'margin-top:8px' }, h('div', { class: 'grow' }, q), info), h('table', null, body));
-  }
-
-  function packagePanel(s, inbox) {
-    const path = h('input', { type: 'text', placeholder: t('pkgPath') });
-    const zips = inbox.files.filter((f) => f.kind === 'zip');
-    const pick = h('select', null, h('option', { value: '' }, '-'), zips.map((z) => h('option', { value: z.path }, z.name)));
-    pick.addEventListener('change', () => { if (pick.value) path.value = pick.value; });
-    const out = h('div');
+  // A downloaded package: the aerodromes it holds, to choose which ones to import.
+  function packageView(s, path, name) {
+    const out = h('div', { class: 'muted' }, '...');
     const prog = h('div');
-    const locBox = h('div');
-
-    if ((s.capabilities || []).includes('locate')) {
-      api('GET', `/api/sources/${s.id}/locate`).then((loc) => {
-        locBox.replaceChildren(h('h3', null, t('locate')), h('div', { class: 'muted' }, t('locateHelp')),
-          ...loc.locations.map((l) => h('div', { class: 'row' },
-            h('a', { href: l.url, target: '_blank', rel: 'noreferrer' }, tx(l.label)),
-            h('span', { class: 'muted' }, l.file),
-            l.verified ? null : h('span', { class: 'badge warn' }, t('unverified')))));
-      });
-    }
-
-    async function read() {
-      out.replaceChildren();
-      try {
-        const p = await api('GET', `/api/sources/${s.id}/package?path=${encodeURIComponent(path.value.trim())}`);
-        const filter = h('input', { type: 'text', placeholder: 'ICAO' });
-        const body = h('tbody');
-        const draw = () => {
-          const f = filter.value.trim().toUpperCase();
-          body.replaceChildren(...p.airports.filter((a) => !f || a.icao.startsWith(f)).slice(0, 40).map((a) => h('tr', null,
-            h('td', null, h('strong', null, a.icao)),
-            h('td', { class: 'muted' }, Object.keys(a.types).sort().map((k) => `${k} ${a.types[k]}`).join(' · ')),
-            h('td', { class: 'actions' }, h('button', { class: 'btn sm primary', onclick: () => importAirport(a.icao) }, `${t('importAirport')} (${a.count})`)))));
-        };
-        filter.addEventListener('input', draw);
-        draw();
-        out.replaceChildren(
-          h('div', { class: 'muted' }, `${p.charts} ${t('charts')} · ${p.airports.length} ${t('airports')}${p.date ? ' · ' + p.date : ''}`),
-          h('div', { class: 'row' }, h('div', { class: 'grow' }, filter)), h('table', null, body));
-      } catch (e) {
-        out.replaceChildren(h('span', { class: 'badge bad' }, e.message));
-      }
-    }
+    const card = h('div', { class: 'card' }, h('h3', null, t('pkgFrom') + ': ' + name), out, prog);
 
     async function importAirport(icao) {
       try {
-        const j = await api('POST', `/api/sources/${s.id}/package/import`, { path: path.value.trim(), icao });
+        const j = await api('POST', `/api/sources/${s.id}/package/import`, { path, icao });
         await waitJob(j.id, (x) => prog.replaceChildren(progress(x)));
         toast(t('done'));
       } catch (e) {
@@ -762,9 +711,25 @@
       }
     }
 
-    return h('div', { class: 'card' }, locBox, h('h3', { style: 'margin-top:14px' }, t('package')),
-      h('div', { class: 'row' }, h('div', { class: 'grow' }, path), pick,
-        h('button', { class: 'btn', onclick: read }, t('readPackage'))), out, prog);
+    api('GET', `/api/sources/${s.id}/package?path=${encodeURIComponent(path)}`).then((p) => {
+      if (!p.airports || !p.airports.length) { out.replaceChildren(h('span', { class: 'badge warn' }, t('pkgNone'))); return; }
+      const filter = h('input', { type: 'text', placeholder: 'ICAO' });
+      const body = h('tbody');
+      const draw = () => {
+        const q = filter.value.trim().toUpperCase();
+        body.replaceChildren(...p.airports.filter((a) => !q || a.icao.startsWith(q)).slice(0, 40).map((a) => h('tr', null,
+          h('td', null, h('strong', null, a.icao)),
+          h('td', { class: 'muted' }, Object.keys(a.types).sort().map((k) => `${k} ${a.types[k]}`).join(' \u00b7 ')),
+          h('td', { class: 'actions' }, h('button', { class: 'btn sm primary', onclick: () => importAirport(a.icao) }, `${t('importAirport')} (${a.count})`)))));
+      };
+      filter.addEventListener('input', draw);
+      draw();
+      out.replaceChildren(
+        h('div', { class: 'muted' }, `${p.charts} ${t('charts')} \u00b7 ${p.airports.length} ${t('airports')}${p.date ? ' \u00b7 ' + p.date : ''}`),
+        h('div', { class: 'muted' }, t('pkgChoose')),
+        h('div', { class: 'row' }, h('div', { class: 'grow' }, filter)), h('table', null, body));
+    }).catch((e) => out.replaceChildren(h('span', { class: 'badge bad' }, e.message)));
+    return card;
   }
 
   // ---- Groups: all groups and what is pinned in each
