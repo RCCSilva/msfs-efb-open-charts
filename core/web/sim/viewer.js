@@ -1162,22 +1162,37 @@
     snapshot.h_frames = frames;
     snapshot.h_maxTimerGapMs = Math.round(maxGap);
     snapshot.h_hidden = document.hidden ? 1 : 0;
+    var pane = document.querySelector('#map .leaflet-map-pane');
+    if (pane) {
+      var pr = pane.getBoundingClientRect();
+      snapshot.h_paneLeft = Math.round(pr.left);
+      snapshot.h_paneTop = Math.round(pr.top);
+      snapshot.h_paneStyleLeft = parseInt(pane.style.left, 10) || 0;
+      snapshot.h_paneStyleTop = parseInt(pane.style.top, 10) || 0;
+    }
+    snapshot.h_zoom = map ? map.getZoom() : -1;
+    snapshot.h_layers = document.querySelectorAll('#map .leaflet-layer').length;
+    snapshot.h_tileContainers = document.querySelectorAll('#map .leaflet-tile-container').length;
+    snapshot.h_allImgs = document.querySelectorAll('img').length;
     snapshot.h_w = Math.round(box.width);
     snapshot.h_h = Math.round(box.height);
     frames = 0;
     maxGap = 0;
   }
-  function reportPerf() {
+  function reportPerf(mark) {
     var snapshot = perf;
     perf = {};
     health(snapshot);
     var note = lastError;
     lastError = '';
+    if (mark === true) note = 'MARK (user says the map is dark) ' + note;
     request('POST', '/api/client-perf', { ua: navigator.userAgent, seconds: 10, mode: mode, counts: snapshot, note: note }, null);
   }
   rafLoop();
   window.setInterval(tickGap, 250);
-  window.setInterval(reportPerf, 10000);
+  window.setInterval(function () { reportPerf(false); }, 10000);
+  // Tapping the status line tells the server "the map looks dark right now" (see /api/client-perf).
+  statusEl.addEventListener('click', function () { reportPerf(true); });
 
   // Tell the server what this browser can do (WebGL, pixel ratio...). Read in the manager's Setup.
   // Only facts about the browser; nothing about the user.
