@@ -383,7 +383,7 @@
       common.minZoom = OVERLAY_MIN_ZOOM;
       common.maxZoom = OVERLAY_MAX_ZOOM;
       map = L.map('map', common).setView([-23.55, -46.63], 9);
-      var base = basemap === 'none' ? null : L.tileLayer(basemap === 'standard' ? '/tiles/{z}/{x}/{y}.png' : '/tiles/' + basemap + '/{z}/{x}/{y}.jpg', {
+      var base = basemap === 'none' ? null : L.tileLayer(basemap === 'standard' ? '/tiles/{z}/{x}/{y}.png?f=rgb' : '/tiles/' + basemap + '/{z}/{x}/{y}.jpg?f=rgb', {
         minZoom: OVERLAY_MIN_ZOOM, maxZoom: OVERLAY_MAX_ZOOM, tileSize: 256, updateWhenIdle: false, keepBuffer: 2,
         detectRetina: true   // phones and tablets: tiles of the next zoom level, drawn at half size
       });
