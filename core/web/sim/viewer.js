@@ -15,7 +15,7 @@
   var POLL_MS = 250;
   var TILE = 256;
   var MESH = 8;
-  var OPACITY_STEPS = [0.3, 0.5, 0.7, 0.85, 1];   // chart opacity, from "more map" to "more chart"
+  var OPACITY_STEPS = [1, 0.75, 0.5, 0.25];   // chart opacity: the one button steps through these
   var CHART_MIN_ZOOM = -5;
   var CHART_MAX_ZOOM = 2;
   var OVERLAY_MIN_ZOOM = 3;
@@ -41,8 +41,9 @@
       starPin: 'Pin this chart to the flight', starUnpin: 'Remove this chart from the flight',
       thisFlight: 'Charts in this flight', noPinsHere: 'No charts pinned in this flight.', remove: 'Remove',
       viewWithMap: 'With map', viewChartOnly: 'Chart only', blendMap: 'Map', blendChart: 'Chart',
-      blendTitle: 'How much of the chart shows over the map', otherGroup: 'Other',
-      prevChart: 'Scroll left', nextChart: 'Scroll right', closeChart: 'Close chart'
+      blendTitle: 'Chart over the map', otherGroup: 'Other',
+      prevChart: 'Scroll left', nextChart: 'Scroll right', closeChart: 'Close chart',
+      showPinned: 'Pinned charts: hide the list', hidePinned: 'Pinned charts: show the list'
     },
     pt: {
       search: 'Buscar cartas: SBSP, ILS, sao paulo...',
@@ -63,8 +64,9 @@
       starPin: 'Fixar esta carta no voo', starUnpin: 'Tirar esta carta do voo',
       thisFlight: 'Cartas deste voo', noPinsHere: 'Nenhuma carta fixada neste voo.', remove: 'Tirar',
       viewWithMap: 'Com mapa', viewChartOnly: 'S\u00f3 a carta', blendMap: 'Mapa', blendChart: 'Carta',
-      blendTitle: 'Quanto da carta aparece sobre o mapa', otherGroup: 'Outras',
-      prevChart: 'Rolar para a esquerda', nextChart: 'Rolar para a direita', closeChart: 'Fechar carta'
+      blendTitle: 'Carta sobre o mapa', otherGroup: 'Outras',
+      prevChart: 'Rolar para a esquerda', nextChart: 'Rolar para a direita', closeChart: 'Fechar carta',
+      showPinned: 'Cartas fixadas: esconder a lista', hidePinned: 'Cartas fixadas: mostrar a lista'
     }
   };
 
@@ -79,9 +81,10 @@
   var flightBtn = el('btn-flight');
   var viewOverlayBtn = el('view-overlay');
   var viewChartBtn = el('view-chart');
-  var opacityBox = el('opacity-box');
-  var blendSteps = el('blend-steps');
+  var blendBtn = el('btn-blend');
   var closeBtn = el('btn-close');
+  var stripBtn = el('btn-strip');
+  var stripEl = document.querySelector('.strip');
   var pinPrev = el('pin-prev');
   var pinNext = el('pin-next');
   var attribEl = el('attribution');
@@ -136,9 +139,9 @@
   var lastStatusKind = null;
   var lastW = 0;
   var lastH = 0;
-  var opacityIdx = 3;
-  if (params.blend !== undefined && /^[0-4]$/.test(params.blend)) opacityIdx = parseInt(params.blend, 10);
-  try { var oi = parseInt(window.localStorage.getItem('oc.blend'), 10); if (oi >= 0 && oi < 5) opacityIdx = oi; } catch (e) { /* ignore */ }
+  var opacityIdx = 1;
+  if (params.blend !== undefined && /^[0-3]$/.test(params.blend)) opacityIdx = parseInt(params.blend, 10);
+  try { var oi = parseInt(window.localStorage.getItem('oc.blend2'), 10); if (oi >= 0 && oi < 4) opacityIdx = oi; } catch (e) { /* ignore */ }
   var needsFit = false;
   var searchTimer = null;
   var searchSeq = 0;
@@ -242,14 +245,15 @@
       this._img = img;
     },
     createTile: function (coords, done) {
+      var dpr = Math.min(3, window.devicePixelRatio || 1);   // draw at device pixels: crisp lines
       var tile = document.createElement('canvas');
-      tile.width = TILE;
-      tile.height = TILE;
+      tile.width = Math.round(TILE * dpr);
+      tile.height = Math.round(TILE * dpr);
       tile.className = 'leaflet-tile';
       var meta = this._meta;
       var img = this._img;
       var frame = meta.mapFramePx;
-      var step = TILE / MESH;
+      var step = TILE * dpr / MESH;
       var src = [];
       var minX = Infinity;
       var minY = Infinity;
@@ -273,6 +277,7 @@
       if (inside) {
         var ctx = tile.getContext('2d');
         ctx.imageSmoothingEnabled = true;
+        if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
         for (j = 0; j < MESH; j++) {
           for (i = 0; i < MESH; i++) {
             var p00 = { x: i * step, y: j * step };
@@ -316,7 +321,7 @@
 
     var common = {
       zoomControl: false, attributionControl: false, zoomAnimation: false, fadeAnimation: false,
-      markerZoomAnimation: false, inertia: false, tap: false, touchZoom: false, keyboard: false,
+      markerZoomAnimation: false, inertia: false, tap: false, touchZoom: true, bounceAtZoomLimits: false, keyboard: false,
       doubleClickZoom: false, boxZoom: false
     };
     if (mode === 'chart') {
@@ -331,7 +336,8 @@
       common.maxZoom = OVERLAY_MAX_ZOOM;
       map = L.map('map', common).setView([-23.55, -46.63], 9);
       var base = L.tileLayer('/tiles/{z}/{x}/{y}.png', {
-        minZoom: OVERLAY_MIN_ZOOM, maxZoom: OVERLAY_MAX_ZOOM, tileSize: 256, updateWhenIdle: false, keepBuffer: 2
+        minZoom: OVERLAY_MIN_ZOOM, maxZoom: OVERLAY_MAX_ZOOM, tileSize: 256, updateWhenIdle: false, keepBuffer: 2,
+        detectRetina: true   // phones and tablets: tiles of the next zoom level, drawn at half size
       }).addTo(map);
       // A tile that failed (network blip, upstream throttling) is asked again a few times
       // instead of staying black until the user moves or zooms the map.
@@ -628,25 +634,12 @@
 
   // ---- display panel: "With map" / "Chart only" and, for the map view, the chart opacity
   function updateDisplayPanel() {
-    viewOverlayBtn.className = 'segbtn' + (mode === 'overlay' ? ' on' : '');
-    viewChartBtn.className = 'segbtn' + (mode === 'chart' ? ' on' : '');
-    opacityBox.style.display = mode === 'overlay' ? '' : 'none';
-    var steps = blendSteps.childNodes;
-    for (var i = 0; i < steps.length; i++) {
-      steps[i].className = 'bstep' + (i <= opacityIdx ? ' on' : '') + (i === opacityIdx ? ' cur' : '');
-    }
-  }
-
-  // Five positions between "more map" and "more chart"; only the chart is made transparent.
-  function buildBlendSteps() {
-    clear(blendSteps);
-    OPACITY_STEPS.forEach(function (v, i) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'bstep';
-      b.addEventListener('click', function () { setOpacity(i); });
-      blendSteps.appendChild(b);
-    });
+    viewOverlayBtn.className = mode === 'overlay' ? 'active' : '';
+    viewChartBtn.className = mode === 'chart' ? 'active' : '';
+    blendBtn.style.display = mode === 'overlay' ? '' : 'none';
+    var lvl = blendBtn.querySelector('.lvl');
+    if (lvl) lvl.setAttribute('fill-opacity', String(OPACITY_STEPS[opacityIdx]));
+    blendBtn.title = t('blendTitle') + ': ' + Math.round(OPACITY_STEPS[opacityIdx] * 100) + '%';
   }
 
   function setMode(next) {
@@ -657,10 +650,13 @@
     saveState();
   }
 
+  // one button: 100% -> 75% -> 50% -> 25% -> 100% of the chart over the map
+  function cycleBlend() { setOpacity((opacityIdx + 1) % OPACITY_STEPS.length); }
+
   function setOpacity(idx) {
     if (idx < 0 || idx >= OPACITY_STEPS.length) return;
     opacityIdx = idx;
-    store('blend', String(idx));
+    store('blend2', String(idx));
     if (chartLayer && chartLayer.setOpacity && mode === 'overlay') chartLayer.setOpacity(OPACITY_STEPS[opacityIdx]);
     updateDisplayPanel();
   }
@@ -775,6 +771,17 @@
     starBtn.className = 'tool' + (on ? ' on' : '');
     starBtn.title = on ? t('starUnpin') : t('starPin');
   }
+
+  // The list of pinned charts can be hidden to give the screen to the chart; it is remembered.
+  var stripVisible = true;
+  try { stripVisible = window.localStorage.getItem('oc.strip') !== '0'; } catch (e) { /* ignore */ }
+  function applyStripVisibility() {
+    stripEl.style.display = stripVisible ? '' : 'none';
+    stripBtn.className = stripVisible ? 'active' : '';
+    stripBtn.title = stripVisible ? t('showPinned') : t('hidePinned');
+    if (stripVisible) updateStripArrows();
+  }
+
 
   // true while a chart is being opened by tapping its chip: the strip must not move then
   var openedFromStrip = false;
@@ -978,14 +985,16 @@
   qEl.placeholder = t('search');
   viewOverlayBtn.setAttribute('aria-label', t('viewWithMap'));
   viewChartBtn.setAttribute('aria-label', t('viewChartOnly'));
-  el('close-label').textContent = t('closeChart');
   closeBtn.setAttribute('aria-label', t('closeChart'));
   closeBtn.addEventListener('click', closeChart);
+  stripBtn.addEventListener('click', function () {
+    stripVisible = !stripVisible;
+    store('strip', stripVisible ? '1' : '0');
+    applyStripVisibility();
+  });
+  applyStripVisibility();
   updateCloseButton();
-  el('blend-map').textContent = t('blendMap');
-  el('blend-chart').textContent = t('blendChart');
-  blendSteps.title = t('blendTitle');
-  buildBlendSteps();
+  blendBtn.addEventListener('click', cycleBlend);
   viewOverlayBtn.title = viewWithMapTitle();
   viewChartBtn.title = viewChartOnlyTitle();
   pinPrev.title = t('prevChart');

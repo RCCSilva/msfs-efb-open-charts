@@ -24,7 +24,7 @@ func TestDefaults(t *testing.T) {
 
 func TestRoundTripAndLAN(t *testing.T) {
 	dir := t.TempDir()
-	in := Settings{Port: 45000, LAN: true, Token: "abc123"}
+	in := Settings{Port: 45000, LAN: true, Token: "abc123", Detail: DetailHigh}
 	if err := in.Save(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -73,5 +73,21 @@ func TestValidatePort(t *testing.T) {
 func TestTokensAreUnique(t *testing.T) {
 	if NewToken() == NewToken() {
 		t.Fatal("tokens must be random")
+	}
+}
+
+func TestDetailDefaultsAndSizes(t *testing.T) {
+	if got := Load(t.TempDir()).Detail; got != DetailNormal {
+		t.Fatalf("default detail = %q", got)
+	}
+	if LongEdgePx(DetailNormal) != 3200 || LongEdgePx(DetailHigh) != 4800 || LongEdgePx("whatever") != 3200 {
+		t.Fatal("unexpected sizes")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(`{"port": 43210, "detail": "ultra"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := Load(dir).Detail; got != DetailNormal {
+		t.Fatalf("unknown detail must fall back to normal, got %q", got)
 	}
 }

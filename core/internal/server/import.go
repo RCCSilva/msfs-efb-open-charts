@@ -9,6 +9,7 @@ import (
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/pdfgeo"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sources"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 )
@@ -64,6 +65,8 @@ func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.C
 		Validity: pick(f.Validity, id.Validity),
 		Original: base,
 		Package:  f.Package,
+		// Detail level chosen in the manager (settings), for charts imported from now on.
+		LongEdgePx: settings.LongEdgePx(s.settingsSnapshot().Detail),
 	}
 	opt.ID = s.lib.UniqueID(store.Slug(source + " " + stem))
 

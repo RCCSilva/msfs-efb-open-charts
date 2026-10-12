@@ -58,16 +58,19 @@ func (r *Renderer) Close() {
 
 // Options for one import.
 type Options struct {
-	ID       string // library id
-	Name     string // display name; default: "ICAO Â· TYPE Â· Title"
-	Source   string // e.g. "decea-br" or "manual"
-	DPI      int    // 0 = automatic
-	ICAO     string // "SBSP" (optional)
-	Type     string // "IAC", "ADC", ... (optional)
-	Title    string // "ILS X RWY 17R"; default: the PDF's viewport name when there is no ICAO
-	Validity string // "2026-08-06" (optional)
-	Original string // original file name, kept to recognise a chart that is already imported
-	Package  string // archive the PDF came from (provenance), if any
+	ID     string // library id
+	Name   string // display name; default: "ICAO Â· TYPE Â· Title"
+	Source string // e.g. "decea-br" or "manual"
+	DPI    int    // 0 = automatic
+	// LongEdgePx is the size the longer side of the image should have (0 = 3200). It only
+	// matters when DPI is automatic.
+	LongEdgePx int
+	ICAO       string // "SBSP" (optional)
+	Type       string // "IAC", "ADC", ... (optional)
+	Title      string // "ILS X RWY 17R"; default: the PDF's viewport name when there is no ICAO
+	Validity   string // "2026-08-06" (optional)
+	Original   string // original file name, kept to recognise a chart that is already imported
+	Package    string // archive the PDF came from (provenance), if any
 }
 
 // Meta is chart.json. Field names match what the existing viewer pages read.
@@ -174,7 +177,11 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 	boxW, boxH := pg.Box[2]-pg.Box[0], pg.Box[3]-pg.Box[1]
 	if dpi <= 0 {
 		long := math.Max(boxW, boxH)
-		dpi = int(math.Max(150, math.Min(400, math.Round(3200/long*72))))
+		target := float64(opt.LongEdgePx)
+		if target <= 0 {
+			target = 3200
+		}
+		dpi = int(math.Max(150, math.Min(600, math.Round(target/long*72))))
 	}
 	doc, err := r.instance.OpenDocument(&requests.OpenDocument{File: &pdf})
 	if err != nil {

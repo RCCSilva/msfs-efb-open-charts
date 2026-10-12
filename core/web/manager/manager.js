@@ -27,7 +27,9 @@
       tabCatalog: 'Visual charts (catalog)', tabPackage: 'Aerodromes (package)', tabFiles: 'Add files',
       stepsFiles: 'Add what you downloaded', capCatalog: 'Catalog', capPackage: 'Package', capLocate: 'By date', capUpload: 'Upload',
       about: 'About', setup: 'Setup', map: 'Map',
-      netTitle: 'Port and local network', portLabel: 'Port', apply: 'Apply', portApplied: 'Port changed',
+      detailTitle: 'Chart detail', detailNormal: 'Normal', detailHigh: 'High',
+      detailHelp: 'Applies to charts imported from now on. High is sharper when you zoom in (phones, large screens) but makes bigger files and takes longer. To change charts already in the library, delete and add them again.',
+      netTitle: 'Port and local network', portTitle: 'Server port', lanTitle: 'Local network (tablet and phone)', portLabel: 'Port', apply: 'Apply', portApplied: 'Port changed',
       portHelp: 'Default {n}. Change it if another program uses it. Afterwards update the EFB app and restart the simulator.',
       portFixed: 'The address was set with -addr on the command line; these options are off.',
       lanLabel: 'Other devices', lanOn: 'Allowed: tablet and phone on the same Wi-Fi can connect', lanOff: 'Only this computer',
@@ -90,7 +92,9 @@
       tabCatalog: 'Cartas visuais (catálogo)', tabPackage: 'Aeródromos (pacote)', tabFiles: 'Adicionar arquivos',
       stepsFiles: 'Adicione o que você baixou', capCatalog: 'Catálogo', capPackage: 'Pacote', capLocate: 'Por data', capUpload: 'Envio',
       about: 'Sobre', setup: 'Configuração', map: 'Mapa',
-      netTitle: 'Porta e rede local', portLabel: 'Porta', apply: 'Aplicar', portApplied: 'Porta alterada',
+      detailTitle: 'Detalhe das cartas', detailNormal: 'Normal', detailHigh: 'Alto',
+      detailHelp: 'Vale para as cartas importadas daqui em diante. Alto fica mais nítido ao dar zoom (celular, telas grandes), mas gera arquivos maiores e demora mais. Para mudar as cartas que já estão na biblioteca, exclua e adicione de novo.',
+      netTitle: 'Porta e rede local', portTitle: 'Porta do servidor', lanTitle: 'Rede local (tablet e celular)', portLabel: 'Porta', apply: 'Aplicar', portApplied: 'Porta alterada',
       portHelp: 'Padrão {n}. Troque se outro programa usar. Depois, atualize o app do EFB e reinicie o simulador.',
       portFixed: 'O endereço foi definido com -addr na linha de comando; estas opções ficam desativadas.',
       lanLabel: 'Outros dispositivos', lanOn: 'Permitido: tablet e celular na mesma rede Wi-Fi podem conectar', lanOff: 'Somente este computador',
@@ -792,10 +796,12 @@
       row(t('stData'), h('span', { class: 'muted' }, st.dataDir)))];
 
   // ---- Local network and port. The server validates and applies; this only collects and shows.
-  async function networkCard(st) {
+  // Returns two sections: the server port, and the local network (with its QR codes).
+  async function networkCards(st) {
     let net;
-    try { net = await api('GET', '/api/settings'); } catch (e) { return null; }
-    const body = h('div');
+    try { net = await api('GET', '/api/settings'); } catch (e) { return []; }
+    const portBody = h('div');
+    const lanBody = h('div');
     const portInput = h('input', { type: 'text', value: String(net.port), style: 'width:110px' });
     const apply = h('button', { class: 'btn primary', disabled: net.fixed, onclick: async () => {
       const p = parseInt(portInput.value, 10);
@@ -814,28 +820,30 @@
       renderSetup();
     } }, net.lan ? t('btnDisable') : t('btnEnable'));
 
-    body.append(
+    portBody.append(
       h('div', { class: 'row setuprow' }, h('div', { class: 'setuplbl' }, t('portLabel')),
         h('div', { class: 'grow' }, h('div', { class: 'row' }, portInput, apply)),
       ),
       h('div', { class: 'muted' }, t('portHelp').replace('{n}', String(net.defaultPort))),
-      ...(net.fixed ? [h('div', { class: 'badge warn' }, t('portFixed'))] : []),
+      ...(net.fixed ? [h('div', { class: 'badge warn' }, t('portFixed'))] : []));
+
+    lanBody.append(
       h('div', { class: 'row setuprow' }, h('div', { class: 'setuplbl' }, t('lanLabel')),
         h('div', { class: 'grow' }, net.lan ? h('span', null, h('span', { class: 'badge ok' }, '✓'), ' ', t('lanOn')) : h('span', { class: 'muted' }, t('lanOff'))),
         lanBtn));
 
     if (net.lan) {
-      body.append(h('div', { class: 'muted' }, t('lanHelp')), h('div', { class: 'muted' }, t('lanFirewall')));
+      lanBody.append(h('div', { class: 'muted' }, t('lanHelp')), h('div', { class: 'muted' }, t('lanFirewall')));
       const real = net.addresses.filter((a) => !a.virtual);
       const list = real.length ? real : net.addresses;   // virtual adapters only when nothing else exists
-      if (!list.length) body.append(h('div', { class: 'badge warn' }, t('lanNoAddress')));
+      if (!list.length) lanBody.append(h('div', { class: 'badge warn' }, t('lanNoAddress')));
       const wrap = h('div', { class: 'qrgrid' });
       list.forEach((a) => wrap.append(h('div', { class: 'qrcard' },
         h('img', { src: a.qr + '&t=' + Date.now(), alt: 'QR', width: 168, height: 168 }),
         h('div', null, h('strong', null, a.ip)),
         h('div', { class: 'muted' }, a.name + (a.virtual ? ' · ' + t('lanVirtual') : '')),
         h('div', { class: 'muted urlbox' }, a.url))));
-      body.append(wrap,
+      lanBody.append(wrap,
         h('div', { class: 'row', style: 'margin-top:10px' },
           h('button', { class: 'btn sm', onclick: async () => {
             if (!confirm(t('lanRotateConfirm'))) return;
@@ -843,11 +851,29 @@
             renderSetup();
           } }, t('lanRotate'))));
     }
-    return h('div', { class: 'card' }, h('h3', null, t('netTitle')), body);
+    return [
+      h('div', { class: 'card' }, h('h3', null, t('portTitle')), portBody),
+      h('div', { class: 'card' }, h('h3', null, t('lanTitle')), lanBody)
+    ];
   }
 
-    const netCard = await networkCard(st);
-    if (netCard) cards.push(netCard);
+  async function detailCard() {
+    let net;
+    try { net = await api('GET', '/api/settings'); } catch (e) { return null; }
+    const pick = (value, label) => h('button', {
+      class: 'btn sm' + (net.detail === value ? ' primary' : ''),
+      onclick: async () => {
+        try { await api('PUT', '/api/settings', { detail: value }); toast(t('done')); } catch (e) { toast(e.message); }
+        renderSetup();
+      } }, label);
+    return h('div', { class: 'card' }, h('h3', null, t('detailTitle')),
+      h('div', { class: 'row' }, pick('normal', t('detailNormal')), pick('high', t('detailHigh'))),
+      h('div', { class: 'muted', style: 'margin-top:8px' }, t('detailHelp')));
+  }
+
+    cards.push(...await networkCards(st));
+    const dCard = await detailCard();
+    if (dCard) cards.push(dCard);
 
     async function act(fn, done) {
       try { await fn(); toast(done || t('done')); } catch (e) { toast(e.message); }

@@ -20,16 +20,32 @@ const DefaultPort = 43210
 // FileName of the settings inside the data folder.
 const FileName = "settings.json"
 
+// Detail levels of imported charts: the size, in pixels, of the longer side of the chart image.
+const (
+	DetailNormal = "normal" // 3200 px: light, fast to import and to load in the simulator
+	DetailHigh   = "high"   // 4800 px: sharper when zoomed in, bigger files, slower
+)
+
+// LongEdgePx is the longer side of the image for a detail level (unknown values mean normal).
+func LongEdgePx(detail string) int {
+	if detail == DetailHigh {
+		return 4800
+	}
+	return 3200
+}
+
 // Settings are the persisted options.
 type Settings struct {
 	Port  int    `json:"port"`
 	LAN   bool   `json:"lan"`   // accept connections from other devices of the local network
 	Token string `json:"token"` // the key those devices must present (in the QR code link)
+	// Detail is the level of detail of charts imported from now on (DetailNormal or DetailHigh).
+	Detail string `json:"detail"`
 }
 
 // Default returns the settings of a fresh installation (a new key is generated).
 func Default() Settings {
-	return Settings{Port: DefaultPort, LAN: false, Token: NewToken()}
+	return Settings{Port: DefaultPort, LAN: false, Token: NewToken(), Detail: DetailNormal}
 }
 
 // NewToken returns a random key (96 bits, hex).
@@ -60,6 +76,9 @@ func Load(dir string) Settings {
 				s.Port = f.Port
 			}
 			s.LAN = f.LAN
+			if f.Detail == DetailHigh {
+				s.Detail = DetailHigh
+			}
 			if f.Token != "" {
 				s.Token = f.Token
 			}

@@ -330,7 +330,7 @@ func (s *Server) settingsView() map[string]any {
 		addrs = lanAddresses(port)
 	}
 	return map[string]any{
-		"port": cfg.Port, "lan": cfg.LAN, "defaultPort": settings.DefaultPort, "fixed": fixed,
+		"port": cfg.Port, "lan": cfg.LAN, "defaultPort": settings.DefaultPort, "fixed": fixed, "detail": cfg.Detail,
 		"listenAddr": s.listenAddr(), "localURL": "http://127.0.0.1:" + port + "/", "addresses": addrs,
 	}
 }
@@ -343,8 +343,9 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 // and only then saves: a port that is taken leaves everything as it was.
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Port *int  `json:"port"`
-		LAN  *bool `json:"lan"`
+		Port   *int    `json:"port"`
+		LAN    *bool   `json:"lan"`
+		Detail *string `json:"detail"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, 400, err)
@@ -353,6 +354,23 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	s.net.mu.RLock()
 	fixed, dir := s.net.fixedAddr, s.net.dataDir
 	s.net.mu.RUnlock()
+	// the chart detail level does not depend on the listen address
+	if body.Detail != nil && body.Port == nil && body.LAN == nil {
+		if *body.Detail != settings.DetailNormal && *body.Detail != settings.DetailHigh {
+			writeErr(w, 400, errors.New("detail must be normal or high"))
+			return
+		}
+		s.net.mu.Lock()
+		s.net.cfg.Detail = *body.Detail
+		cfg := s.net.cfg
+		s.net.mu.Unlock()
+		if err := cfg.Save(dir); err != nil {
+			writeErr(w, 500, err)
+			return
+		}
+		writeJSON(w, 200, s.settingsView())
+		return
+	}
 	if fixed {
 		writeErr(w, 409, errors.New("the address was set with -addr; remove it to use these options"))
 		return
