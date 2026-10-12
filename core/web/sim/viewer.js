@@ -1050,7 +1050,7 @@
   try { stripVisible = window.localStorage.getItem('oc.strip') !== '0'; } catch (e) { /* ignore */ }
   function applyStripVisibility() {
     stripEl.style.display = stripVisible ? '' : 'none';
-    stripBtn.className = stripVisible ? 'active' : '';
+    stripBtn.className = 'cleanbtn stripbtn' + (stripVisible ? ' active' : '');
     stripBtn.title = stripVisible ? t('showPinned') : t('hidePinned');
     if (stripVisible) updateStripArrows();
   }

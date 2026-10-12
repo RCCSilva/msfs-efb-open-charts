@@ -58,7 +58,6 @@ html, body, button, input, select, textarea, .status, .attribution {
   text-align: right;
 }
 .tool.on svg { fill: #ffd54a; stroke: #ffd54a; }
-#display #btn-strip svg { fill: none; }
 .tool:disabled { opacity: 0.45; cursor: default; }
 
 .bar {
@@ -256,8 +255,11 @@ html, body, button, input, select, textarea, .status, .attribution {
 .cleanbtn .slash { display: none; }
 body.clean .cleanbtn { background: rgba(20, 30, 40, 0.55); }
 body.clean .cleanbtn .slash { display: inline; }
-body.clean .bar, body.clean #controls, body.clean #display, body.clean #status { display: none !important; }
-.bar .row { padding-right: 54px; }
+body.clean .bar, body.clean #controls, body.clean #display, body.clean #status, body.clean .stripbtn { display: none !important; }
+.bar .row { padding-right: 104px; }
+/* the pinned list toggle sits left of the eye; blue while the list is shown */
+.stripbtn { right: 60px; }
+.stripbtn.active { background: rgba(35, 105, 190, 0.96); }
 
 /* ---- loading a chart: a box in the middle of the map, above everything ---- */
 .loading { position: absolute; left: 50%; top: 42%; z-index: 1300; width: 230px; margin-left: -115px;
