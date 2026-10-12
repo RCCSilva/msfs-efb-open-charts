@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"localmovingmap/internal/store"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 )
 
 // viewerState is what the in-sim viewer should come back to after its page is reloaded.

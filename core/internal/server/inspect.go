@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"localmovingmap/internal/naming"
-	"localmovingmap/internal/pdfgeo"
-	"localmovingmap/internal/sources"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/pdfgeo"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sources"
 )
 
 // A PDF the user dropped is first inspected: the app proposes ICAO, type, title and name and the

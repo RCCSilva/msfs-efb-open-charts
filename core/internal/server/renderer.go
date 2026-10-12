@@ -5,7 +5,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"localmovingmap/internal/importer"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 )
 
 // The PDF renderer (PDFium compiled to WebAssembly) takes ~300 MB of memory once loaded and

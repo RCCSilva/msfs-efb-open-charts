@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"localmovingmap/internal/tray"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/tray"
 )
 
 func main() {

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"localmovingmap/internal/jobs"
-	"localmovingmap/internal/sources"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/jobs"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sources"
 )
 
 func (s *Server) registerSourceRoutes(mux *http.ServeMux) {

@@ -2,8 +2,9 @@
 //
 //	opencharts [-data DIR] [-addr 127.0.0.1:8080] [-lat N -lon N -hdg N]
 //
-// Serves the viewer for the MSFS EFB iframe, the chart API and the library. Aircraft position is
-// FIXED for now (SimConnect comes later); change it with -lat/-lon/-hdg.
+// Serves the viewer for the MSFS EFB iframe, the manager UI, the chart API and the library.
+// The aircraft position comes from SimConnect; -fixed (with -lat/-lon/-hdg) uses a fixed test
+// position instead. "opencharts setup ..." is used by the installer.
 package main
 
 import (
@@ -17,12 +18,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"localmovingmap/internal/importer"
-	"localmovingmap/internal/server"
-	"localmovingmap/internal/simconnect"
-	"localmovingmap/internal/store"
-	"localmovingmap/internal/tray"
-	"localmovingmap/web"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/server"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/simconnect"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/tray"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/web"
 )
 
 func defaultDataDir() string {

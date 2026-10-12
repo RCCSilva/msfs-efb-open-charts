@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"localmovingmap/internal/naming"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
 )
 
 // Chart is the library entry shown by the API (a subset of chart.json).

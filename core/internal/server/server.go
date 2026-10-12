@@ -16,11 +16,11 @@ import (
 	"sync"
 	"time"
 
-	"localmovingmap/internal/importer"
-	"localmovingmap/internal/jobs"
-	"localmovingmap/internal/naming"
-	"localmovingmap/internal/store"
-	"localmovingmap/web"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/jobs"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/web"
 )
 
 // Position is the aircraft state published to the viewers.

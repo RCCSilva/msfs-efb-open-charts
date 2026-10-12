@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"localmovingmap/internal/importer"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 )
 
 func main() {

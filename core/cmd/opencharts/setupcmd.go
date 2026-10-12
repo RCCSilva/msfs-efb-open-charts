@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"localmovingmap/internal/setup"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
 )
 
 // runSetupCommand handles "opencharts setup ...", used by the installer (and by hand):

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"localmovingmap/internal/setup"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
 )
 
 func (s *Server) registerSetupRoutes(mux *http.ServeMux) {

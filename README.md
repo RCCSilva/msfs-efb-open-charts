@@ -23,7 +23,7 @@ assistente. Depois abra o gerenciador pelo ícone na bandeja → aba **Configura
 
 ## Compilar (desenvolvedores)
 
-Requisitos: Go 1.22+ (sem cgo), MSFS 2024 SDK (para a `SimConnect.dll`), Inno Setup 6.
+Requisitos: Go 1.26+ (sem cgo), MSFS 2024 SDK (para a `SimConnect.dll`), Inno Setup 6.
 
 ```powershell
 powershell -File installer\build.ps1 -Version 0.1.0

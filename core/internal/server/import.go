@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"localmovingmap/internal/importer"
-	"localmovingmap/internal/naming"
-	"localmovingmap/internal/pdfgeo"
-	"localmovingmap/internal/sources"
-	"localmovingmap/internal/store"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/pdfgeo"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sources"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 )
 
 // importForm carries the optional fields a user (or a source) can set for an import.

@@ -17,9 +17,9 @@ import (
 	"github.com/klippa-app/go-pdfium/requests"
 	"github.com/klippa-app/go-pdfium/webassembly"
 
-	"localmovingmap/internal/geo"
-	"localmovingmap/internal/naming"
-	"localmovingmap/internal/pdfgeo"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/geo"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/pdfgeo"
 )
 
 // MaxGroundErrorMeters is the largest corner-fit residual we accept. GPTS values are often

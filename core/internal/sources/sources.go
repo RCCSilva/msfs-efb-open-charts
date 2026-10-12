@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"localmovingmap/internal/naming"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
 )
 
 // Text holds pt/en versions of a string.
