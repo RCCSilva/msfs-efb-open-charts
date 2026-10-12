@@ -2,7 +2,7 @@ package sources
 
 import "github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
 
-// manual is the built-in source: any georeferenced PDF the user brings (upload or inbox
+// manual is the built-in source: any georeferenced PDF the user brings (upload
 // folder). It has no provider, so it has no catalog, no locator and no archive format.
 type manual struct{}
 
@@ -23,7 +23,7 @@ func (manual) Info() Info {
 			},
 		},
 		Guide: []Text{
-			{PT: "Arraste o PDF para a janela, ou coloque-o na pasta inbox.", EN: "Drop the PDF on the window, or put it in the inbox folder."},
+			{PT: "Arraste os PDFs para a janela, ou escolha os arquivos.", EN: "Drop the PDFs on the window, or choose the files."},
 			{PT: "O PDF precisa ser georreferenciado (GeoPDF).", EN: "The PDF must be georeferenced (GeoPDF)."},
 		},
 	}

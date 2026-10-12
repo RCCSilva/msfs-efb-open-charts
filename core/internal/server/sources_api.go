@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,9 +22,7 @@ func (s *Server) registerSourceRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/sources/{id}/package", s.handlePackageInfo)
 	mux.HandleFunc("POST /api/sources/{id}/package/import", s.handlePackageImport)
 	mux.HandleFunc("GET /api/jobs/{id}", s.handleJob)
-	mux.HandleFunc("GET /api/inbox", s.handleInbox)
-	mux.HandleFunc("POST /api/inbox/scan", s.handleInboxScan)
-	mux.HandleFunc("POST /api/inbox/upload", s.handleInboxUpload)
+	mux.HandleFunc("POST /api/packages/upload", s.handlePackageUpload)
 }
 
 // catalogRow is a catalog item plus whether it is already in the library.
@@ -117,7 +114,20 @@ func (s *Server) handlePackageInfo(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, status, err)
 		return
 	}
-	writeJSON(w, 200, p)
+	// what is new to this library, and how long it would take here
+	newBy := map[string]int{}
+	total := 0
+	for _, e := range p.Entries() {
+		if _, ok := s.lib.FindByOriginal(e.File); !ok {
+			newBy[e.ICAO]++
+			total++
+		}
+	}
+	per := s.impTime.secondsPerChart()
+	writeJSON(w, 200, map[string]any{
+		"path": p.Path, "size": p.Size, "modified": p.Modified, "date": p.Date, "charts": p.Charts, "airports": p.Airports,
+		"new": total, "newByAirport": newBy, "secondsPerChart": per, "estimateSeconds": int(float64(total)*per + 0.5),
+	})
 }
 
 func (s *Server) handlePackageImport(w http.ResponseWriter, r *http.Request) {
@@ -134,13 +144,14 @@ func (s *Server) handlePackageImport(w http.ResponseWriter, r *http.Request) {
 		Path  string   `json:"path"`
 		ICAO  string   `json:"icao"`
 		Types []string `json:"types"`
+		All   bool     `json:"all"` // every chart of the package that is not in the library yet
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, 400, err)
 		return
 	}
-	if strings.TrimSpace(body.ICAO) == "" {
-		writeErr(w, 400, errors.New("icao is required: import one airport at a time"))
+	if strings.TrimSpace(body.ICAO) == "" && !body.All {
+		writeErr(w, 400, errors.New("icao is required, or ask for all"))
 		return
 	}
 	pkg, err := pk.OpenPackage(strings.TrimSpace(body.Path))
@@ -148,7 +159,21 @@ func (s *Server) handlePackageImport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err)
 		return
 	}
-	entries := pkg.Select(body.ICAO, body.Types)
+	var entries []sources.Entry
+	if body.All {
+		// only what is not in the library: the job total and its estimate are then true
+		for _, e := range pkg.Entries() {
+			if _, have := s.lib.FindByOriginal(e.File); !have {
+				entries = append(entries, e)
+			}
+		}
+		if len(entries) == 0 {
+			writeErr(w, 409, errors.New("everything in this package is already in the library"))
+			return
+		}
+	} else {
+		entries = pkg.Select(body.ICAO, body.Types)
+	}
 	if len(entries) == 0 {
 		writeErr(w, 404, errors.New("no charts for that airport/type in the package"))
 		return
@@ -187,132 +212,36 @@ func (s *Server) handleJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, j)
 }
 
-// ------------------------------------------------------------------ inbox
+// ------------------------------------------------------------------ uploaded packages
 
-// The inbox is a folder the user drops files into. It is only read when the user asks.
-func (s *Server) inboxDir() string { return filepath.Join(s.lib.Dir(), "inbox") }
+// Packages the user chose in the browser are kept here: importing an aerodrome reads the archive again.
+func (s *Server) packagesDir() string { return filepath.Join(s.lib.Dir(), "packages") }
 
-type inboxFile struct {
-	Name     string    `json:"name"`
-	Path     string    `json:"path"`
-	Size     int64     `json:"size"`
-	Modified time.Time `json:"modified"`
-	Kind     string    `json:"kind"` // "pdf", "zip"
-}
-
-func (s *Server) listInbox() []inboxFile {
-	dir := s.inboxDir()
-	_ = os.MkdirAll(dir, 0o755)
-	entries, _ := os.ReadDir(dir)
-	var out []inboxFile
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		kind := ""
-		switch strings.ToLower(filepath.Ext(e.Name())) {
-		case ".pdf":
-			kind = "pdf"
-		case ".zip":
-			kind = "zip"
-		default:
-			continue
-		}
-		fi, err := e.Info()
-		if err != nil {
-			continue
-		}
-		out = append(out, inboxFile{Name: e.Name(), Path: filepath.Join(dir, e.Name()), Size: fi.Size(), Modified: fi.ModTime(), Kind: kind})
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
-}
-
-func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
-	files := s.listInbox()
-	if files == nil {
-		files = []inboxFile{}
-	}
-	writeJSON(w, 200, map[string]any{"dir": s.inboxDir(), "files": files})
-}
-
-// handleInboxScan imports every PDF in the inbox (moving it to inbox/done). Zips are only
-// reported: the user chooses what to import from them.
-func (s *Server) handleInboxScan(w http.ResponseWriter, r *http.Request) {
-	if !s.canImport() {
-		writeErr(w, 503, errors.New("importer unavailable"))
-		return
-	}
-	source := strings.TrimSpace(r.URL.Query().Get("source"))
-	if source == "" {
-		source = "manual"
-	}
-	files := s.listInbox()
-	var pdfs []inboxFile
-	zips := []inboxFile{}
-	for _, f := range files {
-		if f.Kind == "pdf" {
-			pdfs = append(pdfs, f)
-		} else {
-			zips = append(zips, f)
-		}
-	}
-	if len(pdfs) == 0 {
-		writeJSON(w, 200, map[string]any{"job": nil, "zips": zips, "message": "no PDFs in the inbox"})
-		return
-	}
-	done := filepath.Join(s.inboxDir(), "done")
-	_ = os.MkdirAll(done, 0o755)
-	job := s.jobs.Start("inbox-scan", len(pdfs), func(j *jobs.Job) {
-		for _, f := range pdfs {
-			j.SetCurrent(f.Name)
-			data, err := os.ReadFile(f.Path)
-			if err != nil {
-				j.Add(jobs.Item{File: f.Name, Status: "error", Message: err.Error()})
-				continue
-			}
-			c, err := s.importPDF(data, f.Name, importForm{Source: source})
-			if err != nil {
-				st, msg := itemStatus(err)
-				j.Add(jobs.Item{File: f.Name, Status: st, Message: msg})
-				continue
-			}
-			_ = os.Rename(f.Path, filepath.Join(done, f.Name))
-			j.Add(jobs.Item{File: f.Name, ChartID: c.ID, Name: c.Name, Status: "ok"})
-		}
-	})
-	snap, _ := s.jobs.Get(job.ID())
-	writeJSON(w, 202, map[string]any{"job": snap, "zips": zips})
-}
-
-// maxInboxUpload bounds one uploaded file: a chart is a few MB, a full package some hundreds.
-const maxInboxUpload = 2 << 30
+// maxPackageUpload bounds one uploaded package (a full one is some hundreds of MB).
+const maxPackageUpload = 2 << 30
 
 var unsafeNameChars = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
 
-// inboxName turns a client file name into one safe to create in the inbox: its base name only, no
-// characters Windows refuses, and a .pdf or .zip extension. It returns "" for anything else.
-func inboxName(raw string) string {
+// packageFileName turns a client file name into one safe to create in the packages folder: its base
+// name only, no characters Windows refuses, and a .zip extension. It returns "" for anything else.
+func packageFileName(raw string) string {
 	name := raw
 	if i := strings.LastIndexAny(name, `/\`); i >= 0 {
 		name = name[i+1:]
 	}
 	name = strings.TrimSpace(unsafeNameChars.ReplaceAllString(name, "_"))
 	name = strings.Trim(name, ". ")
-	switch strings.ToLower(filepath.Ext(name)) {
-	case ".pdf", ".zip":
-		if len(name) > 4 && len(name) <= 200 {
-			return name
-		}
+	if strings.EqualFold(filepath.Ext(name), ".zip") && len(name) > 4 && len(name) <= 200 {
+		return name
 	}
 	return ""
 }
 
-// handleInboxUpload receives one PDF or ZIP and keeps it in the inbox folder, so what the user
+// handlePackageUpload receives one ZIP package and keeps it in the packages folder, so what the user
 // downloaded can be added from the browser. The body is streamed to disk (a package is big).
-// The answer says where the file is, so the UI can read the package or import the PDF.
-func (s *Server) handleInboxUpload(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxInboxUpload)
+// The answer says where the file is, so the UI can read the package and import from it.
+func (s *Server) handlePackageUpload(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxPackageUpload)
 	mr, err := r.MultipartReader()
 	if err != nil {
 		writeErr(w, 400, errors.New("expected a multipart upload"))
@@ -330,12 +259,12 @@ func (s *Server) handleInboxUpload(w http.ResponseWriter, r *http.Request) {
 		if part.FormName() != "file" {
 			continue
 		}
-		name := inboxName(part.FileName())
+		name := packageFileName(part.FileName())
 		if name == "" {
-			writeErr(w, 400, errors.New("only .pdf and .zip files can be added"))
+			writeErr(w, 400, errors.New("only .zip packages can be added here"))
 			return
 		}
-		dir := s.inboxDir()
+		dir := s.packagesDir()
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			writeErr(w, 500, err)
 			return
@@ -360,11 +289,7 @@ func (s *Server) handleInboxUpload(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, err)
 			return
 		}
-		kind := "pdf"
-		if strings.EqualFold(filepath.Ext(name), ".zip") {
-			kind = "zip"
-		}
-		writeJSON(w, 201, map[string]any{"name": name, "path": dst, "kind": kind, "size": n})
+		writeJSON(w, 201, map[string]any{"name": name, "path": dst, "size": n})
 		return
 	}
 	writeErr(w, 400, errors.New("no file in the request"))

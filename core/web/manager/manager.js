@@ -15,7 +15,10 @@
       current: 'Current', makeCurrent: 'Use this group', pinnedN: 'pinned',
       dropPdf: 'Drop here what you downloaded: PDFs (several at once) and/or a .zip package. Known files are named and imported automatically. Or', choose: 'choose files',
       linksTitle: 'Official links', linkHub: 'AISWEB: charts page', linkHubNote: 'click "Pacote completo" for the full package (.zip)', exVisual: 'Example of a visual chart',
-      pkgFrom: 'Package', pkgChoose: 'Choose the aerodromes to import.', pkgNone: 'Nothing of this package was recognised.',
+      pkgFrom: 'Package', pkgChoose: 'Choose the aerodromes to import, or import everything.', pkgNone: 'Nothing of this package was recognised.',
+      pkgImportAll: 'Import everything', pkgNew: 'new', pkgAlready: 'already imported', pkgPrev: 'Previous', pkgNext: 'Next', pkgOf: 'of',
+      pkgAllInfo: 'Prepares {n} charts, about {t}.', pkgAllWarn: 'Importing everything prepares every chart of the package on this computer (drawing each PDF as an image). It can take {t} and the computer will be busy meanwhile. You can leave this page open and keep using the app. Continue?',
+      pkgEta: 'left', pkgDuration: { s: 'a few seconds', m: '{n} min', h: '{h} h {m} min' },
       inbox: 'Inbox folder', inboxHelp: 'What you add here stays in this folder, on this computer. PDFs are imported when you click the button; for a .zip, read it and choose the aerodromes.',
       importInbox: 'Import the PDFs of the inbox', noInbox: 'The inbox is empty.',
       imported: 'imported', skipped: 'skipped', failed: 'failed', done: 'Done', error: 'Error',
@@ -91,7 +94,10 @@
       current: 'Atual', makeCurrent: 'Usar este grupo', pinnedN: 'fixadas',
       dropPdf: 'Solte aqui o que você baixou: PDFs (vários de uma vez) e/ou um pacote .zip. Arquivos conhecidos são nomeados e importados automaticamente. Ou', choose: 'escolha os arquivos',
       linksTitle: 'Links oficiais', linkHub: 'AISWEB: página de cartas', linkHubNote: 'clique em "Pacote completo" para baixar o pacote (.zip)', exVisual: 'Exemplo de carta visual',
-      pkgFrom: 'Pacote', pkgChoose: 'Escolha os aeródromos que quer importar.', pkgNone: 'Nada deste pacote foi reconhecido.',
+      pkgFrom: 'Pacote', pkgChoose: 'Escolha os aeródromos que quer importar, ou importe tudo.', pkgNone: 'Nada deste pacote foi reconhecido.',
+      pkgImportAll: 'Importar tudo', pkgNew: 'novas', pkgAlready: 'já importado', pkgPrev: 'Anterior', pkgNext: 'Próxima', pkgOf: 'de',
+      pkgAllInfo: 'Prepara {n} cartas, cerca de {t}.', pkgAllWarn: 'Importar tudo prepara todas as cartas do pacote neste computador (cada PDF é desenhado como imagem). Pode levar {t}, e o computador ficará ocupado nesse tempo. Você pode deixar esta página aberta e continuar usando o aplicativo. Continuar?',
+      pkgEta: 'restantes', pkgDuration: { s: 'alguns segundos', m: '{n} min', h: '{h} h {m} min' },
       inbox: 'Pasta de entrada', inboxHelp: 'O que você adiciona aqui fica nesta pasta, no seu computador. Os PDFs são importados quando você clicar no botão; de um .zip, leia o pacote e escolha os aeródromos.',
       importInbox: 'Importar os PDFs da pasta de entrada', noInbox: 'A pasta de entrada está vazia.',
       imported: 'importadas', skipped: 'ignoradas', failed: 'com erro', done: 'Concluído', error: 'Erro',
@@ -164,6 +170,15 @@
   let VERSION = '0.2.0 Open Beta';   // replaced by what the running program reports (/api/version): '0.1.1-8fa9b5b' while developing
   const REPO = 'https://github.com/RCCSilva/msfs-efb-open-charts';
   const t = (k) => STR[lang][k] || STR.en[k] || k;
+  const fill = (text, vars) => text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
+  // 45 -> "a few seconds", 600 -> "10 min", 7500 -> "2 h 5 min" (an estimate: never more precise than a minute)
+  function fmtDuration(sec) {
+    const d = STR[lang].pkgDuration || STR.en.pkgDuration;
+    if (sec < 60) return d.s;
+    const min = Math.max(1, Math.round(sec / 60));
+    if (min < 60) return fill(d.m, { n: min });
+    return fill(d.h, { h: Math.floor(min / 60), m: min % 60 });
+  }
   const tx = (o) => (o && (o[lang] || o.en)) || '';
 
   // ---- helpers
@@ -221,6 +236,7 @@
       h('div', { class: 'bar' }, h('i', { style: 'width:' + pct + '%' })),
       h('div', { class: 'muted' },
         `${j.done}/${j.total}  ·  ${j.ok} ${t('imported')}  ·  ${j.skipped} ${t('skipped')}  ·  ${j.failed} ${t('failed')}` +
+        (j.etaSeconds > 0 ? '  ·  ~' + fmtDuration(j.etaSeconds) + ' ' + t('pkgEta') : '') +
         (j.current ? '  ·  ' + j.current : '')),
       h('div', null, j.items.filter((i) => i.status === 'error').map((i) => h('div', { class: 'badge bad' }, i.file + ': ' + i.message))));
   }
@@ -437,7 +453,6 @@
     const s = list.find((x) => x.id === id);
     if (!s) { view.replaceChildren(h('div', { class: 'card' }, 'Unknown source')); return; }
     const caps = s.capabilities || [];
-    const inbox = await api('GET', '/api/inbox');
 
     // 1. who the source is and how to get its charts (the guide is the source's own, in order)
     const head = h('div', { class: 'card' },
@@ -472,7 +487,7 @@
     const linksShown = !!s.homepage || rows.length > 0;
 
     // 3. what the user downloaded goes here, PDFs and packages alike
-    view.replaceChildren(head, ...(linksShown ? [links] : []), filesPanel(s, inbox));
+    view.replaceChildren(head, ...(linksShown ? [links] : []), filesPanel(s));
   }
 
   // Upload PDFs on behalf of a source (recognition and naming use that source's rules).
@@ -604,7 +619,7 @@
     return card;
   }
 
-  function filesPanel(s, inbox) {
+  function filesPanel(s) {
     const reviews = h('div');
     const packages = h('div');
     const drop = h('div', { class: 'drop' });
@@ -613,14 +628,14 @@
     const cards = [];
     const isZip = (name) => /\.zip$/i.test(name);
 
-    // A package is kept in the inbox (so it can be read again) and shown right here.
+    // A package is kept by the program (importing an aerodrome reads it again) and shown right here.
     async function addPackage(f) {
       const row = progressRow(f.name);
       reviews.appendChild(row.el);
       const fd = new FormData();
       fd.append('file', f);
       try {
-        const saved = await xhrPost('/api/inbox/upload', fd, (p) => row.update(t('sUploading'), p), () => row.update(t('sAnalyzing'), null));
+        const saved = await xhrPost('/api/packages/upload', fd, (p) => row.update(t('sUploading'), p), () => row.update(t('sAnalyzing'), null));
         row.stop();
         reviews.removeChild(row.el);
         packages.prepend(packageView(s, saved.path, saved.name));
@@ -665,69 +680,88 @@
           h('button', { class: 'btn primary', onclick: () => cards.forEach((c) => c.importNow()) }, t('importAll'))));
       }
     }
-    file.addEventListener('change', () => inspectFiles([...file.files]));
+    file.addEventListener('change', () => { inspectFiles([...file.files]); file.value = ''; });
     drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('over'));
     drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); inspectFiles([...e.dataTransfer.files]); });
 
-    const prog = h('div');
-    const pdfs = inbox.files.filter((f) => f.kind === 'pdf');
-    const zips = inbox.files.filter((f) => f.kind === 'zip');
-    const scan = h('button', { class: 'btn', disabled: pdfs.length === 0, onclick: async () => {
-      const r = await api('POST', '/api/inbox/scan?source=' + encodeURIComponent(s.id));
-      if (r.job) await waitJob(r.job.id, (j) => prog.replaceChildren(progress(j)));
-      toast(t('done'));
-    } }, t('importInbox'));
-
     return h('div', null,
       h('div', { class: 'card' }, h('h3', null, t('stepsFiles')), drop, file),
       reviews,
-      packages,
-      h('div', { class: 'card' },
-        h('h3', null, t('inbox')),
-        h('div', { class: 'muted' }, inbox.dir),
-        h('div', { class: 'muted' }, t('inboxHelp')),
-        h('div', null, pdfs.length + zips.length
-          ? [...pdfs.map((f) => h('div', null, f.name)),
-            ...zips.map((z) => h('div', { class: 'row' }, h('span', { class: 'grow' }, z.name),
-              h('button', { class: 'btn sm', onclick: () => packages.prepend(packageView(s, z.path, z.name)) }, t('readPackage'))))]
-          : h('div', { class: 'muted' }, t('noInbox'))),
-        h('div', { class: 'row', style: 'margin-top:8px' }, scan), prog));
+      packages);
   }
 
-  // A downloaded package: the aerodromes it holds, to choose which ones to import.
+  // A downloaded package: import everything, or choose aerodromes from a paged list.
+  const PKG_PAGE = 20;
   function packageView(s, path, name) {
     const out = h('div', { class: 'muted' }, '...');
     const prog = h('div');
     const card = h('div', { class: 'card' }, h('h3', null, t('pkgFrom') + ': ' + name), out, prog);
 
-    async function importAirport(icao) {
+    // one import at a time: the progress shows under the list, and the buttons wait for it
+    let busy = false;
+    async function run(body) {
+      if (busy) return;
+      busy = true;
+      card.classList.add('busy');
       try {
-        const j = await api('POST', `/api/sources/${s.id}/package/import`, { path, icao });
+        const j = await api('POST', `/api/sources/${s.id}/package/import`, Object.assign({ path }, body));
         await waitJob(j.id, (x) => prog.replaceChildren(progress(x)));
         toast(t('done'));
       } catch (e) {
         prog.replaceChildren(h('span', { class: 'badge bad' }, e.message));
+      } finally {
+        busy = false;
+        card.classList.remove('busy');
       }
     }
 
     api('GET', `/api/sources/${s.id}/package?path=${encodeURIComponent(path)}`).then((p) => {
       if (!p.airports || !p.airports.length) { out.replaceChildren(h('span', { class: 'badge warn' }, t('pkgNone'))); return; }
+      const newBy = p.newByAirport || {};
       const filter = h('input', { type: 'text', placeholder: 'ICAO' });
       const body = h('tbody');
+      const pager = h('div', { class: 'row' });
+      let page = 0;
+
       const draw = () => {
         const q = filter.value.trim().toUpperCase();
-        body.replaceChildren(...p.airports.filter((a) => !q || a.icao.startsWith(q)).slice(0, 40).map((a) => h('tr', null,
-          h('td', null, h('strong', null, a.icao)),
-          h('td', { class: 'muted' }, Object.keys(a.types).sort().map((k) => `${k} ${a.types[k]}`).join(' \u00b7 ')),
-          h('td', { class: 'actions' }, h('button', { class: 'btn sm primary', onclick: () => importAirport(a.icao) }, `${t('importAirport')} (${a.count})`)))));
+        const rows = p.airports.filter((a) => !q || a.icao.startsWith(q));
+        const pages = Math.max(1, Math.ceil(rows.length / PKG_PAGE));
+        page = Math.min(page, pages - 1);
+        body.replaceChildren(...rows.slice(page * PKG_PAGE, (page + 1) * PKG_PAGE).map((a) => {
+          const fresh = newBy[a.icao] || 0;
+          return h('tr', null,
+            h('td', null, h('strong', null, a.icao)),
+            h('td', { class: 'muted' }, Object.keys(a.types).sort().map((k) => `${k} ${a.types[k]}`).join(' \u00b7 ')),
+            h('td', { class: 'actions' }, fresh === 0
+              ? h('span', { class: 'badge ok' }, '\u2713 ' + t('pkgAlready'))
+              : h('button', { class: 'btn sm primary', onclick: () => run({ icao: a.icao }) },
+                `${t('importAirport')} (${fresh === a.count ? a.count : fresh + ' ' + t('pkgNew')})`)));
+        }));
+        pager.replaceChildren(
+          h('button', { class: 'btn sm', disabled: page === 0, onclick: () => { page -= 1; draw(); } }, '\u2039 ' + t('pkgPrev')),
+          h('span', { class: 'muted' }, `${rows.length ? page * PKG_PAGE + 1 : 0}\u2013${Math.min(rows.length, (page + 1) * PKG_PAGE)} ${t('pkgOf')} ${rows.length}`),
+          h('button', { class: 'btn sm', disabled: page >= pages - 1, onclick: () => { page += 1; draw(); } }, t('pkgNext') + ' \u203a'));
       };
-      filter.addEventListener('input', draw);
+      filter.addEventListener('input', () => { page = 0; draw(); });
       draw();
+
+      // import everything that is not in the library yet, with the time it should take here
+      const when = fmtDuration(p.estimateSeconds || 0);
+      const all = p.new > 0
+        ? h('div', { class: 'row', style: 'margin:8px 0' },
+          h('button', { class: 'btn primary', onclick: () => {
+            if (confirm(fill(t('pkgAllWarn'), { t: when }))) run({ all: true });
+          } }, `${t('pkgImportAll')} (${p.new})`),
+          h('span', { class: 'muted' }, fill(t('pkgAllInfo'), { n: p.new, t: when })))
+        : h('div', { class: 'muted', style: 'margin:8px 0' }, '\u2713 ' + t('pkgAlready'));
+
       out.replaceChildren(
         h('div', { class: 'muted' }, `${p.charts} ${t('charts')} \u00b7 ${p.airports.length} ${t('airports')}${p.date ? ' \u00b7 ' + p.date : ''}`),
+        all,
         h('div', { class: 'muted' }, t('pkgChoose')),
-        h('div', { class: 'row' }, h('div', { class: 'grow' }, filter)), h('table', null, body));
+        h('div', { class: 'row' }, h('div', { class: 'grow' }, filter)), h('table', null, body), pager);
     }).catch((e) => out.replaceChildren(h('span', { class: 'badge bad' }, e.message)));
     return card;
   }

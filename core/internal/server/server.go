@@ -49,6 +49,7 @@ type Server struct {
 	rendIdle    *time.Timer
 	position    PositionSource
 	importMu    sync.Mutex // PDFium instance is single-threaded
+	impTime     importTiming
 	tiles       *tileCache
 	jobs        *jobs.Manager
 	staged      stagedStore

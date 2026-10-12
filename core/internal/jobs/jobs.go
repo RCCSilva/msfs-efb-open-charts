@@ -29,6 +29,8 @@ type Snapshot struct {
 	Skipped int    `json:"skipped"`
 	Failed  int    `json:"failed"`
 	Current string `json:"current,omitempty"`
+	// ETASeconds is the server's estimate of the time left, from how fast the job has gone so far.
+	ETASeconds int `json:"etaSeconds"`
 	// Stage names what a single-file job is doing now ("waiting", "engine", "render", "save")
 	// and Percent is the server's estimate of how far it is. The UI only displays them.
 	Stage   string     `json:"stage,omitempty"`
@@ -37,6 +39,9 @@ type Snapshot struct {
 	Ended   *time.Time `json:"ended,omitempty"`
 	Items   []Item     `json:"items"`
 }
+
+// maxKeptItems is how many successful items a job keeps in its list.
+const maxKeptItems = 100
 
 // Job is the live job a worker reports to.
 type Job struct {
@@ -94,6 +99,10 @@ func (m *Manager) Get(id string) (Snapshot, bool) {
 	defer j.mu.Unlock()
 	c := j.s
 	c.Items = append([]Item{}, j.s.Items...)
+	if c.State == "running" && c.Done > 0 && c.Total > c.Done {
+		per := time.Since(c.Started).Seconds() / float64(c.Done)
+		c.ETASeconds = int(per*float64(c.Total-c.Done) + 0.5)
+	}
 	return c, true
 }
 
@@ -115,7 +124,11 @@ func (j *Job) SetStage(stage string, percent int) {
 func (j *Job) Add(it Item) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	j.s.Items = append(j.s.Items, it)
+	// A big job (a whole package) must not make every progress answer huge: the counters stay exact,
+	// but only the first items and the failures are kept in the list.
+	if it.Status != "ok" || len(j.s.Items) < maxKeptItems {
+		j.s.Items = append(j.s.Items, it)
+	}
 	j.s.Done++
 	switch it.Status {
 	case "ok":

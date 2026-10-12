@@ -101,6 +101,9 @@ func openDeceaPackage(path string) (*PackageInfo, error) {
 	return info, nil
 }
 
+// Entries returns every chart of the package.
+func (p *PackageInfo) Entries() []Entry { return append([]Entry(nil), p.entries...) }
+
 // Select returns the entries of the package matching the ICAO and, optionally, the types.
 func (p *PackageInfo) Select(icao string, types []string) []Entry {
 	want := map[string]bool{}

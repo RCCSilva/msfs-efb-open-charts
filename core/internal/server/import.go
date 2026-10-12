@@ -6,6 +6,7 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/pdfgeo"
@@ -34,7 +35,7 @@ type errAlready struct{ ID, Name string }
 func (e errAlready) Error() string { return fmt.Sprintf("already in the library as %q", e.Name) }
 
 // importPDF converts one PDF and adds it to the library. It is the single path used by uploads,
-// package imports and the inbox. Imports run one at a time (one PDFium instance).
+// package imports. Imports run one at a time (one PDFium instance).
 func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.Chart, error) {
 	if !s.canImport() {
 		return nil, errors.New("importer unavailable")
@@ -71,9 +72,11 @@ func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.C
 	opt.ID = s.lib.UniqueID(store.Slug(source + " " + stem))
 
 	var res *importer.Result
+	var began time.Time
 	f.stage("waiting", 5)
 	err := s.withRenderer(func() { f.stage("engine", 15) }, func(r *importer.Renderer) (e error) {
 		f.stage("render", 40)
+		began = time.Now()
 		res, e = r.Import(data, opt)
 		return e
 	})
@@ -85,6 +88,7 @@ func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.C
 	if err != nil {
 		return nil, err
 	}
+	s.impTime.record(time.Since(began))
 	log.Printf("imported %s (%s) %dx%d fit %.2f m", c.ID, c.Name, c.Width, c.Height, c.ErrorMeters)
 	return c, nil
 }

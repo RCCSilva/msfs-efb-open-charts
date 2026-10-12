@@ -111,3 +111,6 @@ nav .navlink:hover { background: var(--bg); text-decoration: none; }
 .qrcard { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; text-align: center; max-width: 210px; }
 .qrcard img { background: #fff; border-radius: 8px; display: block; margin: 0 auto 8px; }
 .urlbox { word-break: break-all; font-size: 12px; }
+
+/* a package import is running: its buttons wait for it */
+.card.busy button { pointer-events: none; opacity: 0.55; }
