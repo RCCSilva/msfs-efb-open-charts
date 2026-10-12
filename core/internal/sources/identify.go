@@ -27,7 +27,16 @@ type Identity struct {
 //  3. the title embedded in the PDF, unless it is a generic authoring-tool leftover ("BaseMap_REA");
 //  4. whatever the file name gave, then the tidied file name.
 func Identify(sourceID, stem, file, viewport string) Identity {
+	return IdentifyWith(sourceID, stem, file, viewport, nil)
+}
+
+// IdentifyWith is Identify for a file whose name the user's own pattern has already read (user may be
+// nil). What a pattern reads is taken as it is: the user said how their files are named.
+func IdentifyWith(sourceID, stem, file, viewport string, user *naming.Info) Identity {
 	info, by := Recognize(sourceID, stem)
+	if user != nil {
+		info, by = *user, "pattern"
+	}
 	id := Identity{ICAO: info.ICAO, Type: info.Type, Title: info.Title, Validity: info.Validity, Recognizer: by}
 
 	provider := by
@@ -41,7 +50,7 @@ func Identify(sourceID, stem, file, viewport string) Identity {
 	switch {
 	case id.Matched == "catalog" && id.Title != "":
 		// keep the catalog title
-	case id.ICAO != "" && id.Title != "":
+	case id.ICAO != "" && id.Title != "", by == "pattern" && id.Title != "":
 		// keep the title from the file name
 	case !naming.IsGenericTitle(viewport):
 		id.Title = viewport

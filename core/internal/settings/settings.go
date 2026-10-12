@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // DefaultPort is what Open Charts listens on unless told otherwise. It is deliberately not one of
@@ -66,6 +67,9 @@ func AircraftHex(id string) string {
 	return ""
 }
 
+// MaxNamePatterns is how many file-name patterns a user may keep.
+const MaxNamePatterns = 10
+
 // ValidBasemap reports whether s is a known base map style.
 func ValidBasemap(s string) bool {
 	return s == BasemapStandard || s == BasemapLight || s == BasemapDark || s == BasemapNone
@@ -91,6 +95,9 @@ type Settings struct {
 	// Aircraft and AircraftColor are the symbol shown for the aircraft position (a yellow plane by default).
 	Aircraft      string `json:"aircraft"`
 	AircraftColor string `json:"aircraftColor"`
+	// NamePatterns are file-name templates of the user's own PDFs ("{icao}_{type}_{title}_{date}"),
+	// tried in order for the "My PDFs" source (see package naming).
+	NamePatterns []string `json:"namePatterns,omitempty"`
 }
 
 // Default returns the settings of a fresh installation (a new key is generated).
@@ -138,6 +145,11 @@ func Load(dir string) Settings {
 			}
 			if AircraftHex(f.AircraftColor) != "" {
 				s.AircraftColor = f.AircraftColor
+			}
+			for _, p := range f.NamePatterns {
+				if p = strings.TrimSpace(p); p != "" && len(s.NamePatterns) < MaxNamePatterns {
+					s.NamePatterns = append(s.NamePatterns, p)
+				}
 			}
 			if f.Token != "" {
 				s.Token = f.Token

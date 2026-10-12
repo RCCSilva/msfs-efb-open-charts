@@ -107,6 +107,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/groups/{id}/pins/{chart}", s.handleUnpin)
 
 	s.registerSourceRoutes(mux)
+	s.registerNamingRoutes(mux)
 	s.registerSetupRoutes(mux)
 	s.registerAccessRoutes(mux)
 

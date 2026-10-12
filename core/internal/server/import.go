@@ -11,7 +11,6 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/pdfgeo"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sources"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 )
 
@@ -56,7 +55,7 @@ func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.C
 		return fallback
 	}
 	source := pick(f.Source, "manual")
-	id := sources.Identify(source, stem, base, pdfViewportName(data))
+	id := s.identify(source, stem, base, pdfViewportName(data))
 	opt := importer.Options{
 		Source:   source,
 		Name:     strings.TrimSpace(f.Name),

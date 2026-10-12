@@ -119,7 +119,7 @@ func (s *Server) handleInspect(w http.ResponseWriter, r *http.Request) {
 	}
 	out["georeferenced"], out["viewport"] = geo, viewport
 
-	id := sources.Identify(source, stem, base, viewport)
+	id := s.identify(source, stem, base, viewport)
 	out["recognizedBy"] = id.Recognizer
 	out["matched"] = id.Matched
 	out["confident"] = geo && id.Confident

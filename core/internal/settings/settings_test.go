@@ -3,6 +3,7 @@ package settings
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -24,12 +25,13 @@ func TestDefaults(t *testing.T) {
 
 func TestRoundTripAndLAN(t *testing.T) {
 	dir := t.TempDir()
-	in := Settings{Port: 45000, LAN: true, Token: "abc123", Detail: DetailHigh, Basemap: BasemapDark, Aircraft: AircraftHelicopter, AircraftColor: "blue"}
+	in := Settings{Port: 45000, LAN: true, Token: "abc123", Detail: DetailHigh, Basemap: BasemapDark, Aircraft: AircraftHelicopter, AircraftColor: "blue",
+		NamePatterns: []string{"{icao}_{type}_{title}"}}
 	if err := in.Save(dir); err != nil {
 		t.Fatal(err)
 	}
 	out := Load(dir)
-	if out != in {
+	if !reflect.DeepEqual(out, in) {
 		t.Fatalf("round trip: got %+v, want %+v", out, in)
 	}
 	if out.ListenAddr() != "0.0.0.0:45000" {

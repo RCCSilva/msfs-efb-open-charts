@@ -127,6 +127,9 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
 - **Sources** declare abilities by implementing interfaces: `Cataloger` (static list), `Locator`
   (address from a date), `Packager` (reads a downloaded archive). A source may implement only some.
   File-name rules belong to the source (`Recognize`); `manual` falls back to the other sources.
+- **Name patterns (My PDFs):** the user may write file-name templates (`{icao}_{type}_{title}_{date:YYYYMMDD}`,
+  package `naming`, `pattern.go`), kept in `settings.json` and tried first for the `manual` source (`Server.identify`).
+  A file a pattern reads with ICAO and type is imported without review. Patterns never apply to a provider's files.
 - **Import flow:** files dropped in the manager are inspected first (`/api/import/inspect`); known
   provider files are imported automatically, others are reviewed by the user.
 - **Memory:** the PDF renderer takes ~300 MB once loaded, so it is created on first use and

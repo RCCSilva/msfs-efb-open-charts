@@ -18,6 +18,13 @@
       pkgFrom: 'Package', pkgChoose: 'Choose the aerodromes to import, or import everything.', pkgNone: 'Nothing of this package was recognised.',
       pkgImportAll: 'Import everything', pkgNew: 'new', pkgAlready: 'already imported', pkgPrev: 'Previous', pkgNext: 'Next', pkgOf: 'of',
       pkgAllInfo: 'Prepares {n} charts, about {t}.', pkgAllWarn: 'Importing everything prepares every chart of the package on this computer (drawing each PDF as an image). It can take {t} and the computer will be busy meanwhile. You can leave this page open and keep using the app. Continue?',
+      patTitle: 'Name pattern for your PDFs', patHelp: 'Name your PDFs the same way and the app reads the airport, type, title and date from the file name, so a whole folder is imported without asking. Write the pattern with placeholders.',
+      patLegend: 'Placeholders', patIcao: 'airport code (4 letters)', patType: 'chart type (IAC, SID, STAR, ADC...)', patTitle2: 'the chart\'s name',
+      patDate: 'validity date; a format fixes it, for example {date:DD-MM-YYYY} (default: YYYYMMDD or YYYY-MM-DD)', patSkip: 'any text you do not need',
+      patRules: '"_", "-" and a space are interchangeable, and capitals do not matter. One pattern per line; the first that fits wins.',
+      patExample: 'Example: {icao}_{type}_{title}_{date:YYYYMMDD} reads SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
+      patPlaceholder: '{icao}_{type}_{title}_{date:YYYYMMDD}', patTestLabel: 'Test with a file name', patTestPlaceholder: 'SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
+      patSave: 'Save patterns', patSaved: 'Patterns saved', patNoMatch: 'no pattern matches this name', patResult: 'Reads',
       pkgEta: 'left', pkgDuration: { s: 'a few seconds', m: '{n} min', h: '{h} h {m} min' },
       inbox: 'Inbox folder', inboxHelp: 'What you add here stays in this folder, on this computer. PDFs are imported when you click the button; for a .zip, read it and choose the aerodromes.',
       importInbox: 'Import the PDFs of the inbox', noInbox: 'The inbox is empty.',
@@ -97,6 +104,13 @@
       pkgFrom: 'Pacote', pkgChoose: 'Escolha os aeródromos que quer importar, ou importe tudo.', pkgNone: 'Nada deste pacote foi reconhecido.',
       pkgImportAll: 'Importar tudo', pkgNew: 'novas', pkgAlready: 'já importado', pkgPrev: 'Anterior', pkgNext: 'Próxima', pkgOf: 'de',
       pkgAllInfo: 'Prepara {n} cartas, cerca de {t}.', pkgAllWarn: 'Importar tudo prepara todas as cartas do pacote neste computador (cada PDF é desenhado como imagem). Pode levar {t}, e o computador ficará ocupado nesse tempo. Você pode deixar esta página aberta e continuar usando o aplicativo. Continuar?',
+      patTitle: 'Padrão de nome dos seus PDFs', patHelp: 'Nomeie seus PDFs sempre do mesmo jeito e o aplicativo lê o aeródromo, o tipo, o título e a data pelo nome do arquivo, e uma pasta inteira é importada sem perguntar. Escreva o padrão com marcadores.',
+      patLegend: 'Marcadores', patIcao: 'código do aeródromo (4 letras)', patType: 'tipo da carta (IAC, SID, STAR, ADC...)', patTitle2: 'o nome da carta',
+      patDate: 'data de validade; um formato a fixa, por exemplo {date:DD-MM-YYYY} (padrão: AAAAMMDD ou AAAA-MM-DD)', patSkip: 'qualquer texto que você não precisa',
+      patRules: '"_", "-" e espaço valem o mesmo, e maiúsculas não importam. Um padrão por linha; vale o primeiro que servir.',
+      patExample: 'Exemplo: {icao}_{type}_{title}_{date:YYYYMMDD} lê SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
+      patPlaceholder: '{icao}_{type}_{title}_{date:YYYYMMDD}', patTestLabel: 'Teste com um nome de arquivo', patTestPlaceholder: 'SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
+      patSave: 'Salvar padrões', patSaved: 'Padrões salvos', patNoMatch: 'nenhum padrão serve para este nome', patResult: 'Lê',
       pkgEta: 'restantes', pkgDuration: { s: 'alguns segundos', m: '{n} min', h: '{h} h {m} min' },
       inbox: 'Pasta de entrada', inboxHelp: 'O que você adiciona aqui fica nesta pasta, no seu computador. Os PDFs são importados quando você clicar no botão; de um .zip, leia o pacote e escolha os aeródromos.',
       importInbox: 'Importar os PDFs da pasta de entrada', noInbox: 'A pasta de entrada está vazia.',
@@ -487,7 +501,7 @@
     const linksShown = !!s.homepage || rows.length > 0;
 
     // 3. what the user downloaded goes here, PDFs and packages alike
-    view.replaceChildren(head, ...(linksShown ? [links] : []), filesPanel(s));
+    view.replaceChildren(head, ...(s.id === 'manual' ? [await patternCard()] : []), ...(linksShown ? [links] : []), filesPanel(s));
   }
 
   // Upload PDFs on behalf of a source (recognition and naming use that source's rules).
@@ -617,6 +631,56 @@
       h('div', { class: 'row' }, btn, status));
     card.importNow = () => { if (!card.done && !btn.disabled) btn.click(); };
     return card;
+  }
+
+  // The file-name patterns of the user's own PDFs: written once, used for every file dropped.
+  async function patternCard() {
+    let cur;
+    try { cur = await api('GET', '/api/naming/patterns'); } catch (e) { return h('div'); }
+    const box = h('textarea', { rows: 3, placeholder: t('patPlaceholder'), style: 'width:100%;font-family:monospace' });
+    box.value = cur.patterns.join('\n');
+    const sample = h('input', { type: 'text', placeholder: t('patTestPlaceholder'), style: 'width:100%' });
+    const result = h('div', { class: 'muted', style: 'margin-top:6px;min-height:20px' });
+
+    // what the patterns read from the sample: the first line that fits, as the server would do
+    let timer = null;
+    async function test() {
+      const name = sample.value.trim();
+      if (!name) { result.textContent = ''; return; }
+      const lines = box.value.split('\n').map((l) => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        const r = await api('POST', '/api/naming/test', { pattern: line, sample: name });
+        if (r.ok) {
+          const parts = [['ICAO', r.icao], ['Type', r.type], ['Title', r.title], ['Date', r.validity]].filter((x) => x[1]);
+          result.replaceChildren(h('span', { class: 'badge ok' }, t('patResult') + ': ' + parts.map((x) => x[0] + ' ' + x[1]).join(' \u00b7 ')));
+          return;
+        }
+        if (r.error && r.error !== 'no match') { result.replaceChildren(h('span', { class: 'badge bad' }, line + ': ' + r.error)); return; }
+      }
+      result.replaceChildren(h('span', { class: 'badge warn' }, lines.length ? t('patNoMatch') : t('patNoMatch')));
+    }
+    const schedule = () => { clearTimeout(timer); timer = setTimeout(test, 250); };
+    box.addEventListener('input', schedule);
+    sample.addEventListener('input', schedule);
+
+    const legend = [['{icao}', t('patIcao')], ['{type}', t('patType')], ['{title}', t('patTitle2')], ['{date}', t('patDate')], ['{skip}', t('patSkip')]];
+    return h('div', { class: 'card' },
+      h('h3', null, t('patTitle')),
+      h('div', { class: 'muted' }, t('patHelp')),
+      h('div', { style: 'margin:8px 0' },
+        h('strong', null, t('patLegend') + ':'),
+        h('table', null, h('tbody', null, legend.map(([k, v]) => h('tr', null, h('td', null, h('code', null, k)), h('td', { class: 'muted' }, v)))))),
+      h('div', { class: 'muted' }, t('patRules')),
+      h('div', { class: 'muted', style: 'margin-bottom:8px' }, t('patExample')),
+      box,
+      h('div', { style: 'margin-top:8px' }, h('label', { class: 'muted' }, t('patTestLabel')), sample, result),
+      h('div', { class: 'row', style: 'margin-top:8px' },
+        h('button', { class: 'btn primary', onclick: async () => {
+          try {
+            await api('PUT', '/api/naming/patterns', { patterns: box.value.split('\n').map((l) => l.trim()).filter(Boolean) });
+            toast(t('patSaved'));
+          } catch (e) { toast(e.message); }
+        } }, t('patSave'))));
   }
 
   function filesPanel(s) {
