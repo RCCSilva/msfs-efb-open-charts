@@ -3,7 +3,7 @@
 
 #define AppName "Open Charts"
 #ifndef AppVersion
-  #define AppVersion "0.1.1"
+  #define AppVersion "0.2.0"
 #endif
 #ifndef AppLabel
   #define AppLabel "Open Beta"

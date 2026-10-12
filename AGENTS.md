@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Guidance for coding agents and contributors working on **Open Charts**, a local aeronautical chart
-manager and in-sim moving map for Microsoft Flight Simulator 2024 (0.1.1 Open Beta).
+manager and in-sim moving map for Microsoft Flight Simulator 2024 (0.2.0 Open Beta).
 
 > Open Charts is **for flight simulation only**. Real-world aviation use is prohibited. Keep that
 > notice in every user-facing surface you add (README, About, installer, in-sim viewer).
@@ -45,7 +45,7 @@ One Go program (no cgo) that runs in the Windows tray:
 cd core; go vet ./...; go test ./...
 
 # full build: tests, exe, portable zip, installer (needs the MSFS 2024 SDK and Inno Setup 6)
-powershell -File installer\build.ps1 -Version 0.1.1
+powershell -File installer\build.ps1 -Version 0.2.0
 
 # run for development, serving the UI from disk so web edits need no rebuild
 build\opencharts.exe -web core\web -data core\data2 -no-tray
@@ -83,14 +83,14 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
 - **EFB app (`core/internal/setup/efbpkg/OpenCharts.js`):** the folder, the JS file name and
   `INTERNAL_NAME` must match (`OpenCharts`). Never use the name `TemplateApp`. The sim loads the JS
   only at start, so changes need a simulator restart.
-- **Build identity:** a plain `go build` shows `0.1.1-<commit>` (and `-dirty` with uncommitted
+- **Build identity:** a plain `go build` shows `0.2.0-<commit>` (and `-dirty` with uncommitted
   changes), taken from the build info Go stamps into the executable (`internal/buildinfo`); only
   `installeruild.ps1` links `buildinfo.Release=1` and shows the bare version. The manager (footer, About,
   Setup) and `/api/version` show it, the EFB app is stamped with it at install time, and Setup tells
   whether the installed EFB app is the same build as the running program.
 - **Names and text:** repository files (docs, issue templates, commit messages, code comments) are
   in English. The product UI is bilingual (pt-BR and en).
-- **Versions:** the single user-facing version is `0.1.1 Open Beta`, stored in the `VERSION` file.
+- **Versions:** the single user-facing version is `0.2.0 Open Beta`, stored in the `VERSION` file.
   Never edit it by hand in the individual files: run
   `powershell -File installer\set-version.ps1 -Version X.Y.Z`, which syncs the manager, the EFB
   app and its package version, the executable resource (icon + version, regenerated with a pinned

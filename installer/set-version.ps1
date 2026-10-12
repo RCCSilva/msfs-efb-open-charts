@@ -46,7 +46,7 @@ Update-File 'core\cmd\opencharts\winres\winres.json' {
   $t = $t -replace '("ProductVersion":\s*")[^"]*(")', "`${1}$full`${2}"
   $t
 }
-Update-File 'core\web\manager\manager.js' { param($t) $t -replace "(const VERSION = ')[^']*(';)", "`${1}$full`${2}" }
+Update-File 'core\web\manager\manager.js' { param($t) $t -replace "((?:const|let) VERSION = ')[^']*(';)", "`${1}$full`${2}" }
 Update-File 'core\internal\setup\setup.go' { param($t) $t -replace '(const EFBVersion = ")[^"]*(")', "`${1}$Version`${2}" }
 Update-File 'core\internal\setup\efbpkg\OpenCharts.js' { param($t) $t -replace "(var VERSION = ')[^']*(';)", "`${1}$Version`${2}" }
 Update-File 'installer\OpenCharts.iss' { param($t) $t -replace '(#define AppVersion ")[^"]*(")', "`${1}$Version`${2}" }
@@ -57,12 +57,12 @@ Update-File 'installer\build.ps1' {
 }
 Update-File 'README.md' {
   param($t)
-  $t = $t -replace '(# Open Charts . )Open Beta \d+\.\d+\.\d+', "`${1}$full"
+  $t = $t -replace '(# Open Charts . )\d+\.\d+\.\d+ Open Beta', "`${1}$full"
   $t -replace '(build\.ps1 -Version )\d+\.\d+\.\d+', "`${1}$Version"
 }
 Update-File 'AGENTS.md' {
   param($t)
-  $t = $t -replace '\(Open Beta \d+\.\d+\.\d+\)', "($full)"
+  $t = $t -replace '\(\d+\.\d+\.\d+ Open Beta\)', "($full)"
   $t = $t -replace '(build\.ps1 -Version )\d+\.\d+\.\d+', "`${1}$Version"
   $t -replace '(user-facing version is `)[^`]*(`)', "`${1}$full`${2}"
 }
