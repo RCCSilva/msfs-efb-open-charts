@@ -75,6 +75,8 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /api/position", s.handlePosition)
 	mux.HandleFunc("GET /api/viewer-state", s.handleViewerState)
+	mux.HandleFunc("POST /api/client-info", s.handlePostClientInfo)
+	mux.HandleFunc("GET /api/client-info", s.handleGetClientInfo)
 	mux.HandleFunc("PUT /api/viewer-state", s.handleSetViewerState)
 
 	// charts

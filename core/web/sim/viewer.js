@@ -1034,6 +1034,26 @@
   if (params.q) { qEl.value = params.q; }
   window.setInterval(softRefresh, 15000);
 
+  // Tell the server what this browser can do (WebGL, pixel ratio...). Read in the manager's Setup.
+  // Only facts about the browser; nothing about the user.
+  function reportClient() {
+    var info = { ua: navigator.userAgent, dpr: window.devicePixelRatio || 1, width: window.innerWidth,
+      height: window.innerHeight, touch: 'ontouchstart' in window || (navigator.maxTouchPoints || 0) > 0,
+      webgl: false, webgl2: false, renderer: '' };
+    try {
+      var c = document.createElement('canvas');
+      var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+      info.webgl = !!gl;
+      if (gl) {
+        var ext = gl.getExtension('WEBGL_debug_renderer_info');
+        info.renderer = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) || '');
+      }
+      info.webgl2 = !!document.createElement('canvas').getContext('webgl2');
+    } catch (e) { /* no WebGL */ }
+    request('POST', '/api/client-info', info, null);
+  }
+  window.setTimeout(reportClient, 2500);
+
   function start(saved) {
     saved = saved || {};
     if (!params.mode && (saved.mode === 'chart' || saved.mode === 'overlay')) mode = saved.mode;

@@ -27,6 +27,9 @@
       tabCatalog: 'Visual charts (catalog)', tabPackage: 'Aerodromes (package)', tabFiles: 'Add files',
       stepsFiles: 'Add what you downloaded', capCatalog: 'Catalog', capPackage: 'Package', capLocate: 'By date', capUpload: 'Upload',
       about: 'About', setup: 'Setup', map: 'Map',
+      diagTitle: 'Viewer browsers', diagNone: 'No viewer has reported yet. Open the viewer (in the simulator or in a browser) and come back.',
+      diagSim: 'Simulator (EFB)', diagBrowser: 'Browser', diagYes: 'yes', diagNo: 'no', diagRatio: 'Pixel ratio',
+      diagHelp: 'What each viewer reported about itself. WebGL decides whether a vector map (lighter and sharper) is possible inside the simulator.',
       baseTitle: 'Base map', baseLight: 'Light (quiet)', baseStandard: 'Standard OpenStreetMap', baseDark: 'Dark', baseNone: 'No map',
       baseHelp: 'What is drawn under the chart in the viewer. Light is a quiet grey version of OpenStreetMap: lighter to load and easier on the chart. Reload the viewer to see the change.',
       detailTitle: 'Chart detail', detailNormal: 'Normal', detailHigh: 'High',
@@ -94,6 +97,9 @@
       tabCatalog: 'Cartas visuais (catálogo)', tabPackage: 'Aeródromos (pacote)', tabFiles: 'Adicionar arquivos',
       stepsFiles: 'Adicione o que você baixou', capCatalog: 'Catálogo', capPackage: 'Pacote', capLocate: 'Por data', capUpload: 'Envio',
       about: 'Sobre', setup: 'Configuração', map: 'Mapa',
+      diagTitle: 'Navegadores do visualizador', diagNone: 'Nenhum visualizador se apresentou ainda. Abra o visualizador (no simulador ou num navegador) e volte aqui.',
+      diagSim: 'Simulador (EFB)', diagBrowser: 'Navegador', diagYes: 'sim', diagNo: 'não', diagRatio: 'Densidade de pixels',
+      diagHelp: 'O que cada visualizador informou sobre si. O WebGL decide se um mapa vetorial (mais leve e mais nítido) é possível dentro do simulador.',
       baseTitle: 'Mapa base', baseLight: 'Claro (discreto)', baseStandard: 'OpenStreetMap padrão', baseDark: 'Escuro', baseNone: 'Sem mapa',
       baseHelp: 'O que aparece embaixo da carta no visualizador. O Claro é uma versão discreta, em cinza, do OpenStreetMap: carrega mais leve e não disputa atenção com a carta. Recarregue o visualizador para ver a mudança.',
       detailTitle: 'Detalhe das cartas', detailNormal: 'Normal', detailHigh: 'Alto',
@@ -861,6 +867,22 @@
     ];
   }
 
+  async function diagCard() {
+    let list;
+    try { list = await api('GET', '/api/client-info'); } catch (e) { return null; }
+    const yes = (v) => h('span', { class: 'badge ' + (v ? 'ok' : 'warn') }, v ? t('diagYes') : t('diagNo'));
+    const rows = list.map((c) => h('div', { class: 'setuprow' },
+      h('div', { class: 'row' },
+        h('strong', { class: 'grow' }, c.kind === 'simulator' ? t('diagSim') : t('diagBrowser')),
+        h('span', { class: 'muted' }, new Date(c.at).toLocaleString())),
+      h('div', { class: 'row' }, h('span', null, 'WebGL '), yes(c.webgl), h('span', null, ' WebGL2 '), yes(c.webgl2),
+        h('span', { class: 'muted' }, ' · ' + t('diagRatio') + ' ' + c.dpr + ' · ' + c.width + '×' + c.height + (c.touch ? ' · touch' : ''))),
+      h('div', { class: 'muted urlbox' }, (c.renderer ? c.renderer + ' · ' : '') + c.ua)));
+    return h('div', { class: 'card' }, h('h3', null, t('diagTitle')),
+      h('div', { class: 'muted', style: 'margin-bottom:8px' }, t('diagHelp')),
+      ...(rows.length ? rows : [h('div', { class: 'muted' }, t('diagNone'))]));
+  }
+
   async function basemapCard() {
     let net;
     try { net = await api('GET', '/api/settings'); } catch (e) { return null; }
@@ -893,6 +915,8 @@
     cards.push(...await networkCards(st));
     const bCard = await basemapCard();
     if (bCard) cards.push(bCard);
+    const gCard = await diagCard();
+    if (gCard) cards.push(gCard);
     const dCard = await detailCard();
     if (dCard) cards.push(dCard);
 
