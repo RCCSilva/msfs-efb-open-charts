@@ -263,7 +263,13 @@ func ProbeList(dllPath, kind string, wait time.Duration) (string, error) {
 	listType := map[string]uintptr{"airport": 0, "waypoint": 1, "ndb": 2, "vor": 3}[kind]
 	var rep strings.Builder
 	started := time.Now()
-	r, _, _ := f.reqList.Call(h, listType, 30)
+	proc := f.reqList
+	if strings.HasPrefix(kind, "ex1-") {
+		kind = strings.TrimPrefix(kind, "ex1-")
+		listType = map[string]uintptr{"airport": 0, "waypoint": 1, "ndb": 2, "vor": 3}[kind]
+		proc = f.reqListEx1
+	}
+	r, _, _ := proc.Call(h, listType, 30)
 	if e := hr(r); e != nil {
 		return "", fmt.Errorf("RequestFacilitiesList: %w", e)
 	}
@@ -284,7 +290,7 @@ func ProbeList(dllPath, kind string, wait time.Duration) (string, error) {
 		switch id {
 		case recvException:
 			fmt.Fprintf(&rep, "EXCEPTION %d\n", binary.LittleEndian.Uint32(msg[12:16]))
-		case recvAirportList, recvWaypointList, recvNDBList, recvVORList:
+		case recvAirportList, recvWaypointList, recvNDBList, recvVORList, recvFacilityMinimal:
 			if len(msg) < listEntryOffset {
 				continue
 			}
