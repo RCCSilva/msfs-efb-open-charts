@@ -70,8 +70,12 @@ func TestImportFAAHelicopterChartIfPresent(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := res.Meta
-	if m.Image.Width != 3200 || m.Image.Height < 2600 || m.Image.Height > 2700 {
-		t.Fatalf("image = %dx%d", m.Image.Width, m.Image.Height)
+	// 10491 px is cut into a pyramid of 2 halvings: chart.png is the overview, 10492/4 = 2623 px wide
+	if m.Image.Width != 2623 || m.Image.Height != 2173 || m.Tiles == nil || m.Tiles.MaxZoom != 2 || m.Tiles.Width != 10492 {
+		t.Fatalf("image = %dx%d tiles = %+v", m.Image.Width, m.Image.Height, m.Tiles)
+	}
+	if len(res.Files) < 300 {
+		t.Fatalf("only %d tiles", len(res.Files))
 	}
 	if len(res.PNG) < 100000 {
 		t.Fatalf("PNG is only %d bytes", len(res.PNG))
@@ -82,8 +86,8 @@ func TestImportFAAHelicopterChartIfPresent(t *testing.T) {
 	px := m.ToPixel.A*e + m.ToPixel.B*n + m.ToPixel.C
 	py := m.ToPixel.D*e + m.ToPixel.E*n + m.ToPixel.F
 	f := m.MapFramePx
-	if f.Left < 300 || f.Left > 700 || f.Right < 2400 || f.Right > 2800 || f.Top > 150 || f.Bottom < 2400 {
-		t.Fatalf("the map area %+v should be the central part of a 3200x%d picture, legends excluded", f, m.Image.Height)
+	if f.Left < 250 || f.Left > 500 || f.Right < 1900 || f.Right > 2300 || f.Top > 150 || f.Bottom < 1900 {
+		t.Fatalf("the map area %+v should be the central part of a 2623x%d picture, legends excluded", f, m.Image.Height)
 	}
 	if px < f.Left || px > f.Right || py < f.Top || py > f.Bottom {
 		t.Fatalf("KBOS at (%.0f, %.0f) is outside the map area %+v", px, py, f)
@@ -94,7 +98,7 @@ func TestImportFAAHelicopterChartIfPresent(t *testing.T) {
 			t.Fatalf("corner %+v outside the file extent %+v", c, nl)
 		}
 	}
-	if m.Georef.MetersPerPixel < 30 || m.Georef.MetersPerPixel > 40 {
+	if m.Georef.MetersPerPixel < 40 || m.Georef.MetersPerPixel > 45 {
 		t.Fatalf("metres per pixel = %v", m.Georef.MetersPerPixel)
 	}
 }

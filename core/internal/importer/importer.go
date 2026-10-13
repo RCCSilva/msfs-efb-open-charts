@@ -119,6 +119,8 @@ type Meta struct {
 		MetersPerPixel float64 `json:"metersPerPixel"`
 	} `json:"georef"`
 	Generator string `json:"generator"`
+	// Tiles describes the pyramid of tiles of a picture too big to show whole (see pyramid.go).
+	Tiles *Tiles `json:"tiles,omitempty"`
 }
 
 // Corner is a control point: geographic position and where it lands in the image.
@@ -134,6 +136,8 @@ type Result struct {
 	Meta Meta
 	PNG  []byte
 	JSON []byte
+	// Files are extra files of the chart by relative path (the tiles of the pyramid).
+	Files map[string][]byte
 }
 
 // ErrNotGeoreferenced is returned for PDFs without a usable /VP georeference.

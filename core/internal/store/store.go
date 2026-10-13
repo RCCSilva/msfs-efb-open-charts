@@ -179,6 +179,11 @@ func (c *Chart) index() {
 
 // Add stores a chart. chartJSON must already be the final chart.json (with the metadata fields).
 func (l *Library) Add(id string, png, chartJSON, pdf []byte) (*Chart, error) {
+	return l.AddFiles(id, png, chartJSON, pdf, nil)
+}
+
+// AddFiles is Add with more files of the chart by relative path (the tiles of a pyramid).
+func (l *Library) AddFiles(id string, png, chartJSON, pdf []byte, extra map[string][]byte) (*Chart, error) {
 	if !ValidID(id) {
 		return nil, fmt.Errorf("invalid chart id %q", id)
 	}
@@ -193,6 +198,18 @@ func (l *Library) Add(id string, png, chartJSON, pdf []byte) (*Chart, error) {
 			continue
 		}
 		if err := os.WriteFile(filepath.Join(tmp, name), data, 0o644); err != nil {
+			return nil, err
+		}
+	}
+	for rel, data := range extra {
+		p := filepath.Join(tmp, filepath.FromSlash(rel))
+		if !strings.HasPrefix(p, tmp+string(filepath.Separator)) {
+			return nil, fmt.Errorf("extra file %q is outside the chart", rel)
+		}
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(p, data, 0o644); err != nil {
 			return nil, err
 		}
 	}

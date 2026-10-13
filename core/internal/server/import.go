@@ -101,7 +101,7 @@ func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.C
 	if isTIFF {
 		original = nil // a 15 MB raster is not kept under the name of a PDF; the picture is what the viewer uses
 	}
-	c, err := s.lib.Add(opt.ID, res.PNG, res.JSON, original)
+	c, err := s.lib.AddFiles(opt.ID, res.PNG, res.JSON, original, res.Files)
 	if err != nil {
 		return nil, err
 	}

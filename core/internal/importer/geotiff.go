@@ -69,9 +69,24 @@ func ImportGeoTIFF(tif []byte, opt Options) (*Result, error) {
 	if long <= 0 {
 		long = 3200
 	}
-	f := math.Min(1, float64(long)/float64(max(W, H)))
-	outW, outH := max(1, int(math.Round(float64(W)*f))), max(1, int(math.Round(float64(H)*f)))
-	out := areaResample(src, outW, outH)
+	// A picture bigger than the overview size is also cut into a pyramid of tiles (see pyramid.go);
+	// chart.png is then the overview, exactly one 2^levels-th of the picture.
+	var out *image.RGBA
+	var files map[string][]byte
+	var tiles *Tiles
+	var fx, fy float64
+	if levels := pyramidLevels(W, H, long); levels > 0 {
+		ov, tf, info, err := buildPyramid(src, levels)
+		if err != nil {
+			return nil, err
+		}
+		out, files, tiles = ov, tf, &info
+		fx, fy = 1/float64(int(1)<<levels), 1/float64(int(1)<<levels)
+	} else {
+		out = areaResample(src, W, H)
+		fx, fy = 1, 1
+	}
+	outW, outH := out.Bounds().Dx(), out.Bounds().Dy()
 
 	var pngBuf bytes.Buffer
 	enc := png.Encoder{CompressionLevel: png.DefaultCompression}
@@ -79,13 +94,13 @@ func ImportGeoTIFF(tif []byte, opt Options) (*Result, error) {
 		return nil, err
 	}
 
-	// projected metres -> pixels of the reduced picture
-	fx, fy := float64(outW)/float64(W), float64(outH)/float64(H)
+	// projected metres -> pixels of chart.png
 	var m Meta
 	m.ToPixel.A = fx / g.DX
 	m.ToPixel.C = -g.X0 * fx / g.DX
 	m.ToPixel.E = fy / g.DY
 	m.ToPixel.F = -g.Y0 * fy / g.DY
+
 	// The map area. A chart raster carries margins and legends around the map, and only the map is
 	// georeferenced: it is framed by a long continuous line, which is found in the picture itself.
 	// When there is no such frame, the whole picture is the map.
@@ -120,11 +135,12 @@ func ImportGeoTIFF(tif []byte, opt Options) (*Result, error) {
 		m.Georef.Viewport = g.Datum // the field is free text for the record
 	}
 
+	m.Tiles = tiles
 	js, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Meta: m, PNG: pngBuf.Bytes(), JSON: js}, nil
+	return &Result{Meta: m, PNG: pngBuf.Bytes(), JSON: js, Files: files}, nil
 }
 
 // areaResample reduces src to w x h by averaging the area each new pixel covers: the right way to
@@ -132,7 +148,15 @@ func ImportGeoTIFF(tif []byte, opt Options) (*Result, error) {
 // source rows once, so a 90-megapixel palette image costs about a second.
 func areaResample(src image.Image, w, h int) *image.RGBA {
 	b := src.Bounds()
-	sw, sh := b.Dx(), b.Dy()
+	return areaResampleV(src, b.Dx(), b.Dy(), w, h)
+}
+
+// areaResampleV is areaResample for a source taken as vw x vh pixels: what lies beyond the real
+// picture (when it was padded to a multiple of a power of two) counts as white.
+func areaResampleV(src image.Image, vw, vh, w, h int) *image.RGBA {
+	b := src.Bounds()
+	realW, realH := b.Dx(), b.Dy()
+	sw, sh := vw, vh
 	out := image.NewRGBA(image.Rect(0, 0, w, h))
 
 	// horizontal weights: for each new column, the source columns it covers and by how much
@@ -194,7 +218,9 @@ func areaResample(src image.Image, w, h int) *image.RGBA {
 			for k, wt := range sp.wt {
 				xx := sp.first + k
 				var pr, pg, pb float32
-				if isPal {
+				if y >= realH || xx >= realW {
+					pr, pg, pb = 255, 255, 255 // the padding
+				} else if isPal {
 					c := pal[pimg.Pix[y*pimg.Stride+xx]]
 					pr, pg, pb = c[0], c[1], c[2]
 				} else {

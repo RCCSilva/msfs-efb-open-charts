@@ -101,6 +101,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/import/inspect", s.handleInspect)
 	mux.HandleFunc("POST /api/import", s.handleImport)
 	mux.HandleFunc("GET /charts/{id}/{file}", s.handleChartFile)
+	mux.HandleFunc("GET /charts/{id}/tiles/{z}/{x}/{y}", s.handleChartTile)
 
 	// groups and pins
 	mux.HandleFunc("GET /api/groups", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, s.lib.Groups()) })

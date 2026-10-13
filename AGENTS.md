@@ -133,6 +133,12 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   chart.json a GeoPDF gives. The raster carries margins and legends and only the map is georeferenced,
   so the map area is found in the picture (the long frame line); the FGDC .htm gives the publication
   date, not the frame. A raster has no airport: it is a "route chart" in the library.
+- **Tile pyramids:** a big raster is cut at import (`importer/pyramid.go`) into 512 px PNG tiles
+  (`tiles/{z}/{x}_{y}.png`, served at `/charts/{id}/tiles/{z}/{x}/{y}.png`; `chart.json` `tiles`).
+  Zoom 0 is chart.png itself (the overview); higher zooms are sharper, lower ones are filtered
+  levels down to one tile. The viewer's chart-only mode loads tiles (`ChartTileLayer`); the overlay
+  (warp) mode still reads the overview. The sim browser has no 3D transforms, so map zoom is
+  always an integer there (Leaflet snaps to 1). PDFs have no pyramid yet.
 - **AIRAC cycle:** one international calendar (`naming/airac.go`); a chart's cycle is derived from its date.
 - **Name patterns (My PDFs):** the user may write file-name templates (`{icao}_{type}_{title}_{date:YYYYMMDD}`,
   package `naming`, `pattern.go`), kept in `settings.json` and tried first for the `manual` source (`Server.identify`).

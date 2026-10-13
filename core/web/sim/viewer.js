@@ -269,6 +269,41 @@
     ctx.restore();
   }
 
+  // A big chart is cut into a pyramid of tiles by the server (see importer/pyramid.go). Tile z of the
+  // pyramid is shown at map zoom z: zoom 0 is the resolution of chart.png, zoom meta.tiles.maxZoom the
+  // full one. the chart hangs from y = 0 downwards (see chartTop), so Leaflet's tile row is the picture's row.
+  var ChartTileLayer = L.TileLayer.extend({
+    initialize: function (meta, options) {
+      this._meta = meta;
+      L.TileLayer.prototype.initialize.call(this, '', options);
+    },
+    // Leaflet scales a tile level with a 3D transform, which this viewer turns off (L_DISABLE_3D);
+    // without it a fractional zoom would show the tiles at the wrong size. A 2D transform does it.
+    _setZoomTransform: function (level, center, zoom) {
+      var scale = this._map.getZoomScale(zoom, level.zoom);
+      var translate = level.origin.multiplyBy(scale).subtract(this._map._getNewPixelOrigin(center, zoom)).round();
+      var v = 'translate(' + translate.x + 'px,' + translate.y + 'px) scale(' + scale + ')';
+      level.el.style.webkitTransformOrigin = '0 0';
+      level.el.style.transformOrigin = '0 0';
+      level.el.style.webkitTransform = v;
+      level.el.style.transform = v;
+    },
+    getTileUrl: function (coords) {
+      var t = this._meta.tiles;
+      var z = this._getZoomForUrl();
+      var shift = t.maxZoom - z;
+      var w = Math.ceil(t.width / Math.pow(2, shift));
+      var h = Math.ceil(t.height / Math.pow(2, shift));
+      var cols = Math.ceil(w / t.size);
+      var rows = Math.ceil(h / t.size);
+      var row = coords.y;
+      if (coords.x < 0 || coords.x >= cols || row < 0 || row >= rows) return BLANK_TILE;
+      return '/charts/' + encodeURIComponent(this._meta.id) + '/tiles/' + z + '/' + coords.x + '/' + row + '.png';
+    }
+  });
+
+  var BLANK_TILE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
   var WarpLayer = L.GridLayer.extend({
     initialize: function (meta, img, options) {
       L.GridLayer.prototype.initialize.call(this, options);
@@ -354,7 +389,15 @@
     return s.x > 0 && s.y > 0;
   }
 
-  function chartPixelToLatLng(pt) { return L.latLng(active.meta.image.height - pt.py, pt.px); }
+  // In chart-only mode the picture lives in Leaflet's Simple CRS (y up). A chart with a tile pyramid
+  // hangs from y = 0 downwards (latitude = -row), so that the tile grid, which Leaflet anchors at 0,
+  // starts at the top of the picture, where the tiles were cut; any other chart stands on y = 0.
+  function chartTop(meta) { return meta.tiles ? 0 : meta.image.height; }
+  function chartBounds(meta) {
+    var top = chartTop(meta);
+    return L.latLngBounds([top - meta.image.height, 0], [top, meta.image.width]);
+  }
+  function chartPixelToLatLng(pt) { return L.latLng(chartTop(active.meta) - pt.py, pt.px); }
 
   function buildMap() {
     if (map) {
@@ -375,7 +418,7 @@
     if (mode === 'chart') {
       common.crs = L.CRS.Simple;
       common.minZoom = CHART_MIN_ZOOM;
-      common.maxZoom = CHART_MAX_ZOOM;
+      common.maxZoom = active && active.meta.tiles ? Math.max(CHART_MAX_ZOOM, active.meta.tiles.maxZoom) : CHART_MAX_ZOOM;
       common.zoomSnap = 0.25;
       map = L.map('map', common);
       map.setView([0, 0], 0);
@@ -439,10 +482,17 @@
     }
     var meta = active.meta;
     if (mode === 'chart') {
-      var b = L.latLngBounds([0, 0], [meta.image.height, meta.image.width]);
+      var b = chartBounds(meta);
       // The page already loaded and decoded this image (openChart): give that element to Leaflet.
       // Passing the URL made the browser fetch and decode the same big PNG a second time.
-      chartLayer = L.imageOverlay(active.img, b).addTo(map);
+      if (meta.tiles) {
+        chartLayer = new ChartTileLayer(meta, {
+          tileSize: meta.tiles.size, minZoom: CHART_MIN_ZOOM, minNativeZoom: meta.tiles.minZoom || 0, maxNativeZoom: meta.tiles.maxZoom,
+          maxZoom: meta.tiles.maxZoom, noWrap: true, bounds: b, updateWhenIdle: false, keepBuffer: 2
+        }).addTo(map);
+      } else {
+        chartLayer = L.imageOverlay(active.img, b).addTo(map);
+      }
       map.setMaxBounds(b.pad(0.75));
     } else {
       chartLayer = new WarpLayer(meta, active.img, {
@@ -504,7 +554,7 @@
     needsFit = false;
     var meta = active.meta;
     if (mode === 'chart') {
-      map.fitBounds(L.latLngBounds([0, 0], [meta.image.height, meta.image.width]), { animate: false });
+      map.fitBounds(chartBounds(meta), { animate: false });
       // One level beyond the whole chart is enough: further out, the view is wider than the area the
       // map may show, the map is pushed back into it and the aircraft can no longer be centred.
       map.setMinZoom(Math.max(CHART_MIN_ZOOM, map.getZoom() - 1));
@@ -771,6 +821,7 @@
   // The level to start with: the overlay mode draws from the full picture; chart-only mode starts at
   // the size the whole chart is first shown at.
   function firstLevel(meta) {
+    if (meta.tiles) return 1;   // a pyramid brings its own levels
     if (mode !== 'chart') return 1;
     var m = el('map');
     var w = m.clientWidth || 468;
@@ -782,7 +833,7 @@
   // open, so zooming out and in does not make the picture flash).
   var refining = false;
   function refineChartLevel() {
-    if (mode !== 'chart' || !active || !map || refining) return;
+    if (mode !== 'chart' || !active || !map || refining || active.meta.tiles) return;
     var want = levelForScale(Math.pow(2, map.getZoom()));
     if (want >= active.level) return;
     refining = true;
@@ -792,7 +843,7 @@
     im.onload = function () {
       refining = false;
       if (!active || active.meta.id !== id || mode !== 'chart' || !map) return;
-      var b = L.latLngBounds([0, 0], [meta.image.height, meta.image.width]);
+      var b = chartBounds(meta);
       var next = L.imageOverlay(im, b).addTo(map);
       if (chartLayer) map.removeLayer(chartLayer);
       chartLayer = next;

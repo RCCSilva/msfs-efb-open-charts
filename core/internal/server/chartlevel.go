@@ -4,13 +4,17 @@ import (
 	"bytes"
 	"image"
 	"image/png"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 
 	"golang.org/x/image/draw"
+
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 )
 
 // A chart image is drawn by the browser at whatever size the map is zoomed to. Shrinking a big
@@ -73,4 +77,26 @@ func reduceChart(src, dst string, div int) error {
 		return err
 	}
 	return os.Rename(tmp, dst)
+}
+
+// handleChartTile serves one tile of a chart's pyramid: /charts/{id}/tiles/{z}/{x}/{y}.png (the
+// file on disk is tiles/{z}/{x}_{y}.png). The coordinates are numbers, never a path.
+func (s *Server) handleChartTile(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	z, err1 := strconv.Atoi(r.PathValue("z"))
+	x, err2 := strconv.Atoi(r.PathValue("x"))
+	y, err3 := strconv.Atoi(strings.TrimSuffix(r.PathValue("y"), ".png"))
+	if !store.ValidID(id) || err1 != nil || err2 != nil || err3 != nil || z < -12 || z > 12 || x < 0 || y < 0 {
+		http.NotFound(w, r)
+		return
+	}
+	path := filepath.Join(s.lib.ChartDir(id), "tiles", strconv.Itoa(z), strconv.Itoa(x)+"_"+strconv.Itoa(y)+".png")
+	if _, err := os.Stat(path); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	// a chart can be imported again under the same id: revalidate (a cheap 304 on localhost)
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Content-Type", "image/png")
+	http.ServeFile(w, r, path)
 }
