@@ -370,8 +370,6 @@
         save.disabled = false;
       }
     } }, t('save'));
-    const group = currentGroup();
-    const inGroup = group.pins.includes(c.id);
     // the PDF as the browser shows it, or the picture the viewer uses (also the way out when the
     // browser has no PDF viewer)
     const previewBox = h('div');
@@ -394,11 +392,7 @@
           h('div', { class: 'muted' }, t('editWarnSource')),
           err,
           h('div', { class: 'row', style: 'margin-top:12px' },
-            save,
-            h('button', { class: 'btn' + (inGroup ? ' in' : ''), onclick: async () => {
-              await api(inGroup ? 'DELETE' : 'PUT', `/api/groups/${encodeURIComponent(group.id)}/pins/${q}`);
-              render();
-            } }, inGroup ? '✓ ' + t('inGroup') : t('addToGroup'))),
+            save),
           h('div', { class: 'row', style: 'margin-top:12px' },
             h('a', { class: 'btn', href: `/viewer.html?chart=${q}&mode=chart&lang=${lang}`, target: '_blank' }, t('chartOnly')),
             c.unreferenced ? null : h('a', { class: 'btn', href: `/viewer.html?chart=${q}&mode=overlay&lang=${lang}`, target: '_blank' }, t('onMap')),
@@ -679,7 +673,7 @@
       h('a', { href, target: '_blank', rel: 'noreferrer' }, label),
       note ? h('span', { class: 'muted' }, note) : null,
       unverified ? h('span', { class: 'badge warn' }, t('unverified')) : null);
-    if (s.homepage) links.appendChild(linkRow(t('linkHub'), s.homepage, t('linkHubNote')));
+    if (s.homepage) links.appendChild(linkRow(tx(s.homepageLabel) || t('linkHub'), s.homepage, tx(s.homepageNote) || ''));
     // each request answers with its rows; they are added in a fixed order whatever arrives first
     const none = () => [];
     const visual = (kind) => caps.includes('catalog')

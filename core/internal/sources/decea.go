@@ -30,9 +30,11 @@ type decea struct{}
 
 func (decea) Info() Info {
 	return Info{
-		ID:       "decea-br",
-		Homepage: deceaCharts,
-		Name:     Text{PT: "DECEA / AISWEB (Brasil)", EN: "DECEA / AISWEB (Brazil)"},
+		ID:            "decea-br",
+		Homepage:      deceaCharts,
+		HomepageLabel: Text{PT: "AISWEB: página de cartas", EN: "AISWEB: charts page"},
+		HomepageNote:  Text{PT: "clique em \"Pacote completo\" para baixar o pacote (.zip)", EN: "click \"Pacote completo\" for the full package (.zip)"},
+		Name:          Text{PT: "DECEA / AISWEB (Brasil)", EN: "DECEA / AISWEB (Brazil)"},
 		Description: Text{
 			PT: "Cartas aeronáuticas oficiais do Brasil. O aplicativo guia você até os arquivos; o download é feito por você.",
 			EN: "Official Brazilian aeronautical charts. The app guides you to the files; you do the download.",

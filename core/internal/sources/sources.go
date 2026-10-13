@@ -51,8 +51,11 @@ type Info struct {
 	Capabilities []string `json:"capabilities"` // derived: "catalog", "locate", "package"
 	Guide        []Text   `json:"guide,omitempty"`
 	Homepage     string   `json:"homepage,omitempty"`
-	CatalogDate  string   `json:"catalogDate,omitempty"`
-	CatalogSize  int      `json:"catalogSize,omitempty"`
+	// HomepageLabel and HomepageNote say what the homepage link is and what to do there.
+	HomepageLabel Text   `json:"homepageLabel,omitempty"`
+	HomepageNote  Text   `json:"homepageNote,omitempty"`
+	CatalogDate   string `json:"catalogDate,omitempty"`
+	CatalogSize   int    `json:"catalogSize,omitempty"`
 }
 
 // Source is the base contract.

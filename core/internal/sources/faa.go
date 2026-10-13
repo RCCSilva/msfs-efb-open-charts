@@ -205,9 +205,11 @@ type faa struct{}
 
 func (faa) Info() Info {
 	return Info{
-		ID:       "faa-us",
-		Homepage: faaPage,
-		Name:     Text{PT: "FAA (Estados Unidos)", EN: "FAA (United States)"},
+		ID:            "faa-us",
+		Homepage:      faaPage,
+		HomepageLabel: Text{PT: "FAA: página dos procedimentos (d-TPP)", EN: "FAA: terminal procedures page (d-TPP)"},
+		HomepageNote:  Text{PT: "os pacotes do ciclo (A a D) e os metadados (E) estão nesta página", EN: "the packages of the cycle (A to D) and the metadata (E) are on this page"},
+		Name:          Text{PT: "FAA (Estados Unidos)", EN: "FAA (United States)"},
 		Description: Text{
 			PT: "Procedimentos de terminal (d-TPP) da FAA: aproximações, saídas, chegadas e diagramas de aeroporto.",
 			EN: "FAA terminal procedures (d-TPP): approaches, departures, arrivals and airport diagrams.",
