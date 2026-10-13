@@ -136,9 +136,11 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
 - **Tile pyramids:** a big raster is cut at import (`importer/pyramid.go`) into 512 px PNG tiles
   (`tiles/{z}/{x}_{y}.png`, served at `/charts/{id}/tiles/{z}/{x}/{y}.png`; `chart.json` `tiles`).
   Zoom 0 is chart.png itself (the overview); higher zooms are sharper, lower ones are filtered
-  levels down to one tile. The viewer's chart-only mode loads tiles (`ChartTileLayer`); the overlay
-  (warp) mode still reads the overview. The sim browser has no 3D transforms, so map zoom is
-  always an integer there (Leaflet snaps to 1). PDFs have no pyramid yet.
+  levels down to one tile. The viewer's chart-only mode loads tiles (`ChartTileLayer`); overlay (warp) mode picks the
+  level that gives about one picture pixel per screen pixel and assembles the needed tiles into a
+  canvas (`pyramidRegion`), using chart.png itself at zoom 0 or below. PDFs get a pyramid too when the
+  rendered page is bigger than the overview size (big visual charts, drawn at 150 dpi at least).
+  The sim browser has no 3D transforms, so map zoom is always an integer there (Leaflet snaps to 1).
 - **AIRAC cycle:** one international calendar (`naming/airac.go`); a chart's cycle is derived from its date.
 - **Name patterns (My PDFs):** the user may write file-name templates (`{icao}_{type}_{title}_{date:YYYYMMDD}`,
   package `naming`, `pattern.go`), kept in `settings.json` and tried first for the `manual` source (`Server.identify`).

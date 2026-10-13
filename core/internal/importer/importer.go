@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/png"
 	"io"
 	"math"
@@ -202,15 +203,38 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 	}
 	defer rendered.Cleanup()
 
+	W, H := rendered.Result.Width, rendered.Result.Height
+	// Effective scale: pixels actually produced per PDF point, per axis (of the full picture).
+	sx, sy := float64(W)/boxW, float64(H)/boxH
+
+	// A page too big for the overview size (a big visual chart is drawn at 150 dpi at least) is also
+	// cut into a pyramid of tiles (see pyramid.go); chart.png is then the overview, exactly one
+	// 2^levels-th of the picture, and every coordinate below is in the overview's pixels.
+	long := opt.LongEdgePx
+	if long <= 0 {
+		long = 3200
+	}
+	var overview image.Image = rendered.Result.Image
+	var files map[string][]byte
+	var tiles *Tiles
+	if levels := pyramidLevels(W, H, long); levels > 0 {
+		ov, tf, info, err := buildPyramid(rendered.Result.Image, levels)
+		if err != nil {
+			return nil, err
+		}
+		overview, files, tiles = ov, tf, &info
+		f := 1 / float64(int(1)<<levels)
+		sx, sy = sx*f, sy*f
+		dpi = int(math.Round(float64(dpi) * f))
+	}
+	ob := overview.Bounds()
+	W, H = ob.Dx(), ob.Dy()
+
 	var pngBuf bytes.Buffer
 	enc := png.Encoder{CompressionLevel: png.DefaultCompression} // BestCompression doubled the import time for ~2% smaller files
-	if err := enc.Encode(&pngBuf, rendered.Result.Image); err != nil {
+	if err := enc.Encode(&pngBuf, overview); err != nil {
 		return nil, err
 	}
-	W, H := rendered.Result.Width, rendered.Result.Height
-
-	// Effective scale: pixels actually produced per PDF point, per axis.
-	sx, sy := float64(W)/boxW, float64(H)/boxH
 
 	// --- compose: (E,N) -> (u,v) -> PDF points -> image pixels
 	bx0, by0, bx1, by1 := vp.BBox[0], vp.BBox[1], vp.BBox[2], vp.BBox[3]
@@ -267,12 +291,13 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 	m.Georef.ErrorMeters = round(errM, 3)
 	m.Georef.MetersPerPixel = round(mPerPx, 3)
 	m.Generator = "open-charts/importer (pdfium-wasm, no cgo)"
+	m.Tiles = tiles
 
 	js, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return nil, err
 	}
-	return &Result{Meta: m, PNG: pngBuf.Bytes(), JSON: js}, nil
+	return &Result{Meta: m, PNG: pngBuf.Bytes(), JSON: js, Files: files}, nil
 }
 
 // pickViewport prefers a named chart viewport over a generic "BaseMap", then the largest.

@@ -302,6 +302,62 @@
     }
   });
 
+  // Tiles of a pyramid for the overlay: the pictures are kept a while (a pan reuses them).
+  var tileImages = {};
+  var tileImageOrder = [];
+  function chartTileImage(url, cb) {
+    var rec = tileImages[url];
+    if (rec) {
+      if (rec.ok) { cb(rec.img); } else { rec.waiting.push(cb); }
+      return;
+    }
+    rec = tileImages[url] = { img: new Image(), ok: false, waiting: [cb] };
+    tileImageOrder.push(url);
+    if (tileImageOrder.length > 120) delete tileImages[tileImageOrder.shift()];
+    rec.img.onload = function () {
+      rec.ok = true;
+      var w = rec.waiting;
+      rec.waiting = [];
+      for (var i = 0; i < w.length; i++) w[i](rec.img);
+    };
+    rec.img.onerror = function () {
+      delete tileImages[url];
+      var w = rec.waiting;
+      rec.waiting = [];
+      for (var i = 0; i < w.length; i++) w[i](null);
+    };
+    rec.img.src = url;
+  }
+
+  // The source of an overlay tile from the pyramid: the part of level z (picture pixels = overview
+  // pixels * 2^z) that the tile needs, assembled in one canvas. Calls back with the canvas and its
+  // origin (in level pixels), or with null when there is nothing to draw.
+  function pyramidRegion(meta, z, x0, y0, x1, y1, cb) {
+    var t = meta.tiles;
+    var k = Math.pow(2, z);
+    var rx0 = Math.max(0, Math.floor(x0 * k));
+    var ry0 = Math.max(0, Math.floor(y0 * k));
+    var rx1 = Math.min(Math.ceil(x1 * k), Math.ceil(t.width / Math.pow(2, t.maxZoom - z)));
+    var ry1 = Math.min(Math.ceil(y1 * k), Math.ceil(t.height / Math.pow(2, t.maxZoom - z)));
+    if (rx1 <= rx0 || ry1 <= ry0) { cb(null); return; }
+    var cv = document.createElement('canvas');
+    cv.width = rx1 - rx0;
+    cv.height = ry1 - ry0;
+    var cx = cv.getContext('2d');
+    var c0 = Math.floor(rx0 / t.size), c1 = Math.floor((rx1 - 1) / t.size);
+    var r0 = Math.floor(ry0 / t.size), r1 = Math.floor((ry1 - 1) / t.size);
+    var pending = (c1 - c0 + 1) * (r1 - r0 + 1);
+    function one(col, row) {
+      var url = '/charts/' + encodeURIComponent(meta.id) + '/tiles/' + z + '/' + col + '/' + row + '.png';
+      chartTileImage(url, function (img) {
+        if (img) cx.drawImage(img, col * t.size - rx0, row * t.size - ry0);
+        pending -= 1;
+        if (pending === 0) cb({ canvas: cv, x: rx0, y: ry0, k: k });
+      });
+    }
+    for (var row = r0; row <= r1; row++) for (var col = c0; col <= c1; col++) one(col, row);
+  }
+
   var BLANK_TILE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
   var WarpLayer = L.GridLayer.extend({
@@ -342,6 +398,51 @@
         }
       }
       var inside = !(maxX < frame.left || minX > frame.right || maxY < frame.top || minY > frame.bottom);
+      var pyr = null;
+      if (inside && meta.tiles) {
+        // how many pixels of the picture a screen pixel needs: the level that gives about one to one
+        var edge = Math.sqrt(Math.pow(src[0][MESH].x - src[0][0].x, 2) + Math.pow(src[0][MESH].y - src[0][0].y, 2)) || 1;
+        var lz = Math.ceil(Math.log(TILE * dpr / edge) / Math.LN2 - 0.2);
+        lz = Math.min(lz, meta.tiles.maxZoom);
+        // never a region bigger than a few screens of pixels
+        while (lz > 0 && Math.max(maxX - minX, maxY - minY) * Math.pow(2, lz) > TILE * dpr * 3) lz -= 1;
+        if (lz > 0) pyr = lz;
+      }
+      if (pyr) {
+        var rg = {
+          x0: Math.max(frame.left, minX) - 1, y0: Math.max(frame.top, minY) - 1,
+          x1: Math.min(frame.right, maxX) + 1, y1: Math.min(frame.bottom, maxY) + 1
+        };
+        var ctx2 = tile.getContext('2d');
+        ctx2.imageSmoothingEnabled = true;
+        if ('imageSmoothingQuality' in ctx2) ctx2.imageSmoothingQuality = 'high';
+        var overviewFrame = frame;
+        pyramidRegion(meta, pyr, rg.x0, rg.y0, rg.x1, rg.y1, function (region) {
+          if (region) {
+            var k = region.k;
+            var whole = { left: 0, top: 0, right: region.canvas.width, bottom: region.canvas.height };
+            var q = [];
+            var jj, ii;
+            for (jj = 0; jj <= MESH; jj++) {
+              q[jj] = [];
+              for (ii = 0; ii <= MESH; ii++) q[jj][ii] = { x: src[jj][ii].x * k - region.x, y: src[jj][ii].y * k - region.y };
+            }
+            for (jj = 0; jj < MESH; jj++) {
+              for (ii = 0; ii < MESH; ii++) {
+                var a00 = { x: ii * step, y: jj * step };
+                var a10 = { x: (ii + 1) * step, y: jj * step };
+                var a11 = { x: (ii + 1) * step, y: (jj + 1) * step };
+                var a01 = { x: ii * step, y: (jj + 1) * step };
+                drawTriangle(ctx2, region.canvas, q[jj][ii], q[jj][ii + 1], q[jj + 1][ii + 1], a00, a10, a11, whole);
+                drawTriangle(ctx2, region.canvas, q[jj][ii], q[jj + 1][ii + 1], q[jj + 1][ii], a00, a11, a01, whole);
+              }
+            }
+          }
+          if (loadTiming) { loadTiming.drawn += 1; loadTiming.drawMs += nowMs() - drawStart; }
+          done(null, tile);
+        });
+        return tile;
+      }
       if (inside) {
         var ctx = tile.getContext('2d');
         ctx.imageSmoothingEnabled = true;

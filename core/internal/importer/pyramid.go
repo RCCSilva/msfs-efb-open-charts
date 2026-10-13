@@ -129,10 +129,19 @@ func buildPyramid(src image.Image, m int) (*image.RGBA, map[string][]byte, Tiles
 		total++
 	}
 	info.MinZoom = m - total
+	var prev *image.RGBA
 	for k := 1; k <= total; k++ {
 		lw, lh := max(1, w0>>k), max(1, h0>>k)
-		// the level, reduced from the source by area averaging
-		level := areaResampleV(src, w0, h0, lw, lh)
+		// the level, reduced by area averaging: the first from the source, the others from the
+		// level before (each is half of that one)
+		var level *image.RGBA
+		if prev == nil {
+			level = areaResampleV(src, w0, h0, lw, lh)
+		} else {
+			pb := prev.Bounds()
+			level = areaResampleV(prev, pb.Dx(), pb.Dy(), lw, lh)
+		}
+		prev = level
 		z := m - k
 		for ty := 0; ty*TileSize < lh; ty++ {
 			for tx := 0; tx*TileSize < lw; tx++ {
@@ -205,10 +214,16 @@ func sourceTile(src image.Image, q *quantizer, x0, y0, tw, th, w0, h0 int) ([]by
 		return buf.Bytes(), nil
 	}
 	t := image.NewRGBA(image.Rect(0, 0, tw, th))
+	rgba, isRGBA := src.(*image.RGBA)
 	for y := 0; y < th; y++ {
 		for x := 0; x < tw; x++ {
 			o := y*t.Stride + x*4
 			if sx, sy := x0+x, y0+y; sx < sw && sy < sh && x0+x < w0 && y0+y < h0 {
+				if isRGBA {
+					i := (b.Min.Y+sy-rgba.Rect.Min.Y)*rgba.Stride + (b.Min.X+sx-rgba.Rect.Min.X)*4
+					t.Pix[o], t.Pix[o+1], t.Pix[o+2], t.Pix[o+3] = rgba.Pix[i], rgba.Pix[i+1], rgba.Pix[i+2], 255
+					continue
+				}
 				r, g, bl, _ := src.At(b.Min.X+sx, b.Min.Y+sy).RGBA()
 				t.Pix[o], t.Pix[o+1], t.Pix[o+2], t.Pix[o+3] = uint8(r>>8), uint8(g>>8), uint8(bl>>8), 255
 			} else {

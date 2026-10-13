@@ -179,7 +179,12 @@ func areaResampleV(src image.Image, vw, vh, w, h int) *image.RGBA {
 
 	// how a source pixel becomes RGB
 	var pal [256][3]float32
+	rgba, isRGBA := src.(*image.RGBA)
 	pix := func(img image.Image, x, y int) (float32, float32, float32) {
+		if isRGBA {
+			o := (y+b.Min.Y-rgba.Rect.Min.Y)*rgba.Stride + (x+b.Min.X-rgba.Rect.Min.X)*4
+			return float32(rgba.Pix[o]), float32(rgba.Pix[o+1]), float32(rgba.Pix[o+2])
+		}
 		r, g, bl, _ := img.At(b.Min.X+x, b.Min.Y+y).RGBA()
 		return float32(r >> 8), float32(g >> 8), float32(bl >> 8)
 	}

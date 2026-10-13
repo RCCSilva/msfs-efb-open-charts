@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/buildinfo"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/geotiff"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/jobs"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
@@ -309,8 +310,8 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		}
 		filename = hdr.Filename
 	}
-	if len(data) < 8 || string(data[:5]) != "%PDF-" {
-		writeErr(w, 400, errors.New("not a PDF file"))
+	if !geotiff.IsTIFF(data) && (len(data) < 8 || string(data[:5]) != "%PDF-") {
+		writeErr(w, 400, errors.New("not a PDF or GeoTIFF file"))
 		return
 	}
 
