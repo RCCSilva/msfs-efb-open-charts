@@ -324,13 +324,17 @@ func ProbeFix(dllPath, ident, region string, kind byte, wait time.Duration) (str
 	if open == "" {
 		return "", fmt.Errorf("kind must be W, V or N")
 	}
-	node := []facField{fd("LATITUDE"), fd("LONGITUDE"), fd("ALTITUDE"), ff("MAGVAR")}
-	if kind != 'W' {
-		node = append(node, fi("FREQUENCY"), fs("NAME", 32))
+	node := []facField{fd("LATITUDE"), fd("LONGITUDE"), fd("ALTITUDE"), ff("MAGVAR"), fi("N_ROUTES")}
+	switch kind {
+	case 'V':
+		node = []facField{fd("VOR_LATITUDE"), fd("VOR_LONGITUDE"), fd("VOR_ALTITUDE"), fi("FREQUENCY"), fi("TYPE"),
+			ff("NAV_RANGE"), ff("MAGVAR"), fs("NAME", 32), fs("ICAO", 8), fs("REGION", 8)}
+	case 'N':
+		node = []facField{fd("LATITUDE"), fd("LONGITUDE"), fd("ALTITUDE"), fi("FREQUENCY"), fi("TYPE"),
+			ff("RANGE"), ff("MAGVAR"), fs("NAME", 32)}
 	}
-	node = append(node, fi("N_ROUTES"))
 	route := []facField{
-		fs("NAME", 8), fi("TYPE"),
+		fs("NAME", 32), fi("TYPE"),
 		fs("NEXT_ICAO", 8), fs("NEXT_REGION", 8), fi("NEXT_TYPE"), fd("NEXT_LATITUDE"), fd("NEXT_LONGITUDE"), ff("NEXT_ALTITUDE"),
 		fs("PREV_ICAO", 8), fs("PREV_REGION", 8), fi("PREV_TYPE"), fd("PREV_LATITUDE"), fd("PREV_LONGITUDE"), ff("PREV_ALTITUDE"),
 	}
@@ -345,11 +349,14 @@ func ProbeFix(dllPath, ident, region string, kind byte, wait time.Duration) (str
 	for _, n := range node {
 		names = append(names, n.name)
 	}
-	names = append(names, "OPEN ROUTE")
-	for _, n := range route {
-		names = append(names, n.name)
+	if kind == 'W' {
+		names = append(names, "OPEN ROUTE")
+		for _, n := range route {
+			names = append(names, n.name)
+		}
+		names = append(names, "CLOSE ROUTE")
 	}
-	names = append(names, "CLOSE ROUTE", "CLOSE "+open)
+	names = append(names, "CLOSE "+open)
 	for _, n := range names {
 		if err := add(n); err != nil {
 			return "", err
@@ -391,6 +398,13 @@ func ProbeFix(dllPath, ident, region string, kind byte, wait time.Duration) (str
 				fields, label = route, "ROUTE"
 				routes++
 			}
+			if typ == 22 && routes == 1 {
+				d := msg[facilityDataOffset:]
+				if len(d) > 160 {
+					d = d[:160]
+				}
+				fmt.Fprintf(&rep, "raw route (%d bytes): %x\n", len(msg)-facilityDataOffset, d)
+			}
 			if typ != 22 || routes <= 12 {
 				fmt.Fprintf(&rep, "%-9s %s\n", label, decodeFields(msg[facilityDataOffset:], fields))
 			}
@@ -403,5 +417,56 @@ func ProbeFix(dllPath, ident, region string, kind byte, wait time.Duration) (str
 		}
 	}
 	fmt.Fprintf(&rep, "routes: %d\n", routes)
+	return rep.String(), nil
+}
+
+// ProbeNames defines "OPEN <open>" followed by each name and reports the names the simulator
+// rejected (exception 20). It is how the field names of a facility type are found out.
+func ProbeNames(dllPath, open string, names []string, wait time.Duration) (string, error) {
+	f, err := loadFacilities(dllPath)
+	if err != nil {
+		return "", err
+	}
+	h, err := f.connectOnly("Open Charts probe")
+	if err != nil {
+		return "", err
+	}
+	defer f.close.Call(h)
+	var all []string
+	for _, part := range strings.Split(open, ">") {
+		all = append(all, "OPEN "+part)
+	}
+	all = append(all, names...)
+	for _, n := range all {
+		r, _, _ := f.addFac.Call(h, facilityDefID, cstr(n))
+		if e := hr(r); e != nil {
+			return "", fmt.Errorf("define %q: %w", n, e)
+		}
+	}
+	bad := map[int]bool{}
+	deadline := time.Now().Add(wait)
+	quiet := time.Now()
+	for time.Now().Before(deadline) {
+		msg := f.next(h)
+		if msg == nil {
+			if time.Since(quiet) > 2*time.Second {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		quiet = time.Now()
+		if binary.LittleEndian.Uint32(msg[8:12]) == recvException {
+			bad[int(binary.LittleEndian.Uint32(msg[16:20]))] = true
+		}
+	}
+	var rep strings.Builder
+	for i, n := range all {
+		state := "ok"
+		if bad[i+2] { // the first definition call is send id 2
+			state = "REJECTED"
+		}
+		fmt.Fprintf(&rep, "%-34s %s\n", n, state)
+	}
 	return rep.String(), nil
 }

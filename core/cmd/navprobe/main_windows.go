@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/simconnect"
@@ -20,6 +21,8 @@ func main() {
 	fix := flag.String("fix", "", "waypoint/VOR/NDB identifier (RENIT, SPL...)")
 	region := flag.String("region", "", "region code of the fix (SB, K1...)")
 	kind := flag.String("kind", "W", "W waypoint, V vor, N ndb")
+	procs := flag.String("procs", "", "airport whose departures and arrivals are printed with every leg")
+	names := flag.String("names", "", "OPEN <type>:FIELD,FIELD,... : report which field names are rejected")
 	wait := flag.Duration("wait", 60*time.Second, "how long to wait")
 	flag.Parse()
 
@@ -32,6 +35,21 @@ func main() {
 	switch {
 	case *icao != "":
 		out, err := simconnect.ProbeAirport(path, *icao, *wait)
+		fmt.Print(out)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+	case *procs != "":
+		out, err := simconnect.ProbeProcedures(path, *procs, *wait)
+		fmt.Print(out)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+	case *names != "":
+		open, rest, _ := strings.Cut(*names, ":")
+		out, err := simconnect.ProbeNames(path, open, strings.Split(rest, ","), *wait)
 		fmt.Print(out)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
