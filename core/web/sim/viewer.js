@@ -443,7 +443,9 @@
             }
           }
           if (loadTiming) { loadTiming.drawn += 1; loadTiming.drawMs += nowMs() - drawStart; }
-          done(null, tile);
+          // Never synchronously: with every picture already loaded this runs inside createTile, before
+          // Leaflet has registered the tile, and a tile that is "ready" too early stays hidden for good.
+          window.setTimeout(function () { done(null, tile); }, 0);
         });
         return tile;
       }
