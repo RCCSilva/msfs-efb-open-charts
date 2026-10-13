@@ -71,7 +71,10 @@ type Options struct {
 	Title      string // "ILS X RWY 17R"; default: the PDF's viewport name when there is no ICAO
 	Validity   string // "2026-08-06" (optional)
 	Original   string // original file name, kept to recognise a chart that is already imported
-	Package    string // archive the PDF came from (provenance), if any
+	// ViewOnly lets a PDF without georeferencing in: it is shown as a plain picture, with no
+	// aircraft position (an airport diagram, for example). Without it such a PDF is an error.
+	ViewOnly bool
+	Package  string // archive the PDF came from (provenance), if any
 }
 
 // Meta is chart.json. Field names match what the existing viewer pages read.
@@ -120,6 +123,9 @@ type Meta struct {
 		MetersPerPixel float64 `json:"metersPerPixel"`
 	} `json:"georef"`
 	Generator string `json:"generator"`
+	// Unreferenced is true for a chart with no georeferencing: a picture to look at, with no
+	// aircraft on it and no overlay on the map.
+	Unreferenced bool `json:"unreferenced,omitempty"`
 	// Tiles describes the pyramid of tiles of a picture too big to show whole (see pyramid.go).
 	Tiles *Tiles `json:"tiles,omitempty"`
 }
@@ -150,31 +156,41 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if pg.Rotate != 0 {
-		return nil, fmt.Errorf("rotated pages (/Rotate %d) are not supported yet", pg.Rotate)
-	}
-	if len(pg.Viewports) == 0 {
+	unref := len(pg.Viewports) == 0
+	if unref && !opt.ViewOnly {
 		return nil, ErrNotGeoreferenced
 	}
-	vp := pickViewport(pg.Viewports)
-
-	proj, err := geo.FromWKT(vp.WKT)
-	if err != nil {
-		return nil, err
+	if pg.Rotate != 0 && !unref {
+		return nil, fmt.Errorf("rotated pages (/Rotate %d) are not supported yet", pg.Rotate)
 	}
+	var (
+		vp   pdfgeo.Viewport
+		proj *geo.Projection
+		aff  geo.Affine
+		xy   [][2]float64
+		uv   [][2]float64
+		n    int
+	)
+	if !unref {
+		vp = pickViewport(pg.Viewports)
+		proj, err = geo.FromWKT(vp.WKT)
+		if err != nil {
+			return nil, err
+		}
 
-	// --- control points: lat/lon -> projected metres, and the matching normalised viewport coords
-	n := len(vp.GPTS) / 2
-	xy := make([][2]float64, n)
-	uv := make([][2]float64, n)
-	for i := 0; i < n; i++ {
-		x, y := proj.Forward(vp.GPTS[2*i], vp.GPTS[2*i+1])
-		xy[i] = [2]float64{x, y}
-		uv[i] = [2]float64{vp.LPTS[2*i], vp.LPTS[2*i+1]}
-	}
-	aff, err := geo.FitAffine(xy, uv)
-	if err != nil {
-		return nil, err
+		// --- control points: lat/lon -> projected metres, and the matching normalised viewport coords
+		n = len(vp.GPTS) / 2
+		xy = make([][2]float64, n)
+		uv = make([][2]float64, n)
+		for i := 0; i < n; i++ {
+			x, y := proj.Forward(vp.GPTS[2*i], vp.GPTS[2*i+1])
+			xy[i] = [2]float64{x, y}
+			uv[i] = [2]float64{vp.LPTS[2*i], vp.LPTS[2*i+1]}
+		}
+		aff, err = geo.FitAffine(xy, uv)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// --- render
@@ -237,36 +253,39 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 	}
 
 	// --- compose: (E,N) -> (u,v) -> PDF points -> image pixels
-	bx0, by0, bx1, by1 := vp.BBox[0], vp.BBox[1], vp.BBox[2], vp.BBox[3]
-	bw, bh := bx1-bx0, by1-by0
 	var m Meta
-	m.ToPixel.A = bw * sx * aff.A
-	m.ToPixel.B = bw * sx * aff.B
-	m.ToPixel.C = (bx0-pg.Box[0])*sx + bw*sx*aff.C
-	m.ToPixel.D = -bh * sy * aff.D
-	m.ToPixel.E = -bh * sy * aff.E
-	m.ToPixel.F = (pg.Box[3]-by0)*sy - bh*sy*aff.F
+	var errM, mPerPx float64
+	bx0, by0, bx1, by1 := vp.BBox[0], vp.BBox[1], vp.BBox[2], vp.BBox[3]
+	if !unref {
+		bw, bh := bx1-bx0, by1-by0
+		m.ToPixel.A = bw * sx * aff.A
+		m.ToPixel.B = bw * sx * aff.B
+		m.ToPixel.C = (bx0-pg.Box[0])*sx + bw*sx*aff.C
+		m.ToPixel.D = -bh * sy * aff.D
+		m.ToPixel.E = -bh * sy * aff.E
+		m.ToPixel.F = (pg.Box[3]-by0)*sy - bh*sy*aff.F
 
-	toPx := func(e, n float64) (float64, float64) {
-		return m.ToPixel.A*e + m.ToPixel.B*n + m.ToPixel.C, m.ToPixel.D*e + m.ToPixel.E*n + m.ToPixel.F
-	}
+		toPx := func(e, n float64) (float64, float64) {
+			return m.ToPixel.A*e + m.ToPixel.B*n + m.ToPixel.C, m.ToPixel.D*e + m.ToPixel.E*n + m.ToPixel.F
+		}
 
-	// Residual of the 4 control points, judged on the ground.
-	mPerPx := 1 / math.Hypot(m.ToPixel.A, m.ToPixel.B)
-	var worst float64
-	for i := 0; i < n; i++ {
-		px, py := toPx(xy[i][0], xy[i][1])
-		wantX := (bx0 + uv[i][0]*bw - pg.Box[0]) * sx
-		wantY := (pg.Box[3] - (by0 + uv[i][1]*bh)) * sy
-		worst = math.Max(worst, math.Hypot(px-wantX, py-wantY))
-		m.GeoCorners = append(m.GeoCorners, Corner{
-			Lat: vp.GPTS[2*i], Lon: vp.GPTS[2*i+1],
-			PX: round(px, 2), PY: round(py, 2),
-		})
-	}
-	errM := worst * mPerPx
-	if errM > MaxGroundErrorMeters {
-		return nil, fmt.Errorf("georeference does not fit an affine map (%.1f m): refusing to guess", errM)
+		// Residual of the 4 control points, judged on the ground.
+		mPerPx = 1 / math.Hypot(m.ToPixel.A, m.ToPixel.B)
+		var worst float64
+		for i := 0; i < n; i++ {
+			px, py := toPx(xy[i][0], xy[i][1])
+			wantX := (bx0 + uv[i][0]*bw - pg.Box[0]) * sx
+			wantY := (pg.Box[3] - (by0 + uv[i][1]*bh)) * sy
+			worst = math.Max(worst, math.Hypot(px-wantX, py-wantY))
+			m.GeoCorners = append(m.GeoCorners, Corner{
+				Lat: vp.GPTS[2*i], Lon: vp.GPTS[2*i+1],
+				PX: round(px, 2), PY: round(py, 2),
+			})
+		}
+		errM = worst * mPerPx
+		if errM > MaxGroundErrorMeters {
+			return nil, fmt.Errorf("georeference does not fit an affine map (%.1f m): refusing to guess", errM)
+		}
 	}
 
 	title := opt.Title
@@ -281,15 +300,26 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 	m.OriginalFile = opt.Original
 	m.Package = opt.Package
 	m.Image.File, m.Image.Width, m.Image.Height, m.Image.DPI = "chart.png", W, H, dpi
-	m.Projection = proj.JSON()
-	m.MapFramePx.Left = (bx0 - pg.Box[0]) * sx
-	m.MapFramePx.Right = (bx1 - pg.Box[0]) * sx
-	m.MapFramePx.Top = (pg.Box[3] - by1) * sy
-	m.MapFramePx.Bottom = (pg.Box[3] - by0) * sy
+	if unref {
+		// the whole picture is the "map": there is nothing to place on it
+		m.Unreferenced = true
+		m.MapFramePx.Right, m.MapFramePx.Bottom = float64(W), float64(H)
+		title = firstNonEmpty(title, strings.TrimSuffix(opt.Original, filepath.Ext(opt.Original)))
+		m.Title = title
+		m.Name = firstNonEmpty(opt.Name, naming.Display(opt.ICAO, opt.Type, title))
+	} else {
+		m.Projection = proj.JSON()
+		m.MapFramePx.Left = (bx0 - pg.Box[0]) * sx
+		m.MapFramePx.Right = (bx1 - pg.Box[0]) * sx
+		m.MapFramePx.Top = (pg.Box[3] - by1) * sy
+		m.MapFramePx.Bottom = (pg.Box[3] - by0) * sy
+	}
 	m.Scale.X, m.Scale.Y = sx, sy
-	m.Georef.Viewport = vp.Name
-	m.Georef.ErrorMeters = round(errM, 3)
-	m.Georef.MetersPerPixel = round(mPerPx, 3)
+	if !unref {
+		m.Georef.Viewport = vp.Name
+		m.Georef.ErrorMeters = round(errM, 3)
+		m.Georef.MetersPerPixel = round(mPerPx, 3)
+	}
 	m.Generator = "open-charts/importer (pdfium-wasm, no cgo)"
 	m.Tiles = tiles
 

@@ -43,6 +43,10 @@ type Chart struct {
 	ErrorMeters    float64 `json:"errorMeters"`
 	AddedAt        string  `json:"addedAt"`
 	OriginalFile   string  `json:"originalFile,omitempty"`
+	// Unreferenced charts have no georeferencing: they can be looked at, not flown over.
+	Unreferenced bool `json:"unreferenced,omitempty"`
+	// HasSource tells that the original file (the PDF) is kept and can be shown.
+	HasSource bool `json:"hasSource,omitempty"`
 
 	search string // folded haystack
 }
@@ -142,6 +146,7 @@ func readChart(dir, id string) (*Chart, error) {
 		Validity     string `json:"validity"`
 		AddedAt      string `json:"addedAt"`
 		OriginalFile string `json:"originalFile"`
+		Unreferenced bool   `json:"unreferenced"`
 		Image        struct {
 			Width  int `json:"width"`
 			Height int `json:"height"`
@@ -156,7 +161,10 @@ func readChart(dir, id string) (*Chart, error) {
 	}
 	c := &Chart{ID: id, Name: m.Name, Source: m.Source, ICAO: m.ICAO, Type: m.Type, Title: m.Title,
 		Validity: m.Validity, AddedAt: m.AddedAt, OriginalFile: m.OriginalFile, Width: m.Image.Width, Height: m.Image.Height,
-		MetersPerPixel: m.Georef.MetersPerPixel, ErrorMeters: m.Georef.ErrorMeters}
+		MetersPerPixel: m.Georef.MetersPerPixel, ErrorMeters: m.Georef.ErrorMeters, Unreferenced: m.Unreferenced}
+	if _, err := os.Stat(filepath.Join(dir, "source.pdf")); err == nil {
+		c.HasSource = true
+	}
 	if c.Name == "" {
 		c.Name = naming.Display(c.ICAO, c.Type, c.Title)
 	}

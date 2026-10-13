@@ -12,8 +12,18 @@ header { display: flex; align-items: center; gap: 16px; padding: 0 20px; height:
 .brand { font-weight: 700; letter-spacing: .2px; }
 .spacer { flex: 1; }
 nav { display: flex; gap: 4px; }
-nav button { border: 0; background: none; color: var(--muted); padding: 8px 12px; border-radius: 8px; font: inherit; cursor: pointer; }
-nav button.on { background: var(--bg); color: var(--ink); font-weight: 600; }
+nav button, nav a { border: 0; background: none; color: var(--muted); padding: 8px 12px; border-radius: 8px; font: inherit; cursor: pointer; text-decoration: none; }
+nav button.on, nav a.on { background: var(--bg); color: var(--ink); font-weight: 600; }
+nav a:hover { color: var(--ink); text-decoration: none; }
+.brand a, .brand a:hover { color: var(--ink); text-decoration: none; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover { background: var(--bg); }
+a.chartlink, a.chartlink:hover { color: var(--ink); text-decoration: none; }
+.chartpage { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .chartpage { grid-template-columns: 1fr; } }
+.previewcard { padding: 12px; position: sticky; top: 118px; }
+iframe.preview, img.preview { width: 100%; height: calc(100vh - 220px); min-height: 360px; border: 1px solid var(--line); border-radius: 8px; background: #fff; object-fit: contain; }
+
 main { max-width: 1040px; margin: 0 auto; padding: 20px; }
 h2 { font-size: 18px; margin: 0 0 12px; }
 h3 { font-size: 14px; margin: 0 0 8px; }

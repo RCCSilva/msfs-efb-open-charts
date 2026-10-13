@@ -254,6 +254,8 @@ func (s *Server) handleChartFile(w http.ResponseWriter, r *http.Request) {
 	path := filepath.Join(s.lib.ChartDir(id), file)
 	switch {
 	case file == "chart.png" || file == "chart.json":
+	case file == "source.pdf": // the original, shown beside the edit form
+		w.Header().Set("Content-Type", "application/pdf")
 	case levelFileRe.MatchString(file):
 		p, ok := chartLevelPath(s.lib.ChartDir(id), file)
 		if !ok {

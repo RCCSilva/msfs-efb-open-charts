@@ -41,6 +41,8 @@
       pick: 'Pick a chart (search above)',
       offChart: 'OFF CHART',
       loading: 'Loading chart',
+      viewOnly: 'View-only chart: no georeference, no aircraft position',
+      viewOnlyMap: 'This chart has no georeference: it cannot be placed on the map',
       loadingSlow: 'Big charts take a while',
       loadFail: 'Could not load the chart',
       fixed: 'FIXED',
@@ -66,6 +68,8 @@
       pick: 'Escolha uma carta (busca acima)',
       offChart: 'FORA DA CARTA',
       loading: 'Carregando carta',
+      viewOnly: 'Carta apenas para visualizar: sem georreferenciamento, sem posição da aeronave',
+      viewOnlyMap: 'Esta carta não tem georreferenciamento: não dá para colocá-la sobre o mapa',
       loadingSlow: 'Cartas grandes demoram mais',
       loadFail: 'Não foi possível carregar a carta',
       fixed: 'FIXO',
@@ -618,6 +622,7 @@
 
   // Clearly bigger than the regional area: only then is the whole chart "too far away" to start from.
   function isRegionalChart(meta) {
+    if (meta.unreferenced) return false;
     var f = meta.mapFramePx;
     var span = Math.max(f.right - f.left, f.bottom - f.top) * chartMetersPerPixel(meta);
     return span > 2 * REGIONAL_RADIUS_KM * 1000 * 1.25;
@@ -628,6 +633,7 @@
   function showRegional() {
     if (!map || !active || !lastFix || !hasSize()) return false;
     var meta = active.meta;
+    if (meta.unreferenced) return false;
     var pt = LMMGeo.toPixel(meta, lastFix.lat, lastFix.lon);
     var f = meta.mapFramePx;
     if (pt.px < f.left || pt.px > f.right || pt.py < f.top || pt.py > f.bottom) return false;
@@ -701,6 +707,7 @@
   function showAircraft(p) {
     lastFix = p;
     if (!map || !marker) return;
+    if (active && active.meta.unreferenced) { setStatus(t('viewOnly'), 'warn'); return; }
     var ll;
     var rot = p.headingTrue;
     var inside = true;
@@ -848,6 +855,8 @@
     }, 300);
   }
 
+  var modeBeforeViewOnly = null;
+
   function openChart(id, fallback) {
     setStatus(t('loading') + '...', 'warn');
     hidePanels();
@@ -859,6 +868,14 @@
     getJson('/charts/' + encodeURIComponent(id) + '/chart.json?v=' + Date.now(), function (meta) {
       if (!meta) { loadFailed(id, fallback); return; }
       timing.json = nowMs();
+      // A chart without georeferencing can only be looked at: chart-only mode, whatever was chosen
+      // (the choice comes back with the next chart that has a position).
+      if (meta.unreferenced) {
+        if (mode === 'overlay') { modeBeforeViewOnly = mode; mode = 'chart'; }
+      } else if (modeBeforeViewOnly) {
+        mode = modeBeforeViewOnly;
+        modeBeforeViewOnly = null;
+      }
       var level = firstLevel(meta);
       var img = new Image();
       img.onload = function () {
@@ -1056,6 +1073,7 @@
   // ---- display panel: "With map" / "Chart only" and, for the map view, the chart opacity
   function updateDisplayPanel() {
     viewOverlayBtn.className = mode === 'overlay' ? 'active' : '';
+    viewOverlayBtn.style.opacity = active && active.meta.unreferenced ? '0.35' : '';
     viewChartBtn.className = mode === 'chart' ? 'active' : '';
     // visibility, not display: the slot stays, so the buttons above never move when the mode changes
     blendBtn.style.visibility = mode === 'overlay' ? '' : 'hidden';
@@ -1066,6 +1084,7 @@
 
   function setMode(next) {
     if (next === mode) return;
+    if (next === 'overlay' && active && active.meta.unreferenced) { setStatus(t('viewOnlyMap'), 'warn'); return; }
     if (next === 'overlay' && active && active.level !== 1) {
       ensureFullImage(function () { setMode(next); });
       return;

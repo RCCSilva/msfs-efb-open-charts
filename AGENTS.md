@@ -141,6 +141,11 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   canvas (`pyramidRegion`), using chart.png itself at zoom 0 or below. PDFs get a pyramid too when the
   rendered page is bigger than the overview size (big visual charts, drawn at 150 dpi at least).
   The sim browser has no 3D transforms, so map zoom is always an integer there (Leaflet snaps to 1).
+- **View-only charts:** a PDF with no georeferencing (an FAA airport diagram) is imported anyway
+  (`Options.ViewOnly`): chart.json has `unreferenced: true`, the whole picture is the map frame and there is
+  no projection. The viewer forces chart-only mode for it and never shows an aircraft; the manager marks it
+  "View only" and offers no "On map". Charts keep `source.pdf`, which the chart page shows beside the
+  edit form (`#chart/<id>`; manager pages are real `<a>` links so they open in new tabs).
 - **AIRAC cycle:** one international calendar (`naming/airac.go`); a chart's cycle is derived from its date.
 - **Name patterns (My PDFs):** the user may write file-name templates (`{icao}_{type}_{title}_{date:YYYYMMDD}`,
   package `naming`, `pattern.go`), kept in `settings.json` and tried first for the `manual` source (`Server.identify`).

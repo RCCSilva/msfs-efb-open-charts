@@ -72,6 +72,8 @@ func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.C
 		Validity: pick(f.Validity, id.Validity),
 		Original: base,
 		Package:  f.Package,
+		// a PDF with no georeferencing is still a chart to look at (an airport diagram)
+		ViewOnly: true,
 		// Detail level chosen in the manager (settings), for charts imported from now on.
 		LongEdgePx: settings.LongEdgePx(s.settingsSnapshot().Detail),
 	}

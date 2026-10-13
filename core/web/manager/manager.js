@@ -66,6 +66,8 @@
       lanNoAddress: 'No network address found. Connect to a Wi-Fi or Ethernet network.',
       lanVirtual: 'virtual adapter', lanRotate: 'Generate a new access key', lanRotateConfirm: 'Devices already connected will have to scan the QR code again. Continue?',
       stEfbUrl: 'The EFB app points to another address',
+      viewOnly: 'View only', viewOnlyHelp: 'No georeference: it can be looked at, but has no aircraft position and cannot go over the map.',
+      preview: 'Original', pdfOriginal: 'Original PDF', chartImage: 'Chart image', backLibrary: '< Library', openPdf: 'Open the PDF', notFound: 'Chart not found',
       editChart: 'Edit properties', save: 'Save', cancel: 'Cancel', saved: 'Saved',
       editHelp: 'The display name is generated from ICAO, type and title.',
       editWarnSource: 'Source and georeference cannot be changed.',
@@ -86,7 +88,7 @@
       stData: 'Data folder', stRestart: 'Restart the simulator for the EFB app change to take effect.',
       edSteam: 'Steam', edStore: 'Microsoft Store',
       reviewTitle: 'Review before importing', icao: 'ICAO', ctype: 'Type', ctitle: 'Title', validity: 'AIRAC cycle or date', cname: 'Display name',
-      importOne: 'Import', importAll: 'Import all', notGeo: 'This PDF has no georeferencing and cannot be used.', dup: 'Already in the library as',
+      importOne: 'Import', importAll: 'Import all', notGeo: 'This PDF has no georeferencing: it will be added for viewing only (no aircraft position).', dup: 'Already in the library as',
       detected: 'Detected from', fromFile: 'the file name', fromPdf: 'the PDF title', nameAuto: 'Leave empty to build it from ICAO, type and title',
       disclaimer: 'For flight simulation only. Not for real-world aviation: using these charts or this software for real navigation or flight planning is prohibited.',
       aboutWhat: 'Open Charts manages aeronautical chart PDFs and shows them as a moving map inside Microsoft Flight Simulator.',
@@ -159,6 +161,8 @@
       lanNoAddress: 'Nenhum endereço de rede encontrado. Conecte-se a uma rede Wi-Fi ou cabeada.',
       lanVirtual: 'adaptador virtual', lanRotate: 'Gerar nova chave de acesso', lanRotateConfirm: 'Os dispositivos já conectados precisarão ler o QR code de novo. Continuar?',
       stEfbUrl: 'O app do EFB aponta para outro endereço',
+      viewOnly: 'Só visualização', viewOnlyHelp: 'Sem georreferenciamento: dá para ver a carta, mas ela não tem a posição da aeronave e não vai sobre o mapa.',
+      preview: 'Original', pdfOriginal: 'PDF original', chartImage: 'Imagem da carta', backLibrary: '< Biblioteca', openPdf: 'Abrir o PDF', notFound: 'Carta não encontrada',
       editChart: 'Editar propriedades', save: 'Salvar', cancel: 'Cancelar', saved: 'Salvo',
       editHelp: 'O nome exibido é gerado a partir de ICAO, tipo e título.',
       editWarnSource: 'A fonte e a georreferência não podem ser alteradas.',
@@ -179,7 +183,7 @@
       stData: 'Pasta de dados', stRestart: 'Reinicie o simulador para a mudança no app do EFB valer.',
       edSteam: 'Steam', edStore: 'Microsoft Store',
       reviewTitle: 'Revise antes de importar', icao: 'ICAO', ctype: 'Tipo', ctitle: 'Título', validity: 'Ciclo AIRAC ou data', cname: 'Nome exibido',
-      importOne: 'Importar', importAll: 'Importar todas', notGeo: 'Este PDF não tem georreferenciamento e não pode ser usado.', dup: 'Já está na biblioteca como',
+      importOne: 'Importar', importAll: 'Importar todas', notGeo: 'Este PDF não tem georreferenciamento: será adicionado só para visualização (sem a posição da aeronave).', dup: 'Já está na biblioteca como',
       detected: 'Detectado a partir de', fromFile: 'do nome do arquivo', fromPdf: 'do título do PDF', nameAuto: 'Deixe vazio para montar com ICAO, tipo e título',
       disclaimer: 'Apenas para simulação aérea. Proibido o uso em aviação real: é vedado utilizar estas cartas ou este software para navegação ou planejamento de voo reais.',
       aboutWhat: 'O Open Charts gerencia cartas aeronáuticas em PDF e as exibe como mapa móvel dentro do Microsoft Flight Simulator.',
@@ -282,14 +286,25 @@
   }
   const go = (hash) => { if (location.hash === hash) render(); else location.hash = hash; };
 
+  // A page is a real link (an <a>): it can be opened in a new tab with the middle button or ctrl+click.
+  // A plain click is handled in place, without reloading the page.
+  function pageLink(hash, cls, ...kids) {
+    return h('a', { class: cls, href: location.pathname + location.search + hash, onclick: (e) => {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      go(hash);
+    } }, ...kids);
+  }
+
   async function render() {
     const r = parseRoute();
-    const tab = r.name === 'source' ? 'sources' : r.name;
+    const tab = r.name === 'source' ? 'sources' : (r.name === 'chart' ? 'library' : r.name);
+    document.getElementById('brand').replaceChildren(pageLink('#library', '', 'Open Charts'));
     if (state.local === undefined) {
       try { state.local = (await api('GET', '/api/health')).local !== false; } catch (e) { state.local = true; }
     }
     document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
-      h('button', { class: id === tab ? 'on' : '', onclick: () => go('#' + id) }, t(id))).concat([
+      pageLink('#' + id, id === tab ? 'on' : '', t(id))).concat([
         // The map (same page the EFB shows) opens in its own tab, outside the simulator too.
         h('a', { class: 'navlink', href: '/viewer.html?lang=' + lang, target: '_blank', rel: 'noopener' }, t('map') + ' \u2197')]));
     try {
@@ -298,6 +313,7 @@
       drawFooter();
       if (r.name === 'sources') await renderSources();
       else if (r.name === 'source') await renderSource(r.arg);
+      else if (r.name === 'chart') await renderChart(r.arg);
       else if (r.name === 'groups') await renderGroups();
       else if (r.name === 'setup') await renderSetup();
       else if (r.name === 'about') renderAbout();
@@ -323,8 +339,16 @@
       } }, '+ ' + t('newGroup')));
   }
 
-  // ---- Edit a chart's properties. The server validates and generates the name; this only collects.
-  function editChart(c) {
+  // ---- A chart: its properties on one side, the original PDF on the other. The server validates and
+  // generates the name; this only collects.
+  async function renderChart(id) {
+    let c;
+    try { c = await api('GET', '/api/charts/' + encodeURIComponent(id)); } catch (e) { c = null; }
+    if (!c || !c.id) {
+      view.replaceChildren(h('div', { class: 'card' }, pageLink('#library', '', t('backLibrary')), h('p', null, h('span', { class: 'badge bad' }, t('notFound')))));
+      return;
+    }
+    const q = encodeURIComponent(c.id);
     const field = (label, val, ph) => {
       const input = h('input', { type: 'text', value: val || '', placeholder: ph || '' });
       return [h('label', { class: 'muted' }, label), input];
@@ -334,15 +358,11 @@
     const [lTi, title] = field(t('ctitle'), c.title);
     const [lV, validity] = field(t('validity'), c.cycle || c.validity, '2610 / YYYY-MM-DD');
     const err = h('div');
-    const close = () => overlay.remove();
     const save = h('button', { class: 'btn primary', onclick: async () => {
       save.disabled = true;
       err.replaceChildren();
       try {
-        await api('PATCH', '/api/charts/' + encodeURIComponent(c.id), {
-          icao: icao.value, type: ctype.value, title: title.value, validity: validity.value
-        });
-        close();
+        await api('PATCH', '/api/charts/' + q, { icao: icao.value, type: ctype.value, title: title.value, validity: validity.value });
         toast(t('saved'));
         render();
       } catch (e) {
@@ -350,18 +370,53 @@
         save.disabled = false;
       }
     } }, t('save'));
-    const overlay = h('div', { class: 'modal', onclick: (e) => { if (e.target === overlay) close(); } },
-      h('div', { class: 'card modalbox' },
-        h('h3', null, t('editChart')),
-        h('div', { class: 'muted', style: 'margin-bottom:8px' }, c.name),
-        h('div', { class: 'formgrid' }, lI, icao, lT, ctype, lTi, title, lV, validity),
-        h('div', { class: 'muted' }, t('editHelp')),
-        h('div', { class: 'muted' }, t('editWarnSource')),
-        err,
-        h('div', { class: 'row end', style: 'margin-top:12px' },
-          h('button', { class: 'btn', onclick: close }, t('cancel')), save)));
-    document.body.appendChild(overlay);
-    icao.focus();
+    const group = currentGroup();
+    const inGroup = group.pins.includes(c.id);
+    // the PDF as the browser shows it, or the picture the viewer uses (also the way out when the
+    // browser has no PDF viewer)
+    const previewBox = h('div');
+    const showPreview = (kind) => {
+      previewBox.replaceChildren(kind === 'pdf'
+        ? h('iframe', { class: 'preview', src: `/charts/${q}/source.pdf`, title: t('pdfOriginal') })
+        : h('img', { class: 'preview', src: `/charts/${q}/chart.png`, alt: t('chartImage') }));
+    };
+    showPreview(c.hasSource ? 'pdf' : 'img');
+    const preview = previewBox;
+    view.replaceChildren(
+      h('div', { class: 'row', style: 'margin-bottom:10px' }, pageLink('#library', '', t('backLibrary'))),
+      h('div', { class: 'chartpage' },
+        h('div', { class: 'card' },
+          h('h2', null, c.name),
+          h('div', { class: 'muted' }, `${c.cycle ? 'AIRAC ' + c.cycle : (c.validity || '')}  ·  ${c.source}  ·  ${c.width}×${c.height}`),
+          c.unreferenced ? h('div', { style: 'margin-top:8px' }, h('span', { class: 'badge warn' }, t('viewOnly')), h('span', { class: 'muted' }, t('viewOnlyHelp'))) : null,
+          h('div', { class: 'formgrid' }, lI, icao, lT, ctype, lTi, title, lV, validity),
+          h('div', { class: 'muted' }, t('editHelp')),
+          h('div', { class: 'muted' }, t('editWarnSource')),
+          err,
+          h('div', { class: 'row', style: 'margin-top:12px' },
+            save,
+            h('button', { class: 'btn' + (inGroup ? ' in' : ''), onclick: async () => {
+              await api(inGroup ? 'DELETE' : 'PUT', `/api/groups/${encodeURIComponent(group.id)}/pins/${q}`);
+              render();
+            } }, inGroup ? '✓ ' + t('inGroup') : t('addToGroup'))),
+          h('div', { class: 'row', style: 'margin-top:12px' },
+            h('a', { class: 'btn', href: `/viewer.html?chart=${q}&mode=chart&lang=${lang}`, target: '_blank' }, t('chartOnly')),
+            c.unreferenced ? null : h('a', { class: 'btn', href: `/viewer.html?chart=${q}&mode=overlay&lang=${lang}`, target: '_blank' }, t('onMap')),
+            c.hasSource ? h('a', { class: 'btn', href: `/charts/${q}/source.pdf`, target: '_blank' }, t('openPdf')) : null,
+            h('span', { class: 'grow' }),
+            h('button', { class: 'btn danger', onclick: async () => {
+              if (!confirm(t('confirmDel'))) return;
+              try {
+                await api('POST', '/api/library/delete', { ids: [c.id] });
+                toast(fill(t('deletedN'), { n: 1 }));
+                go('#library');
+              } catch (e) { toast(e.message); }
+            } }, t('del')))),
+        h('div', { class: 'card previewcard' },
+          h('div', { class: 'row', style: 'margin-bottom:8px' }, h('h3', { class: 'grow', style: 'margin:0' }, t('preview')),
+            c.hasSource ? h('button', { class: 'btn sm', onclick: () => showPreview('pdf') }, 'PDF') : null,
+            h('button', { class: 'btn sm', onclick: () => showPreview('img') }, t('chartImage'))),
+          preview)));
   }
 
   // ---- Library: all the charts, or by airport; paged, with selection and bulk actions
@@ -422,9 +477,16 @@
         e.target.checked ? selected.add(c.id) : selected.delete(c.id);
         drawControls();
       } });
-      return h('tr', null,
+      const open = '#chart/' + encodeURIComponent(c.id);
+      return h('tr', { class: 'clickable', onclick: (e) => {
+        // anything inside the row that does something of its own keeps doing only that
+        if (e.target.closest('a, button, input, summary, details, select')) return;
+        go(open);
+      } },
         h('td', null, check),
-        h('td', null, h('strong', null, c.name), h('div', { class: 'muted' }, `${c.cycle ? 'AIRAC ' + c.cycle : (c.validity || '')}  ·  ${c.source}`)),
+        h('td', null, pageLink(open, 'chartlink', h('strong', null, c.name)),
+          c.unreferenced ? h('span', { class: 'badge warn', title: t('viewOnlyHelp'), style: 'margin-left:6px' }, t('viewOnly')) : null,
+          h('div', { class: 'muted' }, `${c.cycle ? 'AIRAC ' + c.cycle : (c.validity || '')}  ·  ${c.source}`)),
         h('td', { class: 'actions' },
           h('button', { class: 'btn sm' + (inGroup ? ' in' : ''), title: inGroup ? t('removeFromGroup') : '', onclick: async () => {
             await setPin(c.id, !inGroup);
@@ -433,8 +495,8 @@
           h('details', { class: 'more' }, h('summary', { class: 'btn sm' }, '⋯'),
             h('div', { class: 'menu' },
               h('a', { href: '/viewer.html?chart=' + encodeURIComponent(c.id) + '&mode=chart&lang=' + lang, target: '_blank' }, t('chartOnly')),
-              h('a', { href: '/viewer.html?chart=' + encodeURIComponent(c.id) + '&mode=overlay&lang=' + lang, target: '_blank' }, t('onMap')),
-              h('button', { onclick: () => editChart(c) }, t('editChart')),
+              c.unreferenced ? null : h('a', { href: '/viewer.html?chart=' + encodeURIComponent(c.id) + '&mode=overlay&lang=' + lang, target: '_blank' }, t('onMap')),
+              pageLink(open, '', t('editChart')),
               h('button', { class: 'danger', onclick: async () => {
                 if (confirm(t('confirmDel'))) { await deleteIds([c.id]); }
               } }, t('del'))))));
@@ -734,7 +796,7 @@
     const [lV, validity] = field(t('validity'), sg.cycle || sg.validity, '2610 / YYYY-MM-DD');
     const [lN, name] = field(t('cname'), '', t('nameAuto'));
     const status = h('div');
-    const btn = h('button', { class: 'btn primary', disabled: !ins.georeferenced, onclick: async () => {
+    const btn = h('button', { class: 'btn primary', onclick: async () => {
       btn.disabled = true;
       const fd = new FormData();
       fd.append('token', ins.token);
@@ -759,7 +821,7 @@
     const from = ins.recognizedBy || !ins.viewport ? t('fromFile') : t('fromPdf');
     const card = h('div', { class: 'card review' },
       h('div', { class: 'row' }, h('strong', { class: 'grow' }, ins.file), h('span', { class: 'muted' }, t('detected') + ' ' + from)),
-      !ins.georeferenced ? h('div', { class: 'badge bad' }, t('notGeo')) : null,
+      !ins.georeferenced ? h('div', { class: 'badge warn' }, t('notGeo')) : null,
       ins.duplicate ? h('div', { class: 'badge warn' }, t('dup') + ' ' + ins.duplicate.name) : null,
       h('div', { class: 'formgrid' }, lI, icao, lT, ctype, lTi, title, lV, validity, lN, name),
       h('div', { class: 'row' }, btn, status));
