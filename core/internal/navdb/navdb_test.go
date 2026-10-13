@@ -45,6 +45,12 @@ func TestSaveAndLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// the runway leg gets its position from the runway itself; the rest of the data is unchanged
+	first := &out.Procedures[0].Transitions[0].Legs[0]
+	if first.Lat == nil || first.Lon == nil {
+		t.Fatal("RW34 was not placed from the runway")
+	}
+	first.Lat, first.Lon = nil, nil
 	if !reflect.DeepEqual(in, out) {
 		t.Fatalf("round trip differs:\n in  %+v\n out %+v", in, out)
 	}

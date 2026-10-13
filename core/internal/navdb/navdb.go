@@ -19,7 +19,7 @@ import (
 )
 
 // schemaVersion changes whenever the tables below do.
-const schemaVersion = 1
+const schemaVersion = 2
 
 const schema = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -57,6 +57,19 @@ CREATE TABLE IF NOT EXISTS leg (
 );
 CREATE INDEX IF NOT EXISTS leg_transition ON leg (transition_id);
 CREATE INDEX IF NOT EXISTS leg_fix ON leg (fix, fix_region);
+CREATE TABLE IF NOT EXISTS fix (
+  ident TEXT NOT NULL, region TEXT NOT NULL, kind TEXT NOT NULL, lat REAL, lon REAL, alt_m REAL,
+  freq_hz INTEGER, name TEXT, fetched_at TEXT, PRIMARY KEY (ident, region, kind)
+);
+CREATE INDEX IF NOT EXISTS fix_pos ON fix (lat, lon);
+CREATE TABLE IF NOT EXISTS route (
+  id INTEGER PRIMARY KEY, ident TEXT NOT NULL, region TEXT NOT NULL, kind TEXT NOT NULL,
+  airway TEXT, type INTEGER,
+  next_ident TEXT, next_region TEXT, next_kind TEXT, next_lat REAL, next_lon REAL,
+  prev_ident TEXT, prev_region TEXT, prev_kind TEXT, prev_lat REAL, prev_lon REAL
+);
+CREATE INDEX IF NOT EXISTS route_fix ON route (ident, region);
+CREATE INDEX IF NOT EXISTS route_airway ON route (airway);
 `
 
 // DB is the navigation database.
@@ -91,7 +104,7 @@ func (d *DB) init() error {
 	case err == nil && v == fmt.Sprint(schemaVersion):
 	case err == nil || errors.Is(err, sql.ErrNoRows):
 		if err == nil { // another version: start over
-			for _, t := range []string{"leg", "transition", "procedure", "frequency", "runway", "airport"} {
+			for _, t := range []string{"route", "fix", "leg", "transition", "procedure", "frequency", "runway", "airport"} {
 				if _, e := d.db.Exec("DROP TABLE IF EXISTS " + t); e != nil {
 					return e
 				}
@@ -284,6 +297,9 @@ func (d *DB) Airport(icao string) (*navdata.Airport, error) {
 			x.p.Transitions = append(x.p.Transitions, y.t)
 		}
 		a.Procedures = append(a.Procedures, x.p)
+	}
+	if err := d.placeLegs(a); err != nil {
+		return nil, err
 	}
 	return a, nil
 }

@@ -210,12 +210,16 @@ func main() {
 	} else {
 		defer nav.Close()
 		var fetch server.NavFetcher
+		var fixes server.FixFetcher
 		if simDLL != "" {
 			fetch = func(icao string) (*navdata.Airport, error) {
 				return simconnect.FetchAirport(simDLL, icao, 30*time.Second)
 			}
+			fixes = func(refs []navdata.FixRef) ([]navdata.Fix, error) {
+				return simconnect.FetchFixes(simDLL, refs, 60*time.Second)
+			}
 		}
-		srv.SetNav(nav, fetch)
+		srv.SetNav(nav, fetch, fixes)
 	}
 	defer srv.Close()
 	srv.Serve(ln)

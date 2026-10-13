@@ -8,6 +8,11 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 )
 
+// FetchFixes needs the simulator's SimConnect library, which exists on Windows only.
+func FetchFixes(dllPath string, refs []navdata.FixRef, wait time.Duration) ([]navdata.Fix, error) {
+	return nil, errUnsupported
+}
+
 // FetchAirport needs the simulator's SimConnect library, which exists on Windows only.
 func FetchAirport(dllPath, icao string, wait time.Duration) (*navdata.Airport, error) {
 	return nil, errUnsupported

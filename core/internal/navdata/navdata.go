@@ -103,6 +103,55 @@ type Leg struct {
 	Altitude2M  float64 `json:"altitude2M,omitempty"`
 	SpeedLimit  float64 `json:"speedLimit,omitempty"` // knots, -1 when there is none
 	VerticalDeg float64 `json:"verticalAngle,omitempty"`
+
+	// Lat and Lon are the position of the fix, filled when it is known (see Fix); nil otherwise.
+	Lat *float64 `json:"lat,omitempty"`
+	Lon *float64 `json:"lon,omitempty"`
+}
+
+// Fix kinds, as the simulator names them (one letter).
+const (
+	FixWaypoint = 'W'
+	FixVOR      = 'V'
+	FixNDB      = 'N'
+	FixRunway   = 'R'
+	FixAirport  = 'A'
+)
+
+// FixRef names a fix: its identifier is unique only together with its region.
+type FixRef struct {
+	Ident  string `json:"ident"`
+	Region string `json:"region"`
+	Kind   byte   `json:"kind"`
+}
+
+// Fix is a waypoint, VOR or NDB with its position and, for a waypoint, the airways through it.
+type Fix struct {
+	Ident  string  `json:"ident"`
+	Region string  `json:"region"`
+	Kind   byte    `json:"kind"`
+	Lat    float64 `json:"lat"`
+	Lon    float64 `json:"lon"`
+	AltM   float64 `json:"altitudeM,omitempty"`
+	FreqHz int64   `json:"frequencyHz,omitempty"` // VOR and NDB
+	Name   string  `json:"name,omitempty"`
+	Routes []Route `json:"routes,omitempty"`
+}
+
+// Route is one airway through a waypoint, with the fixes on each side of it.
+type Route struct {
+	Airway     string  `json:"airway"`
+	Type       int     `json:"type"`
+	NextIdent  string  `json:"next,omitempty"`
+	NextRegion string  `json:"nextRegion,omitempty"`
+	NextKind   byte    `json:"nextKind,omitempty"`
+	NextLat    float64 `json:"nextLat,omitempty"`
+	NextLon    float64 `json:"nextLon,omitempty"`
+	PrevIdent  string  `json:"prev,omitempty"`
+	PrevRegion string  `json:"prevRegion,omitempty"`
+	PrevKind   byte    `json:"prevKind,omitempty"`
+	PrevLat    float64 `json:"prevLat,omitempty"`
+	PrevLon    float64 `json:"prevLon,omitempty"`
 }
 
 var legTypeName = map[int]string{
