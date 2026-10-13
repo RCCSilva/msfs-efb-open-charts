@@ -55,6 +55,7 @@ type Server struct {
 	jobs        *jobs.Manager
 	staged      stagedStore
 	net         netState // listening, port and network access, see access.go
+	nav         navState // navigation data of the simulator, see nav_api.go
 	addr        string   // the address being listened on; guarded by net.mu
 }
 
@@ -84,6 +85,8 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, 200, buildinfo.Get(setup.EFBVersion))
 	})
 	mux.HandleFunc("GET /api/position", s.handlePosition)
+	mux.HandleFunc("GET /api/nav/airport/{icao}", s.handleNavAirport)
+	mux.HandleFunc("GET /api/nav/airports", s.handleNavAirports)
 	mux.HandleFunc("GET /api/viewer-state", s.handleViewerState)
 	mux.HandleFunc("POST /api/client-info", s.handlePostClientInfo)
 	mux.HandleFunc("GET /api/client-info", s.handleGetClientInfo)

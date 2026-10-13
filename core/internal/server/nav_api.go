@@ -1,0 +1,91 @@
+package server
+
+import (
+	"errors"
+	"net/http"
+	"regexp"
+	"strings"
+	"sync"
+
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
+)
+
+// NavFetcher asks the simulator for one airport (see simconnect.FetchAirport).
+type NavFetcher func(icao string) (*navdata.Airport, error)
+
+type navState struct {
+	mu    sync.Mutex // one fetch at a time: the simulator answers one conversation, and a repeat is wasted work
+	db    *navdb.DB
+	fetch NavFetcher
+}
+
+// SetNav gives the server the navigation database and, when the simulator link exists, the way
+// to fill it. Either may be nil.
+func (s *Server) SetNav(db *navdb.DB, fetch NavFetcher) {
+	s.nav.mu.Lock()
+	s.nav.db, s.nav.fetch = db, fetch
+	s.nav.mu.Unlock()
+}
+
+var icaoRe = regexp.MustCompile(`^[A-Z0-9]{2,8}$`)
+
+// GET /api/nav/airport/{icao}[?refresh=1]
+// The stored copy when there is one; otherwise (or with refresh) the airport is asked from the
+// simulator, stored, and returned.
+func (s *Server) handleNavAirport(w http.ResponseWriter, r *http.Request) {
+	icao := strings.ToUpper(strings.TrimSpace(r.PathValue("icao")))
+	if !icaoRe.MatchString(icao) {
+		writeErr(w, 400, errors.New("not an ICAO identifier"))
+		return
+	}
+	s.nav.mu.Lock()
+	defer s.nav.mu.Unlock()
+	if s.nav.db == nil {
+		writeErr(w, 503, errors.New("the navigation database is not available"))
+		return
+	}
+	if r.URL.Query().Get("refresh") != "1" {
+		if a, err := s.nav.db.Airport(icao); err == nil {
+			writeJSON(w, 200, a)
+			return
+		} else if !errors.Is(err, navdb.ErrNotFound) {
+			writeErr(w, 500, err)
+			return
+		}
+	}
+	if s.nav.fetch == nil {
+		writeErr(w, 503, errors.New("not in the database, and there is no link to the simulator to ask it"))
+		return
+	}
+	a, err := s.nav.fetch(icao)
+	if err != nil {
+		writeErr(w, 502, err)
+		return
+	}
+	if err := s.nav.db.SaveAirport(a); err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	writeJSON(w, 200, a)
+}
+
+// GET /api/nav/airports[?q=SB]: the airports already stored.
+func (s *Server) handleNavAirports(w http.ResponseWriter, r *http.Request) {
+	s.nav.mu.Lock()
+	db := s.nav.db
+	s.nav.mu.Unlock()
+	if db == nil {
+		writeErr(w, 503, errors.New("the navigation database is not available"))
+		return
+	}
+	list, err := db.Airports(r.URL.Query().Get("q"))
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	if list == nil {
+		list = []navdb.Summary{}
+	}
+	writeJSON(w, 200, map[string]any{"airports": list})
+}

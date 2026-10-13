@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/server"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
@@ -130,11 +132,13 @@ func main() {
 			Source: "fixed", UpdatedAt: time.Now()}
 	}
 	pos := fixedPos
+	var simDLL string // the SimConnect library, when there is a simulator link at all
 	if !*fixed {
 		dll, err := simconnect.FindDLL(*dllPath, *data)
 		if err != nil {
 			log.Printf("simconnect: %v; using the fixed position", err)
 		} else {
+			simDLL = dll
 			sc := simconnect.New(context.Background(), dll, log.Printf)
 			pos = func() server.Position {
 				st, detail := sc.Status()
@@ -199,6 +203,20 @@ func main() {
 
 	srv := server.New(lib, factory, pos, ln.Addr().String())
 	srv.UseSettings(*data, defaultDataDir(), cfg, fixedAddr)
+
+	// What the simulator knows about airports and procedures: asked on demand, kept in SQLite.
+	if nav, err := navdb.Open(filepath.Join(*data, "navdata.db")); err != nil {
+		log.Printf("navigation database: %v (airport data will be unavailable)", err)
+	} else {
+		defer nav.Close()
+		var fetch server.NavFetcher
+		if simDLL != "" {
+			fetch = func(icao string) (*navdata.Airport, error) {
+				return simconnect.FetchAirport(simDLL, icao, 30*time.Second)
+			}
+		}
+		srv.SetNav(nav, fetch)
+	}
 	defer srv.Close()
 	srv.Serve(ln)
 	log.Printf("listening on %s (network access: %v)", ln.Addr(), cfg.LAN && !fixedAddr)

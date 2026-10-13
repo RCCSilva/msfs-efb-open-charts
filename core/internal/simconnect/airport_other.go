@@ -1,0 +1,14 @@
+//go:build !windows
+
+package simconnect
+
+import (
+	"time"
+
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
+)
+
+// FetchAirport needs the simulator's SimConnect library, which exists on Windows only.
+func FetchAirport(dllPath, icao string, wait time.Duration) (*navdata.Airport, error) {
+	return nil, errUnsupported
+}
