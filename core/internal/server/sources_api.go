@@ -156,12 +156,14 @@ func (s *Server) handlePackageImport(w http.ResponseWriter, r *http.Request) {
 		ICAO  string   `json:"icao"`
 		Types []string `json:"types"`
 		All   bool     `json:"all"` // every chart of the package that is not in the library yet
+		// NoAirport selects the charts with no airport (VFR and IFR rasters, visual charts).
+		NoAirport bool `json:"noAirport"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, 400, err)
 		return
 	}
-	if strings.TrimSpace(body.ICAO) == "" && !body.All {
+	if strings.TrimSpace(body.ICAO) == "" && !body.All && !body.NoAirport {
 		writeErr(w, 400, errors.New("icao is required, or ask for all"))
 		return
 	}

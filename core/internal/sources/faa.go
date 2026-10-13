@@ -340,7 +340,10 @@ func (faa) OpenPackage(zipPath string) (*PackageInfo, error) {
 			}
 			continue
 		case ".htm", ".html":
-			sidecars[strings.ToLower(strings.TrimSuffix(base, path.Ext(base)))] = f.Name
+			// "Boston HEL.htm" for Boston HEL.tif, "ENR_L19_tif.htm" for ENR_L19.tif
+			sc := strings.ToLower(strings.TrimSuffix(base, path.Ext(base)))
+			sc = strings.TrimSuffix(strings.TrimSuffix(sc, "_tiff"), "_tif")
+			sidecars[sc] = f.Name
 			continue
 		}
 		if !strings.EqualFold(path.Ext(base), ".pdf") {

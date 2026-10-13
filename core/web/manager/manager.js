@@ -1051,11 +1051,11 @@
         body.replaceChildren(...rows.slice(page * PKG_PAGE, (page + 1) * PKG_PAGE).map((a) => {
           const fresh = newBy[a.icao] || 0;
           return h('tr', null,
-            h('td', null, h('strong', null, a.icao)),
+            h('td', null, a.icao ? h('strong', null, a.icao) : h('strong', null, t('noIcao'))),
             h('td', { class: 'muted' }, Object.keys(a.types).sort().map((k) => `${k} ${a.types[k]}`).join(' \u00b7 ')),
             h('td', { class: 'actions' }, fresh === 0
               ? h('span', { class: 'badge ok' }, '\u2713 ' + t('pkgAlready'))
-              : h('button', { class: 'btn sm primary', onclick: () => run({ icao: a.icao }) },
+              : h('button', { class: 'btn sm primary', onclick: () => run(a.icao ? { icao: a.icao } : { noAirport: true }) },
                 `${t('importAirport')} (${fresh === a.count ? a.count : fresh + ' ' + t('pkgNew')})`)));
         }));
         pager.replaceChildren(

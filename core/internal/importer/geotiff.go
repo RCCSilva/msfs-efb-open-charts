@@ -96,10 +96,13 @@ func ImportGeoTIFF(tif []byte, opt Options) (*Result, error) {
 
 	// projected metres -> pixels of chart.png
 	var m Meta
-	m.ToPixel.A = fx / g.DX
-	m.ToPixel.C = -g.X0 * fx / g.DX
-	m.ToPixel.E = fy / g.DY
-	m.ToPixel.F = -g.Y0 * fy / g.DY
+	det := g.DX*g.DY - g.RX*g.RY
+	m.ToPixel.A = fx * g.DY / det
+	m.ToPixel.B = -fx * g.RX / det
+	m.ToPixel.C = fx * (-g.DY*g.X0 + g.RX*g.Y0) / det
+	m.ToPixel.D = -fy * g.RY / det
+	m.ToPixel.E = fy * g.DX / det
+	m.ToPixel.F = fy * (g.RY*g.X0 - g.DX*g.Y0) / det
 
 	// The map area. A chart raster carries margins and legends around the map, and only the map is
 	// georeferenced: it is framed by a long continuous line, which is found in the picture itself.

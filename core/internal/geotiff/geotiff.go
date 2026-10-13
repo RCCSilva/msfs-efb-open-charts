@@ -37,8 +37,10 @@ const (
 // degrees for a geographic raster), and the projection.
 type Georef struct {
 	Width, Height int
-	// E = X0 + col*DX ; N = Y0 + row*DY (DY is negative for a north-up picture).
+	// E = X0 + col*DX + row*RX ; N = Y0 + col*RY + row*DY (DY is negative for a north-up picture;
+	// RX and RY are the rotation terms, 0 for most files and a hair above for some IFR charts).
 	X0, Y0, DX, DY float64
+	RX, RY         float64
 	Projection     *geo.Projection
 	// Datum names the horizontal datum when the file says it ("NAD83"), for the record.
 	Datum string
@@ -108,10 +110,12 @@ func ReadGeoref(data []byte) (*Georef, error) {
 		g.X0 = tie[3] - tie[0]*g.DX
 		g.Y0 = tie[4] - tie[1]*g.DY
 	case hasTrans && len(trans) >= 16:
-		if trans[1] != 0 || trans[4] != 0 {
+		g.DX, g.DY, g.X0, g.Y0 = trans[0], trans[5], trans[3], trans[7]
+		g.RX, g.RY = trans[1], trans[4]
+		// a real rotation is not a chart (a north-up chart is off by a fraction of a pixel at most)
+		if math.Hypot(g.RX, g.RY) > 0.05*math.Hypot(g.DX, g.DY) {
 			return nil, errors.New("rotated GeoTIFFs are not supported")
 		}
-		g.DX, g.DY, g.X0, g.Y0 = trans[0], trans[5], trans[3], trans[7]
 	default:
 		return nil, ErrNotGeoreference
 	}
@@ -131,12 +135,14 @@ func ReadGeoref(data []byte) (*Georef, error) {
 
 // PixelToProjected returns the projected coordinates of the top-left corner of a pixel.
 func (g *Georef) PixelToProjected(col, row float64) (e, n float64) {
-	return g.X0 + col*g.DX, g.Y0 + row*g.DY
+	return g.X0 + col*g.DX + row*g.RX, g.Y0 + col*g.RY + row*g.DY
 }
 
 // ProjectedToPixel is the inverse of PixelToProjected.
 func (g *Georef) ProjectedToPixel(e, n float64) (col, row float64) {
-	return (e - g.X0) / g.DX, (n - g.Y0) / g.DY
+	det := g.DX*g.DY - g.RX*g.RY
+	de, dn := e-g.X0, n-g.Y0
+	return (g.DY*de - g.RX*dn) / det, (g.DX*dn - g.RY*de) / det
 }
 
 // MetersPerPixel is the ground size of a pixel, in metres (for a geographic raster, at its centre).
