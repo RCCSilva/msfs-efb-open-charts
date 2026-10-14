@@ -160,6 +160,11 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   (`...\StreamedPackages\fs24-fs-base-nav\content\minimal.fsarchive`, plain, BGL inside) was studied
   (`internal/fsarchive`, `internal/bgl`, `cmd/fsainspect`): identifiers there are base-38 numbers, it holds
   about a third of the fixes only; it is not used yet.
+- **Viewer flow:** the top field of the in-sim viewer takes a pasted route (not a chart search any more: charts
+  come from the pinned list of the group, managed in the manager). It resolves on paste, Enter, the route button or
+  when the field is left (the EFB host sends `text-blur`), calls `POST /api/route/resolve` and draws the line, the
+  places and their names (`drawRoute`); the panel lists the points and what needs checking. The last route is kept
+  in localStorage. In chart-only mode the route goes through the chart's georeference (nothing for view-only charts).
 - **AIRAC cycle:** one international calendar (`naming/airac.go`); a chart's cycle is derived from its date.
 - **Name patterns (My PDFs):** the user may write file-name templates (`{icao}_{type}_{title}_{date:YYYYMMDD}`,
   package `naming`, `pattern.go`), kept in `settings.json` and tried first for the `manual` source (`Server.identify`).

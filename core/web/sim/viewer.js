@@ -29,9 +29,9 @@
 
   var STR = {
     en: {
-      search: 'Search charts: SBSP, ILS, sao paulo...',
-      noPins: 'Search a chart and pin it to this group.',
-      noResults: 'No charts found.',
+      search: 'Paste a route: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
+      noPins: 'No charts pinned to this group.',
+      routePoints: 'Route points', routeProblems: 'to check', routeWorking: 'Reading the route...', routeFailed: 'Could not read the route',
       pin: 'Pin', pinned: 'Pinned',
       modeOverlay: 'On map', modeChart: 'Chart only',
       group: 'Group', newGroup: 'New group',
@@ -56,9 +56,9 @@
       showPinned: 'Pinned charts: hide the list', hidePinned: 'Pinned charts: show the list'
     },
     pt: {
-      search: 'Buscar cartas: SBSP, ILS, sao paulo...',
-      noPins: 'Busque uma carta e fixe neste grupo.',
-      noResults: 'Nenhuma carta encontrada.',
+      search: 'Cole a rota: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
+      noPins: 'Nenhuma carta fixada neste grupo.',
+      routePoints: 'Pontos da rota', routeProblems: 'a conferir', routeWorking: 'Lendo a rota...', routeFailed: 'Não foi possível ler a rota',
       pin: 'Fixar', pinned: 'Fixada',
       modeOverlay: 'No mapa', modeChart: 'Só a carta',
       group: 'Grupo', newGroup: 'Novo grupo',
@@ -178,8 +178,6 @@
   if (params.blend !== undefined && /^[0-3]$/.test(params.blend)) opacityIdx = parseInt(params.blend, 10);
   try { var oi = parseInt(window.localStorage.getItem('oc.blend2'), 10); if (oi >= 0 && oi < 4) opacityIdx = oi; } catch (e) { /* ignore */ }
   var needsFit = false;
-  var searchTimer = null;
-  var searchSeq = 0;
 
   function setStatus(text, kind) {
     if (text === lastStatusText && kind === lastStatusKind) return;
@@ -195,10 +193,10 @@
   }
 
   // ---- HTTP ----
-  function request(method, url, body, cb) {
+  function request(method, url, body, cb, timeoutMs) {
     var xhr = new XMLHttpRequest();
     xhr.open(method, url);
-    xhr.timeout = 8000;
+    xhr.timeout = timeoutMs || 8000;
     if (body !== null) xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) return;
@@ -574,6 +572,7 @@
     updateDisplayPanel();
     mapBackground();
     applyChart();
+    drawRoute(new Date().getTime() < routeFitUntil);
     if (lastFix) showAircraft(lastFix);
   }
 
@@ -1287,44 +1286,117 @@
     openedFromStrip = false;
   }
 
-  function renderResults(list) {
+  // ---- the route: pasted the way pilots write it, resolved by the server, drawn on the map ----
+  var routeResult = null;   // what /api/route/resolve answered
+  var routeLayer = null;    // the drawn route
+  var routeSeq = 0;
+  var routeShown = '';      // the text that was resolved last
+  var routeFitUntil = 0;    // a chart opening right after the route was read must not take the view away
+
+  // Where a place of the route goes on the map in use: on the world map its own position; on a
+  // chart picture, through the chart's georeference (and nowhere when the chart has none).
+  function routeLatLng(p) {
+    if (mode === 'chart') {
+      if (!active || active.meta.unreferenced) return null;
+      return chartPixelToLatLng(LMMGeo.toPixel(active.meta, p.lat, p.lon));
+    }
+    return L.latLng(p.lat, p.lon);
+  }
+
+  function clearRoute() {
+    if (routeLayer && map) map.removeLayer(routeLayer);
+    routeLayer = null;
+  }
+
+  function drawRoute(fit) {
+    clearRoute();
+    if (!map || !routeResult || !routeResult.points || !routeResult.points.length) return;
+    var group = L.layerGroup();
+    var pts = [];
+    var lastIdent = '';
+    routeResult.points.forEach(function (p) {
+      var ll = routeLatLng(p);
+      if (!ll) return;
+      pts.push(ll);
+      var big = p.kind === 'airport';
+      L.marker(ll, {
+        interactive: false, keyboard: false,
+        icon: L.divIcon({ className: 'rtpt' + (big ? ' rtairport' : ''), iconSize: [big ? 14 : 9, big ? 14 : 9] })
+      }).addTo(group);
+      if (p.ident !== lastIdent) {
+        L.marker(ll, {
+          interactive: false, keyboard: false,
+          icon: L.divIcon({ className: 'rtlabel' + (big ? ' rtairport' : ''), html: p.ident, iconSize: null, iconAnchor: [-9, 6] })
+        }).addTo(group);
+      }
+      lastIdent = p.ident;
+    });
+    if (!pts.length) return;
+    L.polyline(pts, { color: '#c2185b', weight: 4, opacity: 0.9, interactive: false }).addTo(group);
+    group.addTo(map);
+    routeLayer = group;
+    if (fit) {
+      setFollow(false);
+      pendingRegional = false;
+      map.fitBounds(L.latLngBounds(pts), { padding: [48, 48], animate: false });
+    }
+  }
+
+  function renderRoutePanel() {
     clear(resultsEl);
     resultsEl.className = 'panel';
-    if (!list.length) {
-      var e = document.createElement('div');
-      e.className = 'empty';
-      e.textContent = t('noResults');
-      resultsEl.appendChild(e);
-      return;
-    }
-    list.forEach(function (c) {
+    var r = routeResult;
+    if (!r) return;
+    var head = document.createElement('div');
+    head.className = 'item head';
+    head.textContent = t('routePoints') + ': ' + r.points.length +
+      (r.problems.length ? '  -  ' + r.problems.length + ' ' + t('routeProblems') : '');
+    resultsEl.appendChild(head);
+    r.problems.forEach(function (q) {
       var row = document.createElement('div');
-      row.className = 'item';
-      var pb = button('pinbtn' + (isPinned(c.id) ? ' on' : ''), isPinned(c.id) ? t('pinned') : t('pin'), function (ev) {
-        if (ev.stopPropagation) ev.stopPropagation();
-        togglePin(c, function () { renderResults(list); });
-      });
-      row.appendChild(pb);
-      row.appendChild(document.createTextNode(label(c.name)));
-      row.addEventListener('click', function () { openChart(c.id); });
+      row.className = 'item routeproblem';
+      var text = q.token + ': ' + q.message;
+      if (q.candidates && q.candidates.length) {
+        text += '  (' + q.candidates.map(function (c) { return c.ident + '/' + c.region; }).join(', ') + ')';
+      }
+      row.textContent = text;
       resultsEl.appendChild(row);
     });
+    var chain = [];
+    r.points.forEach(function (p) { if (!chain.length || chain[chain.length - 1] !== p.ident) chain.push(p.ident); });
+    var line = document.createElement('div');
+    line.className = 'empty';
+    line.textContent = chain.join(' > ');
+    resultsEl.appendChild(line);
   }
 
-  function runSearch() {
-    var q = qEl.value.replace(/^\s+|\s+$/g, '');
-    if (!q) { resultsEl.className = 'panel hidden'; return; }
-    var seq = ++searchSeq;
-    getJson('/api/charts?limit=12&q=' + encodeURIComponent(q), function (list) {
-      if (seq !== searchSeq || list === null) return;
+  function resolveRoute() {
+    var text = qEl.value.replace(/^\s+|\s+$/g, '');
+    if (!text) {
+      routeSeq += 1;
+      routeResult = null;
+      routeShown = '';
+      clearRoute();
+      hidePanels();
+      store('route', '');
+      return;
+    }
+    if (text === routeShown && routeResult) { drawRoute(true); renderRoutePanel(); return; }
+    var seq = ++routeSeq;
+    setStatus(t('routeWorking'), 'warn');
+    request('POST', '/api/route/resolve', { route: text }, function (res) {
+      if (seq !== routeSeq) return;
+      if (!res || !res.points) { setStatus(t('routeFailed'), 'bad'); return; }
+      routeResult = res;
+      routeShown = text;
+      store('route', text);
       groupsEl.className = 'panel hidden';
-      renderResults(list);
-    });
-  }
-
-  function scheduleSearch() {
-    if (searchTimer) window.clearTimeout(searchTimer);
-    searchTimer = window.setTimeout(runSearch, 180);
+      drawRoute(true);
+      routeFitUntil = new Date().getTime() + 10000;
+      renderRoutePanel();
+      setStatus(t('routePoints') + ': ' + res.points.length + (res.problems.length ? '  -  ' + res.problems.length + ' ' + t('routeProblems') : ''),
+        res.problems.length ? 'warn' : 'ok');
+    }, 90000);
   }
 
   function hidePanels() {
@@ -1405,14 +1477,14 @@
     var last = document.createElement('div');
     last.className = 'krow';
     last.appendChild(button('k-wide', '____', function () { type(' '); }));
-    last.appendChild(button('', '<', function () { qEl.value = qEl.value.slice(0, -1); scheduleSearch(); }));
-    last.appendChild(button('', 'C', function () { qEl.value = ''; runSearch(); }));
+    last.appendChild(button('', '<', function () { qEl.value = qEl.value.slice(0, -1); }));
+    last.appendChild(button('', 'C', function () { qEl.value = ''; resolveRoute(); }));
+    last.appendChild(button('k-wide', 'OK', function () { resolveRoute(); }));
     kbdEl.appendChild(last);
   }
 
   function type(ch) {
     qEl.value += ch;
-    scheduleSearch();
   }
 
   // ---- wiring ----
@@ -1451,7 +1523,11 @@
     if (active) togglePin({ id: active.meta.id }, function () { renderPins(); });
   });
   updateStar();
-  qEl.addEventListener('input', scheduleSearch);
+  // a route is not searched while it is typed: it is resolved when it is pasted, on Enter, on the
+  // button, or when the field is left
+  qEl.addEventListener('paste', function () { window.setTimeout(resolveRoute, 0); });
+  qEl.addEventListener('keydown', function (ev) { if (ev.keyCode === 13) { ev.preventDefault(); qEl.blur(); resolveRoute(); } });
+  el('btn-route').addEventListener('click', resolveRoute);
   // A tap anywhere outside the bar (the map, the side buttons) closes the result and group lists, and
   // so does the viewer losing the focus (a click on the simulator's own interface): a list left open
   // after the search was abandoned only gets in the way. The on-screen keyboard is inside the bar.
@@ -1479,10 +1555,10 @@
   window.addEventListener('message', function (ev) {
     var d = ev && ev.data;
     if (!d || ev.source !== window.parent) return;
-    if (d.oc === 'text-value' && typeof d.text === 'string') { qEl.value = d.text.slice(0, 200); runSearch(); }
-    if (d.oc === 'text-blur') qEl.blur();
+    if (d.oc === 'text-value' && typeof d.text === 'string') { qEl.value = d.text.slice(0, 4000); }
+    if (d.oc === 'text-blur') { qEl.blur(); resolveRoute(); }
   });
-  qEl.addEventListener('keyup', function (ev) { if (ev.keyCode === 27) { qEl.value = ''; hidePanels(); } });
+  qEl.addEventListener('keyup', function (ev) { if (ev.keyCode === 27) { qEl.value = ''; resolveRoute(); } });
   el('btn-kbd').addEventListener('click', function () {
     var hidden = kbdEl.className.indexOf('hidden') >= 0;
     kbdEl.className = hidden ? 'kbd' : 'kbd hidden';
@@ -1670,7 +1746,8 @@
     poll();
     if (PERF_ON) watchDom();
     loadGroups(function () {
-      if (params.q) runSearch();
+      var lastRoute = params.q || store('route');
+      if (lastRoute) { qEl.value = lastRoute; resolveRoute(); }
       var want = params.chart || saved.chart || store('chart');
       var closedByUser = !params.chart && saved.chart === '' && !!saved.mode;
       if (want) {
