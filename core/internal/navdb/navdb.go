@@ -123,8 +123,10 @@ func (d *DB) init() error {
 	if _, err = d.db.Exec(schema); err != nil {
 		return err
 	}
-	_, err = d.db.Exec(extraSchema)
-	return err
+	if _, err = d.db.Exec(extraSchema); err != nil {
+		return err
+	}
+	return d.migrateUserPoints()
 }
 
 // Close closes the database.

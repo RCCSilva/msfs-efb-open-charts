@@ -3,6 +3,7 @@ package navdb
 import (
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -225,6 +226,9 @@ type UserPoint struct {
 	Name      string  `json:"name"`
 	Lat       float64 `json:"lat"`
 	Lon       float64 `json:"lon"`
+	AltFt     float64 `json:"altFt"`
+	Type      string  `json:"type"` // Waypoint, Airport, Marker... (what a Little Navmap export says)
+	Tags      string  `json:"tags"`
 	Note      string  `json:"note"`
 	CreatedAt string  `json:"createdAt"`
 }
@@ -247,12 +251,17 @@ func cleanPoint(p *UserPoint) error {
 	}
 	p.Name = strings.TrimSpace(p.Name)
 	p.Note = strings.TrimSpace(p.Note)
+	p.Type = strings.TrimSpace(p.Type)
+	p.Tags = strings.TrimSpace(p.Tags)
+	if p.Type == "" {
+		p.Type = "Waypoint"
+	}
 	return nil
 }
 
 // UserPoints lists the user's points whose identifier starts with q.
 func (d *DB) UserPoints(q string) ([]UserPoint, error) {
-	rows, err := d.db.Query(`SELECT id, ident, name, lat, lon, note, created_at FROM user_point WHERE ident LIKE ? ORDER BY ident, id`,
+	rows, err := d.db.Query(`SELECT id, ident, name, lat, lon, alt_ft, type, tags, note, created_at FROM user_point WHERE ident LIKE ? ORDER BY ident, id`,
 		strings.ToUpper(strings.TrimSpace(q))+"%")
 	if err != nil {
 		return nil, err
@@ -261,11 +270,12 @@ func (d *DB) UserPoints(q string) ([]UserPoint, error) {
 	out := []UserPoint{}
 	for rows.Next() {
 		var p UserPoint
-		var name, note, at sql.NullString
-		if err := rows.Scan(&p.ID, &p.Ident, &name, &p.Lat, &p.Lon, &note, &at); err != nil {
+		var name, note, at, typ, tags sql.NullString
+		var alt sql.NullFloat64
+		if err := rows.Scan(&p.ID, &p.Ident, &name, &p.Lat, &p.Lon, &alt, &typ, &tags, &note, &at); err != nil {
 			return nil, err
 		}
-		p.Name, p.Note, p.CreatedAt = name.String, note.String, at.String
+		p.Name, p.Note, p.CreatedAt, p.Type, p.Tags, p.AltFt = name.String, note.String, at.String, typ.String, tags.String, alt.Float64
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -277,8 +287,8 @@ func (d *DB) CreateUserPoint(p UserPoint) (UserPoint, error) {
 		return p, err
 	}
 	p.CreatedAt = time.Now().UTC().Format(time.RFC3339)
-	res, err := d.db.Exec(`INSERT INTO user_point (ident, name, lat, lon, note, created_at) VALUES (?,?,?,?,?,?)`,
-		p.Ident, p.Name, p.Lat, p.Lon, p.Note, p.CreatedAt)
+	res, err := d.db.Exec(`INSERT INTO user_point (ident, name, lat, lon, alt_ft, type, tags, note, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+		p.Ident, p.Name, p.Lat, p.Lon, p.AltFt, p.Type, p.Tags, p.Note, p.CreatedAt)
 	if err != nil {
 		return p, err
 	}
@@ -291,8 +301,8 @@ func (d *DB) UpdateUserPoint(p UserPoint) error {
 	if err := cleanPoint(&p); err != nil {
 		return err
 	}
-	res, err := d.db.Exec(`UPDATE user_point SET ident = ?, name = ?, lat = ?, lon = ?, note = ? WHERE id = ?`,
-		p.Ident, p.Name, p.Lat, p.Lon, p.Note, p.ID)
+	res, err := d.db.Exec(`UPDATE user_point SET ident = ?, name = ?, lat = ?, lon = ?, alt_ft = ?, type = ?, tags = ?, note = ? WHERE id = ?`,
+		p.Ident, p.Name, p.Lat, p.Lon, p.AltFt, p.Type, p.Tags, p.Note, p.ID)
 	if err != nil {
 		return err
 	}
@@ -379,4 +389,145 @@ func (d *DB) SeedPending(limit int) ([]string, error) {
 		out = append(out, s)
 	}
 	return out, rows.Err()
+}
+
+// migrateUserPoints adds the columns a table made by an earlier version does not have.
+func (d *DB) migrateUserPoints() error {
+	rows, err := d.db.Query(`PRAGMA table_info(user_point)`)
+	if err != nil {
+		return err
+	}
+	have := map[string]bool{}
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		have[name] = true
+	}
+	rows.Close()
+	for _, c := range []struct{ name, def string }{{"alt_ft", "REAL"}, {"type", "TEXT"}, {"tags", "TEXT"}} {
+		if !have[c.name] {
+			if _, err := d.db.Exec(`ALTER TABLE user_point ADD COLUMN ` + c.name + ` ` + c.def); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// ImportResult says what an import did.
+type ImportResult struct {
+	Added   int `json:"added"`
+	Skipped int `json:"skipped"` // already there (same name, same place)
+}
+
+// identFromName makes an identifier out of a name: no accents, letters and digits only, at most 12.
+func identFromName(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToUpper(name) {
+		if m, ok := accentFold[r]; ok {
+			r = m
+		}
+		if r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+var accentFold = func() map[rune]rune {
+	m := map[rune]rune{}
+	for folded, from := range map[rune]string{
+		'A': "ÁÀÂÃÄÅ", 'E': "ÉÈÊË", 'I': "ÍÌÎÏ", 'O': "ÓÒÔÕÖ", 'U': "ÚÙÛÜ", 'C': "Ç", 'N': "Ñ", 'Y': "Ý",
+	} {
+		for _, r := range from {
+			m[r] = folded
+		}
+	}
+	return m
+}()
+
+// ImportUserPoints stores points that came from a file. A point without a usable identifier gets
+// one made from its name (and a number when that is taken). A point with the same name and place
+// as one already stored is skipped, so importing the same file twice changes nothing.
+func (d *DB) ImportUserPoints(list []UserPoint) (ImportResult, error) {
+	var res ImportResult
+	tx, err := d.db.Begin()
+	if err != nil {
+		return res, err
+	}
+	defer tx.Rollback()
+	type key struct {
+		name     string
+		lat, lon int64
+	}
+	pos := func(v float64) int64 { return int64(v*100000 + 0.5*sign(v)) }
+	haveKey := map[key]bool{}
+	taken := map[string]bool{}
+	rows, err := tx.Query(`SELECT ident, name, lat, lon FROM user_point`)
+	if err != nil {
+		return res, err
+	}
+	for rows.Next() {
+		var id, name string
+		var lat, lon float64
+		if err := rows.Scan(&id, &name, &lat, &lon); err != nil {
+			rows.Close()
+			return res, err
+		}
+		taken[id] = true
+		haveKey[key{strings.ToUpper(name), pos(lat), pos(lon)}] = true
+	}
+	rows.Close()
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, p := range list {
+		id := identFromName(p.Ident)
+		if len(id) < 2 {
+			id = identFromName(p.Name)
+		}
+		if len(id) < 2 {
+			res.Skipped++
+			continue
+		}
+		if len(id) > 12 {
+			id = id[:12]
+		}
+		p.Ident = id
+		if err := cleanPoint(&p); err != nil {
+			res.Skipped++
+			continue
+		}
+		k := key{strings.ToUpper(p.Name), pos(p.Lat), pos(p.Lon)}
+		if haveKey[k] {
+			res.Skipped++
+			continue
+		}
+		for n := 2; taken[p.Ident]; n++ {
+			suffix := strconv.Itoa(n)
+			base := id
+			if len(base)+len(suffix) > 12 {
+				base = base[:12-len(suffix)]
+			}
+			p.Ident = base + suffix
+		}
+		if _, err := tx.Exec(`INSERT INTO user_point (ident, name, lat, lon, alt_ft, type, tags, note, created_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+			p.Ident, p.Name, p.Lat, p.Lon, p.AltFt, p.Type, p.Tags, p.Note, now); err != nil {
+			return res, err
+		}
+		taken[p.Ident] = true
+		haveKey[k] = true
+		res.Added++
+	}
+	return res, tx.Commit()
+}
+
+func sign(v float64) float64 {
+	if v < 0 {
+		return -1
+	}
+	return 1
 }

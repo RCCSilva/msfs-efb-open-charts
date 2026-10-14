@@ -1367,7 +1367,10 @@
       noRows: 'Nothing here yet.', confirmDel: 'Delete this? It can be loaded again from the simulator.',
       pointsIntro: 'Places you make yourself (a private waypoint, a visual reference). They can be written in a pasted route like any waypoint.',
       newPoint: 'New point', editPoint: 'Edit point', asked: 'Names asked', airwaySegs: 'segments', hideSegs: 'Hide', showSegs: 'Show',
-      total: 'total', loaded: 'Loaded', failed: 'Could not do that'
+      total: 'total', loaded: 'Loaded', failed: 'Could not do that',
+      importTitle: 'Import from Little Navmap',
+      importHow: 'Choose the CSV that Little Navmap exports from "My Data" (user points). Points without an identifier get one made from the name. Importing the same file twice adds nothing.',
+      importBtn: 'Choose a CSV file...', imported: '{a} added, {d} already there, {i} rows ignored'
     },
     pt: {
       title: 'Dados de navegação',
@@ -1388,7 +1391,10 @@
       noRows: 'Nada por aqui ainda.', confirmDel: 'Excluir? Dá para carregar de novo do simulador.',
       pointsIntro: 'Lugares que você mesmo cria (um waypoint particular, uma referência visual). Podem ser escritos numa rota colada como qualquer waypoint.',
       newPoint: 'Novo ponto', editPoint: 'Editar ponto', asked: 'Nomes consultados', airwaySegs: 'trechos', hideSegs: 'Ocultar', showSegs: 'Ver',
-      total: 'no total', loaded: 'Carregado', failed: 'Não foi possível'
+      total: 'no total', loaded: 'Carregado', failed: 'Não foi possível',
+      importTitle: 'Importar do Little Navmap',
+      importHow: 'Escolha o CSV que o Little Navmap exporta de "Meus dados" (pontos do usuário). Pontos sem identificador ganham um feito a partir do nome. Importar o mesmo arquivo duas vezes não duplica nada.',
+      importBtn: 'Escolher um arquivo CSV...', imported: '{a} adicionados, {d} já existiam, {i} linhas ignoradas'
     }
   };
   const nv = (k) => (NV[lang] && NV[lang][k]) || NV.en[k] || k;
@@ -1543,7 +1549,7 @@
         h('button', { class: 'btn primary', onclick: async () => {
           const v = {};
           form.querySelectorAll('input[data-k]').forEach((i) => { v[i.getAttribute('data-k')] = i.value.trim(); });
-          const payload = { ident: v.ident, name: v.name, note: v.note, lat: Number(v.lat.replace(',', '.')), lon: Number(v.lon.replace(',', '.')) };
+          const payload = { ident: v.ident, name: v.name, note: v.note, type: e.type || '', tags: e.tags || '', altFt: e.altFt || 0, lat: Number(v.lat.replace(',', '.')), lon: Number(v.lon.replace(',', '.')) };
           if (v.lat === '' || v.lon === '' || !isFinite(payload.lat) || !isFinite(payload.lon)) { toast(nv('failed') + ': ' + nv('lat') + ' / ' + nv('lon')); return; }
           try {
             if (e.id) await api('PUT', '/api/nav/points/' + e.id, payload); else await api('POST', '/api/nav/points', payload);
@@ -1552,11 +1558,26 @@
           } catch (err) { toast(nv('failed') + ': ' + err.message); }
         } }, e.id ? nv('save') : nv('add')),
         e.id ? h('button', { class: 'btn', onclick: () => { navState.edit = null; renderNav(); } }, nv('cancel')) : null));
-    body.replaceChildren(h('p', { class: 'muted' }, nv('pointsIntro')), form,
+    const file = h('input', { type: 'file', accept: '.csv,text/csv,text/plain', style: 'display:none' });
+    file.addEventListener('change', async () => {
+      if (!file.files.length) return;
+      const fd = new FormData();
+      fd.append('file', file.files[0]);
+      try {
+        const res = await api('POST', '/api/nav/points/import', fd);
+        toast(fill(nv('imported'), { a: res.added, d: res.duplicates, i: res.ignored }));
+      } catch (err) { toast(nv('failed') + ': ' + err.message); }
+      renderNav();
+    });
+    const importRow = h('div', { class: 'card', style: 'margin-bottom:12px' },
+      h('h3', null, nv('importTitle')),
+      h('p', { class: 'muted' }, nv('importHow')),
+      h('button', { class: 'btn', onclick: () => file.click() }, nv('importBtn')), file);
+    body.replaceChildren(h('p', { class: 'muted' }, nv('pointsIntro')), importRow, form,
       r.points.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) : h('table', null,
-        h('thead', null, h('tr', null, h('th', null, nv('ident')), h('th', null, nv('name')), h('th', null, nv('pos')), h('th', null, nv('note')), h('th'))),
+        h('thead', null, h('tr', null, h('th', null, nv('ident')), h('th', null, nv('name')), h('th', null, nv('kind')), h('th', null, nv('pos')), h('th', null, nv('note')), h('th'))),
         h('tbody', null, r.points.map((p) => h('tr', null,
-          h('td', null, h('strong', null, p.ident)), h('td', null, p.name), h('td', { class: 'muted' }, fmtPos(p.lat, p.lon)), h('td', { class: 'muted' }, p.note),
+          h('td', null, h('strong', null, p.ident)), h('td', null, p.name), h('td', { class: 'muted' }, p.type), h('td', { class: 'muted' }, fmtPos(p.lat, p.lon)), h('td', { class: 'muted' }, p.note),
           h('td', { class: 'actions' },
             h('button', { class: 'btn sm', onclick: () => { navState.edit = p; renderNav(); } }, nv('edit')), ' ',
             h('button', { class: 'btn sm danger', onclick: async () => {

@@ -97,6 +97,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/nav/airway/{name}", s.handleNavAirway)
 	mux.HandleFunc("GET /api/nav/points", s.handleNavPoints)
 	mux.HandleFunc("POST /api/nav/points", s.handleNavPointSave)
+	mux.HandleFunc("POST /api/nav/points/import", s.handleNavPointsImport)
 	mux.HandleFunc("PUT /api/nav/points/{id}", s.handleNavPointSave)
 	mux.HandleFunc("DELETE /api/nav/points/{id}", s.handleNavPointDelete)
 	mux.HandleFunc("GET /api/nav/load", s.handleNavLoadStatus)

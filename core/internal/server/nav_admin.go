@@ -2,12 +2,14 @@ package server
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/lnmpoints"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navseed"
 )
@@ -227,6 +229,38 @@ func (s *Server) handleNavPointSave(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, 200, p)
 	}
+}
+
+// POST /api/nav/points/import: the CSV that Little Navmap exports for user points, as a multipart
+// field "file" or as the body of the request.
+func (s *Server) handleNavPointsImport(w http.ResponseWriter, r *http.Request) {
+	db := s.navDB()
+	if db == nil {
+		navUnavailable(w)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, lnmpoints.MaxBytes+1<<20)
+	var src io.Reader = r.Body
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		f, _, err := r.FormFile("file")
+		if err != nil {
+			writeErr(w, 400, errors.New("send the file in the field \"file\""))
+			return
+		}
+		defer f.Close()
+		src = f
+	}
+	points, skipped, err := lnmpoints.Parse(src)
+	if err != nil {
+		writeErr(w, 400, err)
+		return
+	}
+	res, err := db.ImportUserPoints(points)
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"added": res.Added, "duplicates": res.Skipped, "ignored": skipped})
 }
 
 // DELETE /api/nav/points/{id}
