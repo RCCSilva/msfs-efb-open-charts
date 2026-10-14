@@ -614,6 +614,13 @@
     el('map').style.background = mode === 'chart' ? '#ffffff' : (basemap === 'dark' ? '#1c2024' : (basemap === 'none' ? '#eef1f3' : '#dfe6ea'));
   }
 
+  function warpLayerFor(entry, z) {
+    return new WarpLayer(entry.meta, entry.img, {
+      tileSize: TILE, opacity: OPACITY_STEPS[opacityIdx], minZoom: OVERLAY_MIN_ZOOM,
+      maxZoom: OVERLAY_MAX_ZOOM, updateWhenIdle: false, keepBuffer: 1, zIndex: z
+    });
+  }
+
   // Put the active chart on the freshly built map.
   function applyChart() {
     if (!active) {
@@ -637,16 +644,12 @@
     } else {
       if (multi) {
         extras.forEach(function (e, i) {
-          extraLayers.push(new WarpLayer(e.meta, e.img, {
-            tileSize: TILE, opacity: OPACITY_STEPS[opacityIdx], minZoom: OVERLAY_MIN_ZOOM,
-            maxZoom: OVERLAY_MAX_ZOOM, updateWhenIdle: false, keepBuffer: 1, zIndex: 5 + i
-          }).addTo(map));
+          e.layer = warpLayerFor(e, 5 + i).addTo(map);
+          extraLayers.push(e.layer);
         });
       }
-      chartLayer = new WarpLayer(meta, active.img, {
-        tileSize: TILE, opacity: OPACITY_STEPS[opacityIdx], minZoom: OVERLAY_MIN_ZOOM,
-        maxZoom: OVERLAY_MAX_ZOOM, updateWhenIdle: false, keepBuffer: 1, zIndex: 10
-      }).addTo(map);
+      chartLayer = warpLayerFor(active, 10).addTo(map);
+      active.layer = chartLayer;
     }
     pendingRegional = !debugAt && isRegionalChart(meta);
     fitInitial();
@@ -926,12 +929,13 @@
         timing.h = img.naturalHeight;
         timing.level = level;
         var keepView = multi && mode === 'overlay' && !!map && !!active && !meta.unreferenced && !active.meta.unreferenced;
+        var stack = keepView && active.level === 1 && !!chartLayer;   // layers are added, the map is not rebuilt
         keepPreviousOnMap(meta);
         active = { meta: meta, img: img, level: level };
         store('chart', id);
         if (keepView) keepViewNext = true; else setFollow(!debugAt);
         loadTiming = timing;
-        buildMap();
+        if (stack) pushLayer(); else buildMap();
         timing.built = nowMs();
         if (mode === 'chart') {
           // nothing more to load: the image element is already decoded
@@ -1193,10 +1197,18 @@
     if (!active) return;
     if (mode !== 'overlay') extras = [];
     if (extras.length) {   // the chart under it comes up
+      if (map && active.layer) map.removeLayer(active.layer);
       active = extras.pop();
       store('chart', active.meta.id);
-      keepViewNext = true;
-      buildMap();
+      if (map && active.layer) {
+        chartLayer = active.layer;
+        if (chartLayer.setZIndex) chartLayer.setZIndex(10);
+        extraLayers = extras.map(function (e) { return e.layer; });
+        relayer();
+      } else {
+        keepViewNext = true;
+        buildMap();
+      }
       renderPins();
       updateCloseButton();
       saveState();
@@ -1227,13 +1239,39 @@
   }
 
   // With "several charts" on, the chart that was on screen stays under the one being opened.
+  function dropExtraLayer(e) {
+    if (map && e.layer) map.removeLayer(e.layer);
+    e.layer = null;
+  }
+
+  // The new active chart gets its own layer on top; the old ones stay as they are, only their order changes.
+  // Rebuilding the whole map made the screen flash (the base map was drawn again).
+  function pushLayer() {
+    if (active.layer) dropExtraLayer(active);
+    chartLayer = warpLayerFor(active, 10).addTo(map);
+    active.layer = chartLayer;
+    extraLayers = extras.map(function (e) { return e.layer; });
+    relayer();
+    pendingRegional = false;
+    keepViewNext = false;
+    updateDisplayPanel();
+  }
+
+  function relayer() {
+    extras.forEach(function (e, i) { if (e.layer && e.layer.setZIndex) e.layer.setZIndex(5 + i); });
+  }
+
   function keepPreviousOnMap(next) {
-    extras = extras.filter(function (e) { return e.meta.id !== next.id; });
+    extras = extras.filter(function (e) {
+      if (e.meta.id !== next.id) return true;
+      dropExtraLayer(e);
+      return false;
+    });
     if (!multi || mode !== 'overlay' || !active || next.unreferenced || active.meta.unreferenced ||
         active.meta.id === next.id || active.level !== 1) return;
     extras = extras.filter(function (e) { return e.meta.id !== active.meta.id; });
     extras.push(active);
-    while (extras.length > MAX_EXTRAS) extras.shift();
+    while (extras.length > MAX_EXTRAS) dropExtraLayer(extras.shift());
   }
 
   function toggleMulti() {
@@ -1343,9 +1381,13 @@
       if (active.meta.id === id) {
         closeChart();
       } else {
-        extras = extras.filter(function (e) { return e.meta.id !== id; });
-        keepViewNext = true;
-        buildMap();
+        extras = extras.filter(function (e) {
+          if (e.meta.id !== id) return true;
+          dropExtraLayer(e);
+          return false;
+        });
+        extraLayers = extras.map(function (e) { return e.layer; });
+        relayer();
       }
       if (rightView === 'search') runChartSearch(); else renderPins();
       return;
