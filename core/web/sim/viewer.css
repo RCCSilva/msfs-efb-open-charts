@@ -365,8 +365,8 @@ body.clean .routecard { display: none !important; }
 .crow.haseye { padding-right: 92px; }
 .crow .cx.eye { right: 46px; }
 .crow.relevant.onmap { border-left-color: #c2185b; }
-.tool.pinbig { height: 48px; min-width: 48px; padding: 0 12px; font-size: 14px; font-weight: bold; }
-.tool.pinbig svg { width: 30px; height: 30px; stroke-width: 2.2; }
+.tool.pinbig { height: 44px; min-width: 44px; padding: 0 12px; font-size: 14px; font-weight: bold; }
+.tool.pinbig svg { width: 28px; height: 28px; stroke-width: 2.2; }
 .tool.pinbig span { margin-left: 6px; vertical-align: middle; }
 .crow .csmall { display: block; font-size: 11px; color: #667; }
 .crow.active .csmall { color: #dbe7f5; }
