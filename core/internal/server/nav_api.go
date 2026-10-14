@@ -19,6 +19,7 @@ type FixFetcher func(refs []navdata.FixRef) ([]navdata.Fix, error)
 
 type navState struct {
 	mu     sync.Mutex // one fetch at a time: the simulator answers one conversation, and a repeat is wasted work
+	ptrMu  sync.RWMutex // guards only the fields below that are set once (never held while the simulator is asked)
 	db     *navdb.DB
 	fetch  NavFetcher
 	fixes  FixFetcher
@@ -30,7 +31,9 @@ type navState struct {
 // to fill it. Either may be nil.
 func (s *Server) SetNav(db *navdb.DB, fetch NavFetcher, fixes FixFetcher, lookup IdentFetcher) {
 	s.nav.mu.Lock()
+	s.nav.ptrMu.Lock()
 	s.nav.db, s.nav.fetch, s.nav.fixes, s.nav.lookup = db, fetch, fixes, lookup
+	s.nav.ptrMu.Unlock()
 	s.nav.mu.Unlock()
 	s.restoreJob()
 }
@@ -135,9 +138,7 @@ func (s *Server) handleNavAirport(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/nav/fix/{region}/{ident}: a stored fix with the airways through it.
 func (s *Server) handleNavFix(w http.ResponseWriter, r *http.Request) {
-	s.nav.mu.Lock()
-	db := s.nav.db
-	s.nav.mu.Unlock()
+	db := s.navDB()
 	if db == nil {
 		writeErr(w, 503, errors.New("the navigation database is not available"))
 		return
@@ -156,9 +157,7 @@ func (s *Server) handleNavFix(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/nav/airports[?q=SB]: the airports already stored.
 func (s *Server) handleNavAirports(w http.ResponseWriter, r *http.Request) {
-	s.nav.mu.Lock()
-	db := s.nav.db
-	s.nav.mu.Unlock()
+	db := s.navDB()
 	if db == nil {
 		writeErr(w, 503, errors.New("the navigation database is not available"))
 		return

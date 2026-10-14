@@ -97,10 +97,18 @@ func (s *Server) restoreJob() {
 	})
 }
 
+// navDB returns the database without waiting for a fetch in progress (the bulk load holds the
+// fetch lock for the whole time a batch is asked to the simulator).
 func (s *Server) navDB() *navdb.DB {
-	s.nav.mu.Lock()
-	defer s.nav.mu.Unlock()
+	s.nav.ptrMu.RLock()
+	defer s.nav.ptrMu.RUnlock()
 	return s.nav.db
+}
+
+func (s *Server) canAskSim() bool {
+	s.nav.ptrMu.RLock()
+	defer s.nav.ptrMu.RUnlock()
+	return s.nav.lookup != nil
 }
 
 func navUnavailable(w http.ResponseWriter) {
@@ -119,9 +127,7 @@ func (s *Server) handleNavSummary(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	s.nav.mu.Lock()
-	canAsk := s.nav.lookup != nil
-	s.nav.mu.Unlock()
+	canAsk := s.canAskSim()
 	files := navseed.Locate()
 	if files == nil {
 		files = []string{}
@@ -343,9 +349,7 @@ func (s *Server) handleNavLoadStart(w http.ResponseWriter, r *http.Request) {
 	if body.Mode != "files" {
 		body.Mode = "all"
 	}
-	s.nav.mu.Lock()
-	canAsk := s.nav.lookup != nil
-	s.nav.mu.Unlock()
+	canAsk := s.canAskSim()
 	if body.Mode == "all" && !canAsk {
 		writeErr(w, 503, errors.New("there is no link to the simulator (SimConnect.dll was not found)"))
 		return
