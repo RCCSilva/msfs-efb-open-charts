@@ -56,7 +56,7 @@
       regionalTitle: 'Regional zoom (about 30 km around the aircraft)',
       starPin: 'Pin this chart', starUnpin: 'Unpin this chart', remove: 'Unpin',
       multiTitle: 'Several charts on the map', multiOn: 'Several charts: on', multiOff: 'Several charts: off',
-      scrollUp: 'Up', scrollDown: 'Down',
+      scrollUp: 'Up', scrollDown: 'Down', focusChart: 'Show this chart on the map',
       viewWithMap: 'With map', viewChartOnly: 'Chart only', blendMap: 'Map', blendChart: 'Chart',
       blendTitle: 'Chart over the map', otherGroup: 'Other',
       prevChart: 'Scroll left', nextChart: 'Scroll right', closeChart: 'Close chart',
@@ -90,7 +90,7 @@
       regionalTitle: 'Zoom regional (cerca de 30 km ao redor da aeronave)',
       starPin: 'Fixar esta carta', starUnpin: 'Desafixar esta carta', remove: 'Desafixar',
       multiTitle: 'Varias cartas no mapa', multiOn: 'Varias cartas: ligado', multiOff: 'Varias cartas: desligado',
-      scrollUp: 'Subir', scrollDown: 'Descer',
+      scrollUp: 'Subir', scrollDown: 'Descer', focusChart: 'Ir para esta carta no mapa',
       viewWithMap: 'Com mapa', viewChartOnly: 'S\u00f3 a carta', blendMap: 'Mapa', blendChart: 'Carta',
       blendTitle: 'Carta sobre o mapa', otherGroup: 'Outras',
       prevChart: 'Rolar para a esquerda', nextChart: 'Rolar para a direita', closeChart: 'Fechar carta',
@@ -526,7 +526,13 @@
   }
   function chartPixelToLatLng(pt) { return L.latLng(chartTop(active.meta) - pt.py, pt.px); }
 
+  // set before buildMap when a chart is added to or taken off the map: the view stays where it was
+  var keepViewNext = false;
+
   function buildMap() {
+    var savedView = null;
+    if (keepViewNext && map && mode === 'overlay') savedView = { c: map.getCenter(), z: map.getZoom() };
+    keepViewNext = false;
     if (map) {
       map.off();
       map.remove();
@@ -595,6 +601,11 @@
     updateDisplayPanel();
     mapBackground();
     applyChart();
+    if (savedView) {
+      pendingRegional = false;
+      needsFit = false;
+      map.setView(savedView.c, savedView.z, { animate: false });
+    }
     drawRoute(new Date().getTime() < routeFitUntil);
     if (lastFix) showAircraft(lastFix);
   }
@@ -914,10 +925,11 @@
         timing.w = img.naturalWidth;
         timing.h = img.naturalHeight;
         timing.level = level;
+        var keepView = multi && mode === 'overlay' && !!map && !!active && !meta.unreferenced && !active.meta.unreferenced;
         keepPreviousOnMap(meta);
         active = { meta: meta, img: img, level: level };
         store('chart', id);
-        setFollow(!debugAt);
+        if (keepView) keepViewNext = true; else setFollow(!debugAt);
         loadTiming = timing;
         buildMap();
         timing.built = nowMs();
@@ -1183,6 +1195,7 @@
     if (extras.length) {   // the chart under it comes up
       active = extras.pop();
       store('chart', active.meta.id);
+      keepViewNext = true;
       buildMap();
       renderPins();
       updateCloseButton();
@@ -1227,9 +1240,36 @@
     multi = !multi;
     store('multi', multi ? '1' : '0');
     if (!multi) extras = [];
+    keepViewNext = true;
     if (mode === 'overlay' && active) buildMap();
     updateDisplayPanel();
     renderPins();
+  }
+
+  // Move the view to a chart that is on the map. Nothing else does that when charts are added.
+  function focusChart(id) {
+    if (!map || mode !== 'overlay') return;
+    var meta = null;
+    if (active && active.meta.id === id) meta = active.meta;
+    extras.forEach(function (e) { if (e.meta.id === id) meta = e.meta; });
+    if (!meta || meta.unreferenced || !meta.geoCorners) return;
+    setFollow(false);
+    pendingRegional = false;
+    map.fitBounds(L.latLngBounds(meta.geoCorners.map(function (g) { return L.latLng(g.lat, g.lon); })), { animate: false });
+  }
+
+  function eyeButton(id) {
+    var b = button('cx eye', '', function (ev) {
+      if (ev.stopPropagation) ev.stopPropagation();
+      focusChart(id);
+    });
+    b.innerHTML = '<svg viewBox="0 0 32 32"><path d="M3 16C6.5 10 11 7.5 16 7.5S25.5 10 29 16C25.5 22 21 24.5 16 24.5S6.5 22 3 16z"/><circle cx="16" cy="16" r="4"/></svg>';
+    b.title = t('focusChart');
+    return b;
+  }
+
+  function showsEye(id) {
+    return mode === 'overlay' && !!active && !active.meta.unreferenced && (active.meta.id === id || isOnMap(id));
   }
 
   // The pushpin of a pin button: filled when the chart is pinned.
@@ -1304,6 +1344,7 @@
         closeChart();
       } else {
         extras = extras.filter(function (e) { return e.meta.id !== id; });
+        keepViewNext = true;
         buildMap();
       }
       if (rightView === 'search') runChartSearch(); else renderPins();
@@ -1339,6 +1380,7 @@
           if (ev.stopPropagation) ev.stopPropagation();
           togglePin({ id: c.id }, function () { renderPins(); });
         }));
+        if (showsEye(c.id)) { row.className += ' haseye'; row.appendChild(eyeButton(c.id)); }
         pinsEl.appendChild(row);
       });
     });
@@ -1379,6 +1421,7 @@
       if (ev.stopPropagation) ev.stopPropagation();
       togglePin(c, function () { if (onChange) onChange(); });
     }));
+    if (showsEye(c.id)) { row.className += ' haseye'; row.appendChild(eyeButton(c.id)); }
     return row;
   }
 

@@ -168,7 +168,8 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   **search** (right; magnifier): with a route and nothing typed it lists the charts of the route's airports (those that
   match a procedure of the route first), typing searches the whole library. Tapping the map closes the drawers. Drawers are at most half of the screen; their list scrolls inside, with up/down
   buttons (the sim's screen is hard to scroll by touch). The "several charts" button (map view only) keeps the previous
-  charts under the one being opened (up to 4 extra layers, stored in `oc.multi`).
+  charts under the one being opened (up to 4 extra layers, stored in `oc.multi`). Adding or removing a chart in that mode never moves the view; only the eye button of a pinned row
+  (`focusChart`) fits the map to that chart.
   In chart-only mode the route goes through the chart's georeference (nothing for view-only charts).
 - **AIRAC cycle:** one international calendar (`naming/airac.go`); a chart's cycle is derived from its date.
 - **Name patterns (My PDFs):** the user may write file-name templates (`{icao}_{type}_{title}_{date:YYYYMMDD}`,
