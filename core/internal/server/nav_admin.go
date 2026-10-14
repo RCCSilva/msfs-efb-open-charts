@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -60,6 +61,40 @@ func (j *navJob) set(f func(j *navJob)) {
 	j.mu.Lock()
 	f(j)
 	j.mu.Unlock()
+}
+
+const navJobKey = "navload"
+
+// saveJob keeps the state of the load with the database, so that a restart of the program does not
+// make the page forget that one was running.
+func (s *Server) saveJob() {
+	db := s.nav.db
+	if db == nil {
+		return
+	}
+	if b, err := json.Marshal(s.nav.job.snapshot()); err == nil {
+		_ = db.SetMeta(navJobKey, string(b))
+	}
+}
+
+// restoreJob is called when the database is given to the server: a load that was running when the
+// program went away is shown as interrupted (it is not resumed by itself).
+func (s *Server) restoreJob() {
+	db := s.nav.db
+	if db == nil {
+		return
+	}
+	var v navJobView
+	if err := json.Unmarshal([]byte(db.Meta(navJobKey)), &v); err != nil {
+		return
+	}
+	if v.Running {
+		v.Running, v.Phase = false, "interrupted"
+		v.Message = ""
+	}
+	s.nav.job.set(func(j *navJob) {
+		j.Running, j.Phase, j.Message, j.Total, j.Done, j.Started, j.Ended = v.Running, v.Phase, v.Message, v.Total, v.Done, v.Started, v.Ended
+	})
 }
 
 func (s *Server) navDB() *navdb.DB {
@@ -325,6 +360,7 @@ func (s *Server) handleNavLoadStart(w http.ResponseWriter, r *http.Request) {
 	j.Running, j.Phase, j.Message, j.Total, j.Done, j.stop = true, "reading", "", 0, 0, false
 	j.Started, j.Ended = time.Now(), time.Time{}
 	j.mu.Unlock()
+	s.saveJob()
 	go s.runNavLoad(db, body.Mode)
 	writeJSON(w, 202, j.snapshot())
 }
@@ -339,6 +375,7 @@ func (s *Server) runNavLoad(db *navdb.DB, mode string) {
 	j := &s.nav.job
 	finish := func(phase, msg string) {
 		j.set(func(j *navJob) { j.Running, j.Phase, j.Message, j.Ended = false, phase, msg, time.Now() })
+		s.saveJob()
 	}
 	stopped := func() bool {
 		j.mu.Lock()
@@ -422,5 +459,6 @@ func (s *Server) runNavLoad(db *navdb.DB, mode string) {
 			}
 		}
 		j.set(func(j *navJob) { j.Done += len(idents) })
+		s.saveJob()
 	}
 }

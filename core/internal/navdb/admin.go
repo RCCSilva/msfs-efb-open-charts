@@ -217,6 +217,21 @@ func (d *DB) AirwaySegments(name string) ([]AirwaySegment, error) {
 	return out, rows.Err()
 }
 
+// Meta reads a small value kept with the database (empty when there is none).
+func (d *DB) Meta(key string) string {
+	var v string
+	if err := d.db.QueryRow(`SELECT value FROM meta WHERE key = ?`, key).Scan(&v); err != nil {
+		return ""
+	}
+	return v
+}
+
+// SetMeta stores a small value with the database.
+func (d *DB) SetMeta(key, value string) error {
+	_, err := d.db.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`, key, value)
+	return err
+}
+
 // ---- points made by the user ----
 
 // UserPoint is a place the user made: it can be cited in a route like any waypoint.

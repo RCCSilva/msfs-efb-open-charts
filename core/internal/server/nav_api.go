@@ -32,6 +32,7 @@ func (s *Server) SetNav(db *navdb.DB, fetch NavFetcher, fixes FixFetcher, lookup
 	s.nav.mu.Lock()
 	s.nav.db, s.nav.fetch, s.nav.fixes, s.nav.lookup = db, fetch, fixes, lookup
 	s.nav.mu.Unlock()
+	s.restoreJob()
 }
 
 // resolveFixes asks the simulator for the fixes the procedures of an airport cite and the database
