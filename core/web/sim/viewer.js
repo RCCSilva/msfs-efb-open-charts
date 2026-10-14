@@ -31,7 +31,10 @@
     en: {
       search: 'Paste a route: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       noPins: 'No charts pinned to this group.',
-      routePoints: 'Route points', routeProblems: 'to check', routeWorking: 'Reading the route...', routeFailed: 'Could not read the route',
+      routePaste: 'Paste a route', routeTitle: 'Route', routePlaces: 'places', routeProblems: 'to check',
+      routeWorking: 'Reading the route...', routeResolve: 'Resolve', routeFailed: 'Could not read the route',
+      routeClear: 'Clear', routeCancel: 'Close', routeDirect: 'Direct to', routeRemove: 'Remove', routeMenu: 'Options',
+      routeBoxTitle: 'Paste the route: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       pin: 'Pin', pinned: 'Pinned',
       modeOverlay: 'On map', modeChart: 'Chart only',
       group: 'Group', newGroup: 'New group',
@@ -58,7 +61,10 @@
     pt: {
       search: 'Cole a rota: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       noPins: 'Nenhuma carta fixada neste grupo.',
-      routePoints: 'Pontos da rota', routeProblems: 'a conferir', routeWorking: 'Lendo a rota...', routeFailed: 'Não foi possível ler a rota',
+      routePaste: 'Colar a rota', routeTitle: 'Rota', routePlaces: 'pontos', routeProblems: 'a conferir',
+      routeWorking: 'Lendo a rota...', routeResolve: 'Resolver', routeFailed: 'Não foi possível ler a rota',
+      routeClear: 'Limpar', routeCancel: 'Fechar', routeDirect: 'Direto para', routeRemove: 'Remover', routeMenu: 'Opções',
+      routeBoxTitle: 'Cole a rota: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       pin: 'Fixar', pinned: 'Fixada',
       modeOverlay: 'No mapa', modeChart: 'Só a carta',
       group: 'Grupo', newGroup: 'Novo grupo',
@@ -1286,12 +1292,25 @@
     openedFromStrip = false;
   }
 
-  // ---- the route: pasted the way pilots write it, resolved by the server, drawn on the map ----
-  var routeResult = null;   // what /api/route/resolve answered
+  // ---- the route: pasted the way pilots write it, resolved by the server, kept as a list the user can edit ----
+  var routePoints = [];     // the route as it is now: resolved, then edited by the user
+  var routeProblems = [];   // what the last reading could not place, or placed with a doubt
+  var routeText = '';       // what was pasted (or the places left after editing)
   var routeLayer = null;    // the drawn route
   var routeSeq = 0;
-  var routeShown = '';      // the text that was resolved last
   var routeFitUntil = 0;    // a chart opening right after the route was read must not take the view away
+  var routeOpen = true;     // the list of places is expanded
+  var routeMenuEl = null;
+
+  var routeModalEl = el('routemodal');
+  var routeSumEl = el('routesum');
+  var routeBoxBtn = el('btn-routebox');
+  var routeCardEl = el('routecard');
+  var routeHeadEl = el('routehead');
+  var routeChipsEl = el('routechips');
+  var routeProblemsEl = el('routeproblems');
+  var routeGoBtn = el('route-go');
+  var DOTS_SVG = '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.3"/><circle cx="12" cy="12" r="2.3"/><circle cx="12" cy="19" r="2.3"/></svg>';
 
   // Where a place of the route goes on the map in use: on the world map its own position; on a
   // chart picture, through the chart's georeference (and nowhere when the chart has none).
@@ -1310,11 +1329,11 @@
 
   function drawRoute(fit) {
     clearRoute();
-    if (!map || !routeResult || !routeResult.points || !routeResult.points.length) return;
+    if (!map || !routePoints.length) return;
     var group = L.layerGroup();
     var pts = [];
     var lastIdent = '';
-    routeResult.points.forEach(function (p) {
+    routePoints.forEach(function (p) {
       var ll = routeLatLng(p);
       if (!ll) return;
       pts.push(ll);
@@ -1342,60 +1361,173 @@
     }
   }
 
-  function renderRoutePanel() {
-    clear(resultsEl);
-    resultsEl.className = 'panel';
-    var r = routeResult;
-    if (!r) return;
-    var head = document.createElement('div');
-    head.className = 'item head';
-    head.textContent = t('routePoints') + ': ' + r.points.length +
-      (r.problems.length ? '  -  ' + r.problems.length + ' ' + t('routeProblems') : '');
-    resultsEl.appendChild(head);
-    r.problems.forEach(function (q) {
+  function saveRoute() {
+    store('routepts', JSON.stringify(routePoints));
+    store('routetext', routeText);
+    store('routeprob', JSON.stringify(routeProblems));
+  }
+
+  function loadRoute() {
+    try {
+      var pts = JSON.parse(store('routepts') || '[]');
+      if (pts && pts.length && pts[0].lat !== undefined) routePoints = pts;
+      routeText = store('routetext') || '';
+      routeProblems = JSON.parse(store('routeprob') || '[]') || [];
+    } catch (e) { routePoints = []; routeProblems = []; }
+  }
+
+  function hideRouteMenu() {
+    if (routeMenuEl && routeMenuEl.parentNode) routeMenuEl.parentNode.removeChild(routeMenuEl);
+    routeMenuEl = null;
+  }
+
+  // what the user did to the list: the map, the list and the saved copy follow
+  function afterRouteEdit() {
+    hideRouteMenu();
+    routeProblems = [];
+    routeText = routePoints.map(function (p) { return p.ident; }).join(' ');
+    saveRoute();
+    drawRoute(false);
+    renderRoute();
+  }
+
+  function showRouteMenu(i, anchor) {
+    hideRouteMenu();
+    var m = document.createElement('div');
+    m.className = 'rtmenu';
+    if (i > 0) {
+      m.appendChild(button('', t('routeDirect'), function () {
+        routePoints = routePoints.slice(i);   // everything before it goes: the route starts here
+        afterRouteEdit();
+      }));
+    }
+    m.appendChild(button('', t('routeRemove'), function () {
+      routePoints.splice(i, 1);
+      afterRouteEdit();
+    }));
+    document.body.appendChild(m);
+    var r = anchor.getBoundingClientRect();
+    var w = document.documentElement.clientWidth;
+    m.style.top = Math.round(r.bottom + 2) + 'px';
+    m.style.left = Math.max(4, Math.min(Math.round(r.left), w - 160)) + 'px';
+    routeMenuEl = m;
+  }
+
+  function renderRoute() {
+    var n = routePoints.length;
+    routeBoxBtn.className = 'routebox' + (n ? '' : ' empty');
+    if (!n) {
+      routeSumEl.textContent = t('routePaste');
+      routeCardEl.className = 'routecard hidden';
+      return;
+    }
+    var first = routePoints[0].ident;
+    var last = routePoints[n - 1].ident;
+    routeSumEl.textContent = first + (n > 1 ? ' > ' + last : '');
+    routeCardEl.className = 'routecard';
+    clear(routeHeadEl);
+    routeHeadEl.appendChild(document.createTextNode((routeOpen ? '- ' : '+ ') + t('routeTitle') + ': ' + first + (n > 1 ? ' > ' + last : '') + '  -  ' + n + ' ' + t('routePlaces')));
+    if (routeProblems.length) {
+      var w = document.createElement('span');
+      w.className = 'warn';
+      w.textContent = routeProblems.length + ' ' + t('routeProblems');
+      routeHeadEl.appendChild(w);
+    }
+    clear(routeChipsEl);
+    routeChipsEl.className = routeOpen ? 'routechips' : 'routechips hidden';
+    routePoints.forEach(function (p, i) {
+      var chip = document.createElement('div');
+      chip.className = 'rtchip' + (p.kind === 'airport' ? ' rtap' : '');
+      var name = document.createElement('span');
+      name.className = 'rtname';
+      name.textContent = p.ident;
+      name.addEventListener('click', function () {
+        var ll = routeLatLng(p);
+        if (ll && map) { setFollow(false); map.setView(ll, Math.max(map.getZoom(), mode === 'chart' ? map.getZoom() : 10), { animate: false }); }
+      });
+      chip.appendChild(name);
+      if (p.via) {
+        var via = document.createElement('span');
+        via.className = 'rtvia';
+        via.textContent = p.via;
+        chip.appendChild(via);
+      }
+      var more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'rtmore';
+      more.setAttribute('aria-label', t('routeMenu'));
+      more.innerHTML = DOTS_SVG;
+      more.addEventListener('click', function (ev) {
+        if (ev.stopPropagation) ev.stopPropagation();
+        showRouteMenu(i, more);
+      });
+      chip.appendChild(more);
+      routeChipsEl.appendChild(chip);
+    });
+  }
+
+  function renderRouteProblems() {
+    clear(routeProblemsEl);
+    routeProblems.forEach(function (q) {
       var row = document.createElement('div');
-      row.className = 'item routeproblem';
+      row.className = 'rp';
       var text = q.token + ': ' + q.message;
       if (q.candidates && q.candidates.length) {
         text += '  (' + q.candidates.map(function (c) { return c.ident + '/' + c.region; }).join(', ') + ')';
       }
       row.textContent = text;
-      resultsEl.appendChild(row);
+      routeProblemsEl.appendChild(row);
     });
-    var chain = [];
-    r.points.forEach(function (p) { if (!chain.length || chain[chain.length - 1] !== p.ident) chain.push(p.ident); });
-    var line = document.createElement('div');
-    line.className = 'empty';
-    line.textContent = chain.join(' > ');
-    resultsEl.appendChild(line);
+  }
+
+  function openRouteBox() {
+    hideRouteMenu();
+    qEl.value = routeText;
+    renderRouteProblems();
+    routeModalEl.className = 'routemodal';
+  }
+
+  function closeRouteBox() {
+    qEl.blur();
+    routeModalEl.className = 'routemodal hidden';
+  }
+
+  function clearWholeRoute() {
+    routeSeq += 1;
+    routePoints = [];
+    routeProblems = [];
+    routeText = '';
+    qEl.value = '';
+    clearRoute();
+    saveRoute();
+    renderRoute();
+    renderRouteProblems();
   }
 
   function resolveRoute() {
     var text = qEl.value.replace(/^\s+|\s+$/g, '');
-    if (!text) {
-      routeSeq += 1;
-      routeResult = null;
-      routeShown = '';
-      clearRoute();
-      hidePanels();
-      store('route', '');
-      return;
-    }
-    if (text === routeShown && routeResult) { drawRoute(true); renderRoutePanel(); return; }
+    if (!text) { clearWholeRoute(); closeRouteBox(); return; }
     var seq = ++routeSeq;
-    setStatus(t('routeWorking'), 'warn');
+    routeGoBtn.textContent = t('routeWorking');
     request('POST', '/api/route/resolve', { route: text }, function (res) {
       if (seq !== routeSeq) return;
-      if (!res || !res.points) { setStatus(t('routeFailed'), 'bad'); return; }
-      routeResult = res;
-      routeShown = text;
-      store('route', text);
+      routeGoBtn.textContent = t('routeResolve');
+      if (!res || !res.points) {
+        routeProblems = [{ token: '', message: t('routeFailed') }];
+        renderRouteProblems();
+        return;
+      }
+      routePoints = res.points;
+      routeProblems = res.problems || [];
+      routeText = text;
+      routeOpen = true;
+      saveRoute();
       groupsEl.className = 'panel hidden';
       drawRoute(true);
       routeFitUntil = new Date().getTime() + 10000;
-      renderRoutePanel();
-      setStatus(t('routePoints') + ': ' + res.points.length + (res.problems.length ? '  -  ' + res.problems.length + ' ' + t('routeProblems') : ''),
-        res.problems.length ? 'warn' : 'ok');
+      renderRoute();
+      renderRouteProblems();
+      if (!routeProblems.length) closeRouteBox();   // with something to look at, the box stays open
     }, 90000);
   }
 
@@ -1478,7 +1610,7 @@
     last.className = 'krow';
     last.appendChild(button('k-wide', '____', function () { type(' '); }));
     last.appendChild(button('', '<', function () { qEl.value = qEl.value.slice(0, -1); }));
-    last.appendChild(button('', 'C', function () { qEl.value = ''; resolveRoute(); }));
+    last.appendChild(button('', 'C', function () { qEl.value = ''; }));
     last.appendChild(button('k-wide', 'OK', function () { resolveRoute(); }));
     kbdEl.appendChild(last);
   }
@@ -1501,7 +1633,6 @@
     }
   }
 
-  qEl.placeholder = t('search');
   viewOverlayBtn.setAttribute('aria-label', t('viewWithMap'));
   viewChartBtn.setAttribute('aria-label', t('viewChartOnly'));
   closeBtn.setAttribute('aria-label', t('closeChart'));
@@ -1526,8 +1657,35 @@
   // a route is not searched while it is typed: it is resolved when it is pasted, on Enter, on the
   // button, or when the field is left
   qEl.addEventListener('paste', function () { window.setTimeout(resolveRoute, 0); });
-  qEl.addEventListener('keydown', function (ev) { if (ev.keyCode === 13) { ev.preventDefault(); qEl.blur(); resolveRoute(); } });
-  el('btn-route').addEventListener('click', resolveRoute);
+  qEl.addEventListener('keydown', function (ev) { if (ev.keyCode === 13 && !ev.shiftKey) { ev.preventDefault(); resolveRoute(); } });
+  el('btn-route').addEventListener('click', openRouteBox);
+  routeBoxBtn.addEventListener('click', openRouteBox);
+  routeGoBtn.addEventListener('click', resolveRoute);
+  el('route-cancel').addEventListener('click', closeRouteBox);
+  el('route-clear').addEventListener('click', clearWholeRoute);
+  routeHeadEl.addEventListener('click', function () {
+    if (routeProblems.length && routeOpen) { openRouteBox(); return; }
+    routeOpen = !routeOpen;
+    renderRoute();
+  });
+  function applyRouteStrings() {
+    routeGoBtn.textContent = t('routeResolve');
+    el('route-clear').textContent = t('routeClear');
+    el('route-cancel').textContent = t('routeCancel');
+    el('routetitle').textContent = t('routeBoxTitle');
+    qEl.placeholder = t('routePaste');
+    renderRoute();
+  }
+  applyRouteStrings();
+  // a tap outside the option menu closes it
+  function closeMenuFromOutside(ev) {
+    if (!routeMenuEl) return;
+    var n = ev.target;
+    while (n) { if (n === routeMenuEl) return; n = n.parentNode; }
+    hideRouteMenu();
+  }
+  document.addEventListener('mousedown', closeMenuFromOutside, true);
+  document.addEventListener('touchstart', closeMenuFromOutside, true);
   // A tap anywhere outside the bar (the map, the side buttons) closes the result and group lists, and
   // so does the viewer losing the focus (a click on the simulator's own interface): a list left open
   // after the search was abandoned only gets in the way. The on-screen keyboard is inside the bar.
@@ -1556,9 +1714,9 @@
     var d = ev && ev.data;
     if (!d || ev.source !== window.parent) return;
     if (d.oc === 'text-value' && typeof d.text === 'string') { qEl.value = d.text.slice(0, 4000); }
-    if (d.oc === 'text-blur') { qEl.blur(); resolveRoute(); }
+    if (d.oc === 'text-blur') { qEl.blur(); if (routeModalEl.className.indexOf('hidden') < 0) resolveRoute(); }
   });
-  qEl.addEventListener('keyup', function (ev) { if (ev.keyCode === 27) { qEl.value = ''; resolveRoute(); } });
+  qEl.addEventListener('keyup', function (ev) { if (ev.keyCode === 27) closeRouteBox(); });
   el('btn-kbd').addEventListener('click', function () {
     var hidden = kbdEl.className.indexOf('hidden') >= 0;
     kbdEl.className = hidden ? 'kbd' : 'kbd hidden';
@@ -1736,7 +1894,7 @@
     if (/^#[0-9a-fA-F]{6}$/.test(saved.aircraftHex || '')) aircraftHex = saved.aircraftHex;
     if (!params.lang && (saved.lang === 'pt' || saved.lang === 'en')) {
       lang = saved.lang;
-      qEl.placeholder = t('search');
+      applyRouteStrings();
       simNoteEl.textContent = t('simNote');
     }
     buildKeyboard();
@@ -1746,8 +1904,15 @@
     poll();
     if (PERF_ON) watchDom();
     loadGroups(function () {
-      var lastRoute = params.q || store('route');
-      if (lastRoute) { qEl.value = lastRoute; resolveRoute(); }
+      loadRoute();
+      renderRoute();
+      if (routePoints.length) {
+        drawRoute(true);
+        routeFitUntil = new Date().getTime() + 10000;
+      } else if (params.q) {
+        qEl.value = params.q;
+        resolveRoute();
+      }
       var want = params.chart || saved.chart || store('chart');
       var closedByUser = !params.chart && saved.chart === '' && !!saved.mode;
       if (want) {
