@@ -18,17 +18,18 @@ type NavFetcher func(icao string) (*navdata.Airport, error)
 type FixFetcher func(refs []navdata.FixRef) ([]navdata.Fix, error)
 
 type navState struct {
-	mu    sync.Mutex // one fetch at a time: the simulator answers one conversation, and a repeat is wasted work
-	db    *navdb.DB
-	fetch NavFetcher
-	fixes FixFetcher
+	mu     sync.Mutex // one fetch at a time: the simulator answers one conversation, and a repeat is wasted work
+	db     *navdb.DB
+	fetch  NavFetcher
+	fixes  FixFetcher
+	lookup IdentFetcher
 }
 
 // SetNav gives the server the navigation database and, when the simulator link exists, the way
 // to fill it. Either may be nil.
-func (s *Server) SetNav(db *navdb.DB, fetch NavFetcher, fixes FixFetcher) {
+func (s *Server) SetNav(db *navdb.DB, fetch NavFetcher, fixes FixFetcher, lookup IdentFetcher) {
 	s.nav.mu.Lock()
-	s.nav.db, s.nav.fetch, s.nav.fixes = db, fetch, fixes
+	s.nav.db, s.nav.fetch, s.nav.fixes, s.nav.lookup = db, fetch, fixes, lookup
 	s.nav.mu.Unlock()
 }
 
@@ -36,24 +37,43 @@ func (s *Server) SetNav(db *navdb.DB, fetch NavFetcher, fixes FixFetcher) {
 // does not know yet, stores them, and returns the airport again with every leg placed. Without a
 // link to the simulator (or when it does not know a fix) the legs simply stay without a position.
 func (s *Server) resolveFixes(a *navdata.Airport) *navdata.Airport {
-	if s.nav.fixes == nil {
+	idents, err := s.nav.db.UncheckedIdents(a.ICAO)
+	if err != nil || len(idents) == 0 {
 		return a
 	}
-	missing, err := s.nav.db.MissingFixes(a.ICAO)
-	if err != nil || len(missing) == 0 {
+	if err := s.loadIdents(idents); err != nil {
 		return a
 	}
-	found, err := s.nav.fixes(missing)
-	if len(found) > 0 {
-		if serr := s.nav.db.SaveFixes(found); serr != nil {
-			return a
-		}
-	}
-	_ = err // a partial answer is kept: what was found is saved, the rest stays missing
 	if again, err := s.nav.db.Airport(a.ICAO); err == nil {
 		return again
 	}
 	return a
+}
+
+// loadIdents asks the simulator for identifiers as a whole (every place of that name, any region
+// and kind), stores what it knows and marks them checked. This is the only way fixes enter the
+// database, so that "is in the database" always means "all of them are".
+func (s *Server) loadIdents(idents []string) error {
+	if s.nav.lookup == nil || len(idents) == 0 {
+		return nil
+	}
+	found, err := s.nav.lookup(idents)
+	if err != nil {
+		return err // not asked: nothing is marked, the next time asks again
+	}
+	if err := s.nav.db.SaveFixes(found); err != nil {
+		return err
+	}
+	count := map[string]int{}
+	for _, f := range found {
+		count[strings.ToUpper(f.Ident)]++
+	}
+	for _, id := range idents {
+		if err := s.nav.db.MarkIdentChecked(id, count[strings.ToUpper(id)]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 var icaoRe = regexp.MustCompile(`^[A-Z0-9]{2,8}$`)

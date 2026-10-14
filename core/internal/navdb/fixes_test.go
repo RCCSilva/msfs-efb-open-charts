@@ -17,7 +17,7 @@ func TestFixesPlaceLegs(t *testing.T) {
 	if err := d.SaveAirport(sample()); err != nil {
 		t.Fatal(err)
 	}
-	missing, err := d.MissingFixes("SBSJ")
+	missing, err := d.UncheckedIdents("SBSJ")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,8 +33,20 @@ func TestFixesPlaceLegs(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if missing, _ = d.MissingFixes("SBSJ"); len(missing) != 0 {
-		t.Fatalf("still missing: %+v", missing)
+	// the simulator was asked for the names as a whole: they are marked, and no longer pending
+	for _, id := range []string{"BOBIC", "VUPSA"} {
+		if err := d.MarkIdentChecked(id, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if missing, _ = d.UncheckedIdents("SBSJ"); len(missing) != 0 {
+		t.Fatalf("still pending: %+v", missing)
+	}
+	if ok, _ := d.IdentChecked("bobic"); !ok {
+		t.Fatal("a checked identifier must be remembered, in any case")
+	}
+	if got, _ := d.FixesByIdent("BOBIC"); len(got) != 1 || got[0].Region != "SB" {
+		t.Fatalf("FixesByIdent: %+v", got)
 	}
 	a, err := d.Airport("SBSJ")
 	if err != nil {

@@ -211,6 +211,7 @@ func main() {
 		defer nav.Close()
 		var fetch server.NavFetcher
 		var fixes server.FixFetcher
+		var lookup server.IdentFetcher
 		if simDLL != "" {
 			fetch = func(icao string) (*navdata.Airport, error) {
 				return simconnect.FetchAirport(simDLL, icao, 30*time.Second)
@@ -218,8 +219,11 @@ func main() {
 			fixes = func(refs []navdata.FixRef) ([]navdata.Fix, error) {
 				return simconnect.FetchFixes(simDLL, refs, 60*time.Second)
 			}
+			lookup = func(idents []string) ([]navdata.Fix, error) {
+				return simconnect.LookupFixes(simDLL, idents, 30*time.Second)
+			}
 		}
-		srv.SetNav(nav, fetch, fixes)
+		srv.SetNav(nav, fetch, fixes, lookup)
 	}
 	defer srv.Close()
 	srv.Serve(ln)

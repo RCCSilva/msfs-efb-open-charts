@@ -356,7 +356,7 @@ func FetchAirport(dllPath, icao string, wait time.Duration) (*navdata.Airport, e
 		if failure != "" {
 			return nil, fmt.Errorf("airport %s: %s", icao, failure)
 		}
-		return nil, fmt.Errorf("airport %s: the simulator has no such airport", strings.ToUpper(icao))
+		return nil, fmt.Errorf("airport %s: %w", strings.ToUpper(icao), navdata.ErrUnknown)
 	}
 	for _, pb := range procs {
 		for _, t := range pb.trans {

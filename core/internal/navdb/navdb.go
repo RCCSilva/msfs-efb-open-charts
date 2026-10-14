@@ -19,7 +19,7 @@ import (
 )
 
 // schemaVersion changes whenever the tables below do.
-const schemaVersion = 2
+const schemaVersion = 3
 
 const schema = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS route (
 );
 CREATE INDEX IF NOT EXISTS route_fix ON route (ident, region);
 CREATE INDEX IF NOT EXISTS route_airway ON route (airway);
+CREATE TABLE IF NOT EXISTS ident_check (ident TEXT PRIMARY KEY, found INTEGER NOT NULL, checked_at TEXT);
 `
 
 // DB is the navigation database.
@@ -104,7 +105,7 @@ func (d *DB) init() error {
 	case err == nil && v == fmt.Sprint(schemaVersion):
 	case err == nil || errors.Is(err, sql.ErrNoRows):
 		if err == nil { // another version: start over
-			for _, t := range []string{"route", "fix", "leg", "transition", "procedure", "frequency", "runway", "airport"} {
+			for _, t := range []string{"ident_check", "route", "fix", "leg", "transition", "procedure", "frequency", "runway", "airport"} {
 				if _, e := d.db.Exec("DROP TABLE IF EXISTS " + t); e != nil {
 					return e
 				}

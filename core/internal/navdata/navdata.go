@@ -5,7 +5,13 @@
 // Units follow the simulator: metres for altitudes and lengths, degrees, hertz.
 package navdata
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+// ErrUnknown says the simulator was asked and does not know the thing.
+var ErrUnknown = errors.New("unknown to the simulator")
 
 // Airport is one airport as the simulator describes it.
 type Airport struct {
@@ -123,6 +129,13 @@ type FixRef struct {
 	Ident  string `json:"ident"`
 	Region string `json:"region"`
 	Kind   byte   `json:"kind"`
+}
+
+// FixCandidate is one of the fixes an identifier may mean when it exists more than once.
+type FixCandidate struct {
+	FixRef
+	Lat float64 `json:"lat"`
+	Lon float64 `json:"lon"`
 }
 
 // Fix is a waypoint, VOR or NDB with its position and, for a waypoint, the airways through it.

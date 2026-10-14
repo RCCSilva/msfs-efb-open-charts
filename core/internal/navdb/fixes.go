@@ -49,39 +49,46 @@ func kindString(k byte) string {
 	return string(rune(k))
 }
 
-// MissingFixes lists the waypoints, VORs and NDBs the procedures of an airport cite and the
-// database does not have yet.
-func (d *DB) MissingFixes(icao string) ([]navdata.FixRef, error) {
-	rows, err := d.db.Query(`SELECT DISTINCT l.fix, l.fix_region, l.fix_type FROM leg l
+// UncheckedIdents lists the identifiers of the waypoints, VORs and NDBs the procedures of an
+// airport cite that were never asked for as a whole (see IdentChecked).
+func (d *DB) UncheckedIdents(icao string) ([]string, error) {
+	rows, err := d.db.Query(`SELECT DISTINCT l.fix FROM leg l
 		JOIN transition t ON t.id = l.transition_id JOIN procedure p ON p.id = t.procedure_id
 		WHERE p.airport = ? AND l.fix <> '' AND l.fix_type IN ('W','V','N')
-		AND NOT EXISTS (SELECT 1 FROM fix f WHERE f.ident = l.fix AND f.region = l.fix_region AND f.kind = l.fix_type)`,
+		AND NOT EXISTS (SELECT 1 FROM ident_check c WHERE c.ident = l.fix)`,
 		strings.ToUpper(icao))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []navdata.FixRef
+	var out []string
 	for rows.Next() {
-		var r navdata.FixRef
-		var k string
-		if err := rows.Scan(&r.Ident, &r.Region, &k); err != nil {
+		var s string
+		if err := rows.Scan(&s); err != nil {
 			return nil, err
 		}
-		if len(k) == 1 {
-			r.Kind = k[0]
-		}
-		out = append(out, r)
+		out = append(out, s)
 	}
 	return out, rows.Err()
 }
 
-// Fix returns a stored fix with its airways.
+// Fix returns a stored fix with its airways (the first kind found when an identifier is both a
+// waypoint and a navaid in that region).
 func (d *DB) Fix(ident, region string) (*navdata.Fix, error) {
+	return d.fixOf(strings.ToUpper(ident), strings.ToUpper(region), "")
+}
+
+// fixOf loads one fix; an empty kind means any.
+func (d *DB) fixOf(ident, region, kind string) (*navdata.Fix, error) {
 	f := &navdata.Fix{}
-	var kind string
-	err := d.db.QueryRow(`SELECT ident, region, kind, lat, lon, alt_m, freq_hz, name FROM fix WHERE ident = ? AND region = ? ORDER BY kind LIMIT 1`,
-		strings.ToUpper(ident), strings.ToUpper(region)).Scan(&f.Ident, &f.Region, &kind, &f.Lat, &f.Lon, &f.AltM, &f.FreqHz, &f.Name)
+	query := `SELECT ident, region, kind, lat, lon, alt_m, freq_hz, name FROM fix WHERE ident = ? AND region = ?`
+	args := []any{ident, region}
+	if kind != "" {
+		query += ` AND kind = ?`
+		args = append(args, kind)
+	}
+	query += ` ORDER BY kind LIMIT 1`
+	err := d.db.QueryRow(query, args...).Scan(&f.Ident, &f.Region, &kind, &f.Lat, &f.Lon, &f.AltM, &f.FreqHz, &f.Name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -120,12 +127,13 @@ func (d *DB) Fix(ident, region string) (*navdata.Fix, error) {
 func (d *DB) placeLegs(a *navdata.Airport) error {
 	rows, err := d.db.Query(`SELECT f.ident, f.region, f.kind, f.lat, f.lon FROM fix f WHERE EXISTS (
 		SELECT 1 FROM leg l JOIN transition t ON t.id = l.transition_id JOIN procedure p ON p.id = t.procedure_id
-		WHERE p.airport = ? AND l.fix = f.ident AND l.fix_region = f.region)`, a.ICAO)
+		WHERE p.airport = ? AND l.fix = f.ident)`, a.ICAO)
 	if err != nil {
 		return err
 	}
 	type key struct{ ident, region, kind string }
 	pos := map[key][2]float64{}
+	only := map[[2]string][][2]float64{} // by identifier and kind, whatever the region
 	for rows.Next() {
 		var k key
 		var lat, lon float64
@@ -134,6 +142,7 @@ func (d *DB) placeLegs(a *navdata.Airport) error {
 			return err
 		}
 		pos[k] = [2]float64{lat, lon}
+		only[[2]string{k.ident, k.kind}] = append(only[[2]string{k.ident, k.kind}], [2]float64{lat, lon})
 	}
 	rows.Close()
 
@@ -153,6 +162,12 @@ func (d *DB) placeLegs(a *navdata.Airport) error {
 					}
 				default:
 					p, ok = pos[key{l.FixICAO, l.FixRegion, l.FixType}]
+					if !ok {
+						// stored without a region: it is this fix when the name is unique
+						if c := only[[2]string{l.FixICAO, l.FixType}]; len(c) == 1 {
+							p, ok = c[0], true
+						}
+					}
 				}
 				if ok {
 					lat, lon := p[0], p[1]

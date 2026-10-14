@@ -146,6 +146,20 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   no projection. The viewer forces chart-only mode for it and never shows an aircraft; the manager marks it
   "View only" and offers no "On map". Charts keep `source.pdf`, which the chart page shows beside the
   edit form (`#chart/<id>`; manager pages are real `<a>` links so they open in new tabs).
+- **Navigation data (what the simulator knows):** airports, procedures and fixes are asked from the running
+  simulator through SimConnect's facility API (`internal/simconnect`, `FetchAirport`, `LookupFixes`) and kept in
+  SQLite (`internal/navdb`, `navdata.db`, pure Go driver). Rule: a fix enters the database only by its identifier
+  *as a whole* (no region: the simulator then answers with every place of that name) and the identifier is
+  marked in `ident_check`. So "is in the database" means "all of them are"; an unchecked name is asked from the
+  simulator once, and an empty answer from it is a real "not found". A fix that exists once is stored without a
+  region (the simulator does not say it); it is given one the first time something cites it with a region.
+- **Route paste:** `internal/route` reads a route as pilots write it (airport, SID, fixes, airways, STAR, airport,
+  coordinates; `DCT` and level groups ignored) and resolves each name through a `Provider` (the server's one reads
+  the database, then the simulator). It plans nothing: homonyms are reported with the closest one chosen, a name
+  nobody knows is a problem. `POST /api/route/resolve`. The simulator's package file
+  (`...\StreamedPackages\fs24-fs-base-nav\content\minimal.fsarchive`, plain, BGL inside) was studied
+  (`internal/fsarchive`, `internal/bgl`, `cmd/fsainspect`): identifiers there are base-38 numbers, it holds
+  about a third of the fixes only; it is not used yet.
 - **AIRAC cycle:** one international calendar (`naming/airac.go`); a chart's cycle is derived from its date.
 - **Name patterns (My PDFs):** the user may write file-name templates (`{icao}_{type}_{title}_{date:YYYYMMDD}`,
   package `naming`, `pattern.go`), kept in `settings.json` and tried first for the `manual` source (`Server.identify`).

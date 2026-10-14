@@ -5,6 +5,7 @@ package simconnect
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
@@ -63,49 +64,7 @@ func FetchFixes(dllPath string, refs []navdata.FixRef, wait time.Duration) ([]na
 	}
 	defer f.close.Call(h)
 
-	// one definition per kind
-	add := func(def uintptr, names ...string) error {
-		for _, n := range names {
-			r, _, _ := f.addFac.Call(h, def, cstr(n))
-			if e := hr(r); e != nil {
-				return fmt.Errorf("define %q: %w", n, e)
-			}
-		}
-		return nil
-	}
-	fields := func(def uintptr, open string, fl []facField) error {
-		if err := add(def, "OPEN "+open); err != nil {
-			return err
-		}
-		for _, x := range fl {
-			if err := add(def, x.name); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	w := fixDefIDs[navdata.FixWaypoint]
-	if err := fields(w, "WAYPOINT", waypointFields); err != nil {
-		return nil, err
-	}
-	if err := fields(w, "ROUTE", routeFields); err != nil {
-		return nil, err
-	}
-	if err := add(w, "CLOSE ROUTE", "CLOSE WAYPOINT"); err != nil {
-		return nil, err
-	}
-	v := fixDefIDs[navdata.FixVOR]
-	if err := fields(v, "VOR", vorFields); err != nil {
-		return nil, err
-	}
-	if err := add(v, "CLOSE VOR"); err != nil {
-		return nil, err
-	}
-	n := fixDefIDs[navdata.FixNDB]
-	if err := fields(n, "NDB", ndbFields); err != nil {
-		return nil, err
-	}
-	if err := add(n, "CLOSE NDB"); err != nil {
+	if err := defineFixes(f, h); err != nil {
 		return nil, err
 	}
 
@@ -114,7 +73,7 @@ func FetchFixes(dllPath string, refs []navdata.FixRef, wait time.Duration) ([]na
 	deadline := time.Now().Add(wait)
 	for start := 0; start < len(refs); start += batch {
 		end := min(len(refs), start+batch)
-		chunk, err := fetchFixBatch(f, h, refs[start:end], start, deadline)
+		chunk, _, err := fetchFixBatch(f, h, refs[start:end], start, deadline)
 		out = append(out, chunk...)
 		if err != nil {
 			return out, err
@@ -123,7 +82,29 @@ func FetchFixes(dllPath string, refs []navdata.FixRef, wait time.Duration) ([]na
 	return out, nil
 }
 
-func fetchFixBatch(f *facAPI, h uintptr, refs []navdata.FixRef, base int, deadline time.Time) ([]navdata.Fix, error) {
+func cString(b []byte) string {
+	for i, c := range b {
+		if c == 0 {
+			b = b[:i]
+			break
+		}
+	}
+	return string(b)
+}
+
+// minimalEntry is the size of one entry of a minimal list, as the simulator sends it (packed): a
+// 19-byte identifier block (type at 0, identifier at 1..9, region at 10..12) followed by the
+// position as three doubles (latitude, longitude, altitude).
+const (
+	minimalEntry  = 42
+	minimalIdent  = 1
+	minimalRegion = 10
+	minimalLat    = 18
+	minimalLon    = 26
+)
+
+func fetchFixBatch(f *facAPI, h uintptr, refs []navdata.FixRef, base int, deadline time.Time) ([]navdata.Fix, map[int][]navdata.FixCandidate, error) {
+	ambiguous := map[int][]navdata.FixCandidate{}
 	reqOf := map[uint32]int{} // request id -> index in refs
 	pending := 0
 	for i, ref := range refs {
@@ -161,6 +142,32 @@ func fetchFixBatch(f *facAPI, h uintptr, refs []navdata.FixRef, base int, deadli
 			}
 		case recvException:
 			exceptions++
+		case recvFacilityMinimal:
+			// the identifier exists more than once: the simulator lists the candidates and sends no end
+			if len(msg) < listEntryOffset+4 {
+				continue
+			}
+			rid := binary.LittleEndian.Uint32(msg[12:16])
+			i, ok := reqOf[rid]
+			if !ok {
+				continue
+			}
+			count := int(binary.LittleEndian.Uint32(msg[16:20]))
+			for k := 0; k < count; k++ {
+				o := listEntryOffset + k*minimalEntry
+				if o+minimalEntry > len(msg) {
+					break
+				}
+				e := msg[o : o+minimalEntry]
+				c := navdata.FixCandidate{}
+				c.Kind = e[0]
+				c.Ident = cString(e[minimalIdent:minimalRegion])
+				c.Region = cString(e[minimalRegion : minimalRegion+3])
+				c.Lat = math.Float64frombits(binary.LittleEndian.Uint64(e[minimalLat:]))
+				c.Lon = math.Float64frombits(binary.LittleEndian.Uint64(e[minimalLon:]))
+				ambiguous[i] = append(ambiguous[i], c)
+			}
+			ended[rid] = true
 		case recvFacilityData:
 			if len(msg) < facilityDataOffset {
 				continue
@@ -213,5 +220,55 @@ func fetchFixBatch(f *facAPI, h uintptr, refs []navdata.FixRef, base int, deadli
 			out = append(out, *fx)
 		}
 	}
-	return out, nil
+	return out, ambiguous, nil
+}
+
+// defineFixes declares what is asked for waypoints (with their airways), VORs and NDBs.
+func defineFixes(f *facAPI, h uintptr) error {
+	// one definition per kind
+	add := func(def uintptr, names ...string) error {
+		for _, n := range names {
+			r, _, _ := f.addFac.Call(h, def, cstr(n))
+			if e := hr(r); e != nil {
+				return fmt.Errorf("define %q: %w", n, e)
+			}
+		}
+		return nil
+	}
+	fields := func(def uintptr, open string, fl []facField) error {
+		if err := add(def, "OPEN "+open); err != nil {
+			return err
+		}
+		for _, x := range fl {
+			if err := add(def, x.name); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	w := fixDefIDs[navdata.FixWaypoint]
+	if err := fields(w, "WAYPOINT", waypointFields); err != nil {
+		return err
+	}
+	if err := fields(w, "ROUTE", routeFields); err != nil {
+		return err
+	}
+	if err := add(w, "CLOSE ROUTE", "CLOSE WAYPOINT"); err != nil {
+		return err
+	}
+	v := fixDefIDs[navdata.FixVOR]
+	if err := fields(v, "VOR", vorFields); err != nil {
+		return err
+	}
+	if err := add(v, "CLOSE VOR"); err != nil {
+		return err
+	}
+	n := fixDefIDs[navdata.FixNDB]
+	if err := fields(n, "NDB", ndbFields); err != nil {
+		return err
+	}
+	if err := add(n, "CLOSE NDB"); err != nil {
+		return err
+	}
+	return nil
 }

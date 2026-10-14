@@ -88,6 +88,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/nav/airport/{icao}", s.handleNavAirport)
 	mux.HandleFunc("GET /api/nav/airports", s.handleNavAirports)
 	mux.HandleFunc("GET /api/nav/fix/{region}/{ident}", s.handleNavFix)
+	mux.HandleFunc("POST /api/route/resolve", s.handleRouteResolve)
+	mux.HandleFunc("GET /api/route/resolve", s.handleRouteResolve)
 	mux.HandleFunc("GET /api/viewer-state", s.handleViewerState)
 	mux.HandleFunc("POST /api/client-info", s.handlePostClientInfo)
 	mux.HandleFunc("GET /api/client-info", s.handleGetClientInfo)
