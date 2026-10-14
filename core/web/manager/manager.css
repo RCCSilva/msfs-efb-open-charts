@@ -124,3 +124,27 @@ nav .navlink:hover { background: var(--bg); text-decoration: none; }
 
 /* a package import is running: its buttons wait for it */
 .card.busy button { pointer-events: none; opacity: 0.55; }
+
+/* ---- Guide: a drawing of the simulator screen with numbers, and the legend ---- */
+.guidepage { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 800px) { .guidepage { grid-template-columns: 1fr; } }
+.mockwrap { position: sticky; top: 70px; }
+.mock { position: relative; width: 320px; max-width: 100%; aspect-ratio: 468 / 696; background: linear-gradient(135deg, #cfe3d4, #dfe6ea 55%, #b9d7ea);
+  border: 6px solid #1b2733; border-radius: 14px; overflow: hidden; }
+.mockband { position: absolute; left: 0; right: 0; top: 0; height: 5.5%; background: #000; }
+.mocknote { position: absolute; left: 50%; bottom: 3%; transform: translateX(-50%); font-size: 11px; color: #4a5866; }
+.mockbtn { position: absolute; background: rgba(20, 30, 40, 0.88); color: #fff; border-radius: 5px; display: flex; align-items: center; justify-content: center; }
+.mockbtn.mockbox { background: #fff; color: #111; }
+.mockbtn.mockside { background: #fff; color: #123; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
+.mockicon { width: 60%; height: 60%; display: inline-block; }
+.mockbox .mockicon { width: auto; height: auto; font-size: 9px; white-space: nowrap; }
+.mockicon svg, .gchip svg { width: 100%; height: 100%; display: block; }
+.mocknum { position: absolute; left: -5px; top: -7px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; background: #c2185b; color: #fff;
+  font-size: 10px; font-weight: 700; line-height: 15px; text-align: center; }
+.gitem { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--line); }
+.gitem:first-of-type { border-top: 0; }
+.gnum { flex: 0 0 22px; height: 22px; border-radius: 11px; background: #c2185b; color: #fff; font-size: 12px; font-weight: 700; line-height: 22px; text-align: center; }
+.gnum.none { background: none; }
+.gchip { flex: 0 0 44px; width: 44px; height: 44px; padding: 9px; border-radius: 8px; background: #1b2733; color: #fff; display: flex; align-items: center; justify-content: center; }
+.gchip.gbox { background: #fff; color: #111; border: 1px solid var(--line); font-size: 9px; padding: 2px; text-align: center; line-height: 11px; }
+.gtext { min-width: 0; }

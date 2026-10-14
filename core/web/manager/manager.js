@@ -45,7 +45,9 @@
       openOfficial: '1. Open official page', addFile: '2. Add file', installed: 'Installed', snapshot: 'Snapshot of',
       tabCatalog: 'Visual charts (catalog)', tabPackage: 'Aerodromes (package)', tabFiles: 'Add files',
       stepsFiles: 'Add what you downloaded', capCatalog: 'Catalog', capPackage: 'Package', capLocate: 'By date', capUpload: 'Upload',
-      about: 'About', setup: 'Setup', map: 'Map',
+      about: 'About', setup: 'Setup', map: 'Map', guide: 'Guide',
+      guideIntro: 'The simulator screen shows no hints when you hover a button, so here is what each one does. The numbers on the drawing match the list.',
+      guideTop: 'Top bar', guideLeft: 'Left column: moving the view', guideRight: 'Right column: how the chart is shown', guideLists: 'Inside the lists',
       diagTitle: 'Viewer browsers', diagNone: 'No viewer has reported yet. Open the viewer (in the simulator or in a browser) and come back.',
       diagSim: 'Simulator (EFB)', diagBrowser: 'Browser', diagYes: 'yes', diagNo: 'no', diagRatio: 'Pixel ratio',
       diagHelp: 'What each viewer reported about itself. WebGL decides whether a vector map (lighter and sharper) is possible inside the simulator.',
@@ -140,7 +142,9 @@
       openOfficial: '1. Abrir página oficial', addFile: '2. Adicionar arquivo', installed: 'Instalada', snapshot: 'Retrato de',
       tabCatalog: 'Cartas visuais (catálogo)', tabPackage: 'Aeródromos (pacote)', tabFiles: 'Adicionar arquivos',
       stepsFiles: 'Adicione o que você baixou', capCatalog: 'Catálogo', capPackage: 'Pacote', capLocate: 'Por data', capUpload: 'Envio',
-      about: 'Sobre', setup: 'Configuração', map: 'Mapa',
+      about: 'Sobre', setup: 'Configuração', map: 'Mapa', guide: 'Guia',
+      guideIntro: 'A tela do simulador não mostra dicas ao passar o mouse nos botões, então aqui está o que cada um faz. Os números do desenho batem com a lista.',
+      guideTop: 'Barra de cima', guideLeft: 'Coluna da esquerda: mexer na vista', guideRight: 'Coluna da direita: como a carta aparece', guideLists: 'Dentro das listas',
       diagTitle: 'Navegadores do visualizador', diagNone: 'Nenhum visualizador se apresentou ainda. Abra o visualizador (no simulador ou num navegador) e volte aqui.',
       diagSim: 'Simulador (EFB)', diagBrowser: 'Navegador', diagYes: 'sim', diagNo: 'não', diagRatio: 'Densidade de pixels',
       diagHelp: 'O que cada visualizador informou sobre si. O WebGL decide se um mapa vetorial (mais leve e mais nítido) é possível dentro do simulador.',
@@ -303,7 +307,7 @@
     if (state.local === undefined) {
       try { state.local = (await api('GET', '/api/health')).local !== false; } catch (e) { state.local = true; }
     }
-    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
+    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
       pageLink('#' + id, id === tab ? 'on' : '', t(id))).concat([
         // The map (same page the EFB shows) opens in its own tab, outside the simulator too.
         h('a', { class: 'navlink', href: '/viewer.html?lang=' + lang, target: '_blank', rel: 'noopener' }, t('map') + ' \u2197')]));
@@ -316,6 +320,7 @@
       else if (r.name === 'chart') await renderChart(r.arg);
       else if (r.name === 'groups') await renderGroups();
       else if (r.name === 'setup') await renderSetup();
+      else if (r.name === 'guide') renderGuide();
       else if (r.name === 'about') renderAbout();
       else await renderLibrary();
     } catch (e) {
@@ -1334,6 +1339,126 @@
   }
 
   // ---- About
+  // ---- Guide: what every button of the in-simulator screen does. The simulator's browser shows no
+  // tooltips, so this page is the legend: a drawing of the screen with numbers, and the list.
+  const G = (d) => '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+  const ICON = {
+    route: G('<path d="M5 25l8-12 6 7 8-12"/><circle cx="5" cy="25" r="2.2"/><circle cx="27" cy="8" r="2.2"/>'),
+    pin: G('<path d="M11 4h10l-1 9 4 5H8l4-5z"/><path d="M16 18v10"/>'),
+    search: G('<circle cx="14" cy="14" r="8"/><path d="M20 20l8 8"/>'),
+    strip: G('<path d="M5 9h13M5 16h13M5 23h13"/><path d="M23 7h6l-.7 6 2.7 3.4H20l2.7-3.4z"/><path d="M26 16.5V26"/>'),
+    eye: G('<path d="M3 16C6.5 10 11 7.5 16 7.5S25.5 10 29 16C25.5 22 21 24.5 16 24.5S6.5 22 3 16z"/><circle cx="16" cy="16" r="4"/>'),
+    zin: G('<path d="M16 7v18M7 16h18"/>'),
+    zout: G('<path d="M7 16h18"/>'),
+    follow: G('<circle cx="16" cy="16" r="7"/><path d="M16 3v6M16 23v6M3 16h6M23 16h6"/>'),
+    regional: G('<circle cx="16" cy="16" r="11"/><path d="M16 8.5l4 11-4-2.5-4 2.5z"/>'),
+    fit: G('<path d="M5 12V5h7M20 5h7v7M27 20v7h-7M12 27H5v-7"/>'),
+    reload: G('<path d="M26 16a10 10 0 1 1-3-7.1"/><path d="M24 4v6h-6"/>'),
+    close: G('<path d="M9 9l14 14M23 9L9 23"/>'),
+    overlay: G('<path d="M16 5l11 6-11 6-11-6z"/><path d="M5 17l11 6 11-6"/><path d="M5 22l11 6 11-6"/>'),
+    chart: G('<rect x="8" y="4" width="16" height="24" rx="1.5"/><path d="M11 10h10M11 15h10M11 20h6"/>'),
+    blend: G('<circle cx="16" cy="16" r="11"/><circle cx="16" cy="16" r="7.5" fill="currentColor" stroke="none" fill-opacity=".5"/>'),
+    multi: G('<rect x="4" y="9" width="17" height="17" rx="1.5"/><path d="M10 5h17.5v17.5"/><path d="M9 15h8M9 20h5"/>'),
+    updown: G('<path d="M6 12l10-8 10 8M6 20l10 8 10-8"/>'),
+    dots: G('<circle cx="16" cy="7" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/><circle cx="16" cy="25" r="2" fill="currentColor"/>')
+  };
+
+  // x, y, w, h: where the button is on the 468 x 696 screen of the simulator's tablet (lists: no position)
+  const GUIDE = [
+    { key: 'box', x: 10, y: 38, w: 109, h: 44, group: 'top',
+      en: ['Route box', 'Shows the route you pasted (origin > destination). Tap it to open the list of its places. With no route, it opens the box to paste one.'],
+      pt: ['Caixa da rota', 'Mostra a rota que você colou (origem > destino). Toque para abrir a lista dos pontos. Sem rota, abre a caixa para colar uma.'] },
+    { key: 'route', x: 125, y: 38, w: 44, h: 44, group: 'top',
+      en: ['Paste a route', 'Opens the box to paste a route the way pilots write it (SBSJ BOBI3A DAGUB UZ6 SBGR). The map draws it and the list shows each place.'],
+      pt: ['Colar uma rota', 'Abre a caixa para colar uma rota do jeito que o piloto escreve (SBSJ BOBI3A DAGUB UZ6 SBGR). O mapa desenha e a lista mostra cada ponto.'] },
+    { key: 'pin', x: 175, y: 38, w: 90, h: 44, group: 'top',
+      en: ['Pin / Pinned', 'Adds the chart on screen to your list of pinned charts (the button then reads "Pinned"). Tap again to unpin.'],
+      pt: ['Fixar / Fixada', 'Coloca a carta que está na tela na sua lista de cartas fixadas (o botão passa a dizer "Fixada"). Toque de novo para desafixar.'] },
+    { key: 'search', x: 314, y: 38, w: 44, h: 44, group: 'top',
+      en: ['Search charts', 'Opens the chart search. With a route and nothing typed, it already lists the charts of the route airports (the ones for the procedures in your route come first).'],
+      pt: ['Buscar cartas', 'Abre a busca de cartas. Com uma rota e nada digitado, já lista as cartas dos aeroportos da rota (as dos procedimentos da rota vêm primeiro).'] },
+    { key: 'strip', x: 364, y: 38, w: 44, h: 44, group: 'top',
+      en: ['Pinned charts', 'Opens your list of pinned charts, grouped by airport. Tap one to open it.'],
+      pt: ['Cartas fixadas', 'Abre a sua lista de cartas fixadas, agrupadas por aeroporto. Toque numa para abrir.'] },
+    { key: 'eye', x: 414, y: 38, w: 44, h: 44, group: 'top',
+      en: ['Hide controls', 'Hides every button so only the chart or the map is left. Tap again to bring them back.'],
+      pt: ['Ocultar controles', 'Esconde todos os botões e deixa só a carta ou o mapa. Toque de novo para voltar.'] },
+    { key: 'zin', x: 10, y: 268, w: 48, h: 48, group: 'left',
+      en: ['Zoom in', 'Brings the map or chart closer.'], pt: ['Aproximar', 'Aproxima o mapa ou a carta.'] },
+    { key: 'zout', x: 10, y: 322, w: 48, h: 48, group: 'left',
+      en: ['Zoom out', 'Moves the map or chart away.'], pt: ['Afastar', 'Afasta o mapa ou a carta.'] },
+    { key: 'follow', x: 10, y: 376, w: 48, h: 48, group: 'left',
+      en: ['Follow aircraft', 'Keeps the aircraft in the centre of the screen. Dragging the map turns it off; tap to turn it on again.'],
+      pt: ['Seguir a aeronave', 'Mantém a aeronave no centro da tela. Arrastar o mapa desliga; toque para ligar de novo.'] },
+    { key: 'regional', x: 10, y: 430, w: 48, h: 48, group: 'left',
+      en: ['Regional zoom', 'Frames about 30 km around the aircraft. Good for big charts that cover a whole region.'],
+      pt: ['Zoom regional', 'Enquadra cerca de 30 km em volta da aeronave. Bom para cartas grandes que cobrem uma região.'] },
+    { key: 'fit', x: 10, y: 484, w: 48, h: 48, group: 'left',
+      en: ['Whole chart', 'Shows the whole chart on the screen.'], pt: ['Carta inteira', 'Mostra a carta inteira na tela.'] },
+    { key: 'reload', x: 10, y: 538, w: 48, h: 48, group: 'left',
+      en: ['Reload', 'Reloads this screen. Use it if something looks stuck.'], pt: ['Recarregar', 'Recarrega esta tela. Use se algo parecer travado.'] },
+    { key: 'close', x: 410, y: 322, w: 48, h: 48, group: 'right',
+      en: ['Close chart', 'Takes the chart off the screen. With several charts on the map, the one below comes up.'],
+      pt: ['Fechar a carta', 'Tira a carta da tela. Com várias cartas no mapa, a que está embaixo sobe.'] },
+    { key: 'overlay', x: 410, y: 376, w: 48, h: 48, group: 'right',
+      en: ['Chart over the map', 'Shows the chart placed over the map, in its real position, with your aircraft on it.'],
+      pt: ['Carta sobre o mapa', 'Mostra a carta posicionada sobre o mapa, no lugar real, com a sua aeronave nela.'] },
+    { key: 'chart', x: 410, y: 430, w: 48, h: 48, group: 'right',
+      en: ['Chart only', 'Shows only the chart, with no map. Charts that cannot be placed on the map (view-only) always open like this.'],
+      pt: ['Só a carta', 'Mostra só a carta, sem mapa. Cartas que não podem ser posicionadas no mapa (só visualização) sempre abrem assim.'] },
+    { key: 'blend', x: 410, y: 484, w: 48, h: 48, group: 'right',
+      en: ['Chart opacity', 'Steps through how much of the chart shows over the map: 100%, 75%, 50%, 25%.'],
+      pt: ['Opacidade da carta', 'Alterna quanto da carta aparece sobre o mapa: 100%, 75%, 50%, 25%.'] },
+    { key: 'multi', x: 410, y: 538, w: 48, h: 48, group: 'right',
+      en: ['Several charts', 'When on, opening another chart keeps the previous ones on the map under it (up to 5 together). The view does not move.'],
+      pt: ['Várias cartas', 'Quando ligado, abrir outra carta mantém as anteriores no mapa por baixo dela (até 5 juntas). A vista não se mexe.'] },
+    { key: 'pin', group: 'lists',
+      en: ['Pushpin on a row', 'In the search and in the pinned list: filled means pinned. Tap to pin or unpin that chart without opening it.'],
+      pt: ['Pushpin na linha', 'Na busca e na lista de fixadas: cheio quer dizer fixada. Toque para fixar ou desafixar aquela carta sem abri-la.'] },
+    { key: 'eye', group: 'lists',
+      en: ['Eye on a row', 'Only for charts that are on the map. Moves the view to that chart. Adding a chart never moves the view by itself.'],
+      pt: ['Olho na linha', 'Só para cartas que estão no mapa. Leva a vista até aquela carta. Adicionar uma carta nunca mexe na vista sozinho.'] },
+    { key: 'updown', group: 'lists',
+      en: ['Up / down arrows', 'At the bottom of every list. They scroll the list, because touch scrolling is hard on the simulator screen.'],
+      pt: ['Setas subir / descer', 'No rodapé de toda lista. Rolam a lista, porque rolar com o toque é difícil na tela do simulador.'] },
+    { key: 'dots', group: 'lists',
+      en: ['Three dots on a route place', 'In the route list: "Direct to" drops every place before this one; "Remove" takes this place out.'],
+      pt: ['Três pontos num ponto da rota', 'Na lista da rota: "Direto para" descarta tudo antes deste ponto; "Remover" tira este ponto.'] }
+  ];
+
+  function guideIcon(key, cls) {
+    const s = h('span', { class: 'gicon' + (cls ? ' ' + cls : '') });
+    if (key === 'box') s.textContent = 'KJFK > KBOS'; else s.innerHTML = ICON[key];
+    return s;
+  }
+
+  function renderGuide() {
+    const groups = [
+      ['top', t('guideTop')], ['left', t('guideLeft')], ['right', t('guideRight')], ['lists', t('guideLists')]];
+    let n = 0;
+    const numbered = GUIDE.map((g) => Object.assign({}, g, { n: g.group === 'lists' ? 0 : ++n }));
+    const W = 468, H = 696;
+    const mock = h('div', { class: 'mock' },
+      h('div', { class: 'mockband' }),
+      ...numbered.filter((g) => g.n).map((g) => {
+        const b = h('div', { class: 'mockbtn' + (g.key === 'box' ? ' mockbox' : '') + (g.group === 'right' || g.group === 'left' ? ' mockside' : ''),
+          style: `left:${g.x / W * 100}%;top:${g.y / H * 100}%;width:${g.w / W * 100}%;height:${g.h / H * 100}%` });
+        b.appendChild(guideIcon(g.key, 'mockicon'));
+        b.appendChild(h('span', { class: 'mocknum' }, String(g.n)));
+        return b;
+      }),
+      h('div', { class: 'mocknote' }, 'Open Charts'));
+    const list = h('div', null, groups.map(([id, title]) => h('div', { class: 'card' },
+      h('h3', null, title),
+      ...numbered.filter((g) => g.group === id).map((g) => h('div', { class: 'gitem' },
+        g.n ? h('span', { class: 'gnum' }, String(g.n)) : h('span', { class: 'gnum none' }),
+        guideIcon(g.key, 'gchip' + (g.key === 'box' ? ' gbox' : '')),
+        h('div', { class: 'gtext' }, h('strong', null, g[lang][0]), h('div', { class: 'muted' }, g[lang][1])))))));
+    view.replaceChildren(h('h2', null, t('guide')),
+      h('p', { class: 'muted' }, t('guideIntro')),
+      h('div', { class: 'guidepage' }, h('div', { class: 'mockwrap' }, mock), list));
+  }
+
   function renderAbout() {
     view.replaceChildren(h('h2', null, t('about')),
       h('div', { class: 'card' },

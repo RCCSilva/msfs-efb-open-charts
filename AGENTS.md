@@ -171,6 +171,9 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   charts under the one being opened (up to 4 extra layers, stored in `oc.multi`). Adding or removing a chart in that mode never moves the view; only the eye button of a pinned row
   (`focusChart`) fits the map to that chart.
   In chart-only mode the route goes through the chart's georeference (nothing for view-only charts).
+  The manager has a **Guide** tab (`renderGuide` in `manager.js`, data in `GUIDE`): the sim's browser shows no
+  tooltips, so every button of the viewer is described there with its icon and a numbered drawing. When a button is
+  added, changed or removed in the viewer, update `GUIDE` (positions are on the 468 x 696 sim screen).
 - **AIRAC cycle:** one international calendar (`naming/airac.go`); a chart's cycle is derived from its date.
 - **Name patterns (My PDFs):** the user may write file-name templates (`{icao}_{type}_{title}_{date:YYYYMMDD}`,
   package `naming`, `pattern.go`), kept in `settings.json` and tried first for the `manual` source (`Server.identify`).
