@@ -126,6 +126,9 @@ func (d *DB) init() error {
 	if _, err = d.db.Exec(extraSchema); err != nil {
 		return err
 	}
+	if _, err = d.db.Exec(savedRouteSchema); err != nil {
+		return err
+	}
 	return d.migrateUserPoints()
 }
 

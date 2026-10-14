@@ -171,6 +171,9 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   charts under the one being opened (up to 4 extra layers, stored in `oc.multi`). Adding or removing a chart in that mode never moves the view; only the eye button of a pinned row
   (`focusChart`) fits the map to that chart.
   In chart-only mode the route goes through the chart's georeference (nothing for view-only charts).
+  **Saved routes** (`saved_route` table, `/api/routes`, `server/routes_saved.go`): written, validated (`/api/route/resolve`) and
+  shown on a high overview map in the manager's **Routes** tab; the viewer lists them under the route in the left drawer
+  and one tap resolves and draws one. The server only keeps name + text; places are resolved each time.
   The manager has a **Navigation** tab (`renderNav`; API in `server/nav_admin.go`, queries in `navdb/admin.go`): counts, lists
   with delete/refresh for airports, fixes and airways, the user's own points (`user_point`, region `USR`, they are found by
   the route resolver like any waypoint and are never dropped by a schema change) and the **bulk load**: (1) `navseed` reads

@@ -64,3 +64,35 @@ func TestUserPointsAndSeed(t *testing.T) {
 		t.Fatalf("second delete: %v", err)
 	}
 }
+
+func TestSavedRoutes(t *testing.T) {
+	d, err := Open(filepath.Join(t.TempDir(), "r.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, err := d.CreateSavedRoute(SavedRoute{Name: "", Text: "SBSJ SBGR"}); err == nil {
+		t.Fatal("a route without a name must be refused")
+	}
+	if _, err := d.CreateSavedRoute(SavedRoute{Name: "x", Text: "   "}); err == nil {
+		t.Fatal("an empty route must be refused")
+	}
+	r, err := d.CreateSavedRoute(SavedRoute{Name: " Casa ", Text: "SBSJ   BOBI3A\nDAGUB SBGR"})
+	if err != nil || r.Name != "Casa" || r.Text != "SBSJ BOBI3A DAGUB SBGR" {
+		t.Fatalf("create: %+v %v", r, err)
+	}
+	r.Name = "Casa 2"
+	if _, err := d.UpdateSavedRoute(r); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := d.SavedRoutes()
+	if len(list) != 1 || list[0].Name != "Casa 2" {
+		t.Fatalf("list: %+v", list)
+	}
+	if err := d.DeleteSavedRoute(r.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.DeleteSavedRoute(r.ID); err != ErrNotFound {
+		t.Fatalf("second delete: %v", err)
+	}
+}

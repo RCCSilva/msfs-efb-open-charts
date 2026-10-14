@@ -32,6 +32,7 @@
       search: 'Paste a route: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       noPins: 'No charts pinned to this group.',
       routePaste: 'Paste a route', routeTitle: 'Route', routePlaces: 'places', routeProblems: 'to check',
+      savedRoutes: 'Saved routes', savedNone: 'No saved routes. Write them in the manager (Routes tab).',
       routeNone: 'No route yet', routePasteShort: 'Paste', routeFrom: 'from', routeTo: 'to',
       pinnedTitle: 'Pinned charts', searchTitle: 'Search charts', searchPlaceholder: 'SBSP, ILS, sao paulo...',
       searchHint: 'Type to search. With a route, the charts of its airports appear here.', noResults: 'No charts found.',
@@ -66,6 +67,7 @@
       search: 'Cole a rota: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       noPins: 'Nenhuma carta fixada neste grupo.',
       routePaste: 'Colar a rota', routeTitle: 'Rota', routePlaces: 'pontos', routeProblems: 'a conferir',
+      savedRoutes: 'Rotas salvas', savedNone: 'Nenhuma rota salva. Crie no gerenciador (aba Rotas).',
       routeNone: 'Nenhuma rota ainda', routePasteShort: 'Colar', routeFrom: 'origem', routeTo: 'destino',
       pinnedTitle: 'Cartas fixadas', searchTitle: 'Buscar cartas', searchPlaceholder: 'SBSP, ILS, sao paulo...',
       searchHint: 'Digite para buscar. Com uma rota, as cartas dos aeroportos dela aparecem aqui.', noResults: 'Nenhuma carta encontrada.',
@@ -1356,7 +1358,7 @@
 
   function setLeftOpen(on) {
     leftOpen = on;
-    if (on) rightView = '';
+    if (on) { rightView = ''; loadSavedRoutes(); }
     hideRouteMenu();
     updateDrawers();
   }
@@ -1706,6 +1708,7 @@
       chip.appendChild(more);
       routeChipsEl.appendChild(chip);
     });
+    renderSavedRoutes();
     if (rightView === 'search') runChartSearch();   // the charts of the route follow the route
   }
 
@@ -1733,6 +1736,53 @@
   function closeRouteBox() {
     qEl.blur();
     routeModalEl.className = 'routemodal hidden';
+  }
+
+  // ---- saved routes: written in the manager, one tap here ----
+  var savedRoutes = [];
+
+  function sameRouteText(a, b) {
+    return String(a || '').replace(/\s+/g, ' ').replace(/^ | $/g, '').toUpperCase() ===
+      String(b || '').replace(/\s+/g, ' ').replace(/^ | $/g, '').toUpperCase();
+  }
+
+  function renderSavedRoutes() {
+    var head = el('savedhead');
+    var box = el('savedroutes');
+    head.textContent = t('savedRoutes');
+    clear(box);
+    if (!savedRoutes.length) {
+      var e = document.createElement('div');
+      e.className = 'empty';
+      e.textContent = t('savedNone');
+      box.appendChild(e);
+      return;
+    }
+    savedRoutes.forEach(function (r) {
+      var row = document.createElement('div');
+      row.className = 'crow' + (sameRouteText(r.text, routeText) ? ' active' : '');
+      row.appendChild(document.createTextNode(r.name));
+      var small = document.createElement('span');
+      small.className = 'csmall';
+      small.textContent = r.summary || '';
+      row.appendChild(small);
+      row.addEventListener('click', function () { useSavedRoute(r); });
+      box.appendChild(row);
+    });
+  }
+
+  function loadSavedRoutes() {
+    getJson('/api/routes', function (res) {
+      if (res && res.routes) savedRoutes = res.routes;
+      renderSavedRoutes();
+    });
+  }
+
+  // one tap: the route is resolved and drawn like a pasted one, and the drawer gets out of the way
+  function useSavedRoute(r) {
+    qEl.value = r.text;
+    closeDrawers();
+    resolveRoute();
   }
 
   function clearWholeRoute() {
@@ -1837,7 +1887,7 @@
   el('btn-route').addEventListener('click', openRouteBox);
   // the box shows the route: a tap opens the list of its places (or, with no route, the box to paste one)
   routeBoxBtn.addEventListener('click', function () {
-    if (!routePoints.length) { openRouteBox(); return; }
+    if (!routePoints.length && !savedRoutes.length) { openRouteBox(); return; }
     setLeftOpen(!leftOpen);
   });
   routeGoBtn.addEventListener('click', resolveRoute);
@@ -1857,6 +1907,7 @@
     renderRoute();
   }
   applyRouteStrings();
+  loadSavedRoutes();
   // a tap outside the option menu closes it
   function closeMenuFromOutside(ev) {
     if (!routeMenuEl) return;

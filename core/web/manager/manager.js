@@ -45,7 +45,7 @@
       openOfficial: '1. Open official page', addFile: '2. Add file', installed: 'Installed', snapshot: 'Snapshot of',
       tabCatalog: 'Visual charts (catalog)', tabPackage: 'Aerodromes (package)', tabFiles: 'Add files',
       stepsFiles: 'Add what you downloaded', capCatalog: 'Catalog', capPackage: 'Package', capLocate: 'By date', capUpload: 'Upload',
-      about: 'About', setup: 'Setup', map: 'Map', guide: 'Guide', nav: 'Navigation',
+      about: 'About', setup: 'Setup', map: 'Map', guide: 'Guide', nav: 'Navigation', routes: 'Routes',
       whyManualTitle: 'Why do I have to download the charts myself?',
       whyManual: 'Most chart providers do not allow redistribution, so we cannot offer the charts already processed and ready. Many also forbid any kind of bulk download or scraping script. To stay within the terms of use, we are being conservative for now: you download the files yourself and Open Charts processes them on your computer. We may look for a better way in the future.',
       guideIntro: 'The simulator screen shows no hints when you hover a button, so here is what each one does. The numbers on the drawing match the list.',
@@ -144,7 +144,7 @@
       openOfficial: '1. Abrir página oficial', addFile: '2. Adicionar arquivo', installed: 'Instalada', snapshot: 'Retrato de',
       tabCatalog: 'Cartas visuais (catálogo)', tabPackage: 'Aeródromos (pacote)', tabFiles: 'Adicionar arquivos',
       stepsFiles: 'Adicione o que você baixou', capCatalog: 'Catálogo', capPackage: 'Pacote', capLocate: 'Por data', capUpload: 'Envio',
-      about: 'Sobre', setup: 'Configuração', map: 'Mapa', guide: 'Guia', nav: 'Navegação',
+      about: 'Sobre', setup: 'Configuração', map: 'Mapa', guide: 'Guia', nav: 'Navegação', routes: 'Rotas',
       whyManualTitle: 'Por que eu tenho que baixar as cartas manualmente?',
       whyManual: 'A maior parte dos provedores não permite a redistribuição, o que impede a gente de já entregar as cartas processadas e prontas. Muitos também proíbem qualquer tipo de download em massa ou script de extração automática. Para não infringir os termos de uso, vamos ser conservadores por enquanto: você baixa os arquivos e o Open Charts os processa no seu computador. No futuro podemos avaliar uma alternativa melhor.',
       guideIntro: 'A tela do simulador não mostra dicas ao passar o mouse nos botões, então aqui está o que cada um faz. Os números do desenho batem com a lista.',
@@ -311,7 +311,7 @@
     if (state.local === undefined) {
       try { state.local = (await api('GET', '/api/health')).local !== false; } catch (e) { state.local = true; }
     }
-    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'nav', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
+    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'routes', 'nav', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
       pageLink('#' + id, id === tab ? 'on' : '', t(id))).concat([
         // The map (same page the EFB shows) opens in its own tab, outside the simulator too.
         h('a', { class: 'navlink', href: '/viewer.html?lang=' + lang, target: '_blank', rel: 'noopener' }, t('map') + ' \u2197')]));
@@ -324,6 +324,7 @@
       else if (r.name === 'chart') await renderChart(r.arg);
       else if (r.name === 'groups') await renderGroups();
       else if (r.name === 'setup') await renderSetup();
+      else if (r.name === 'routes') await renderRoutes();
       else if (r.name === 'nav') await renderNav();
       else if (r.name === 'guide') renderGuide();
       else if (r.name === 'about') renderAbout();
@@ -1615,6 +1616,163 @@
             } }, nv('del'))))))));
   }
 
+  // ---- Routes: written here, validated here, and one tap in the viewer. The map below is only a
+  // high overview to check the route by eye; it is not the map of the simulator's tablet.
+  const RT = {
+    en: {
+      title: 'Routes', intro: 'Write routes the way pilots do (SBSJ BOBI3A DAGUB UZ6 SBGR), check them and keep them. In the simulator\'s viewer, the route button lists them: one tap and the route is loaded.',
+      mine: 'Saved routes', newRoute: 'New route', none: 'No saved route yet.', name: 'Name', text: 'Route',
+      textHint: 'SBSJ BOBI3A DAGUB UZ6 ... SBGR', validate: 'Validate', save: 'Save', del: 'Delete', confirmDel: 'Delete this route?',
+      working: 'Reading the route (the simulator may be asked for names it does not know yet)...', places: 'places', problems: 'to check',
+      ok: 'All names were found.', saved: 'Saved', failed: 'Could not do that', needName: 'Give the route a name.',
+      nameCol: 'Name', kind: 'Type', pos: 'Position', via: 'Via', empty: 'Write a route and press Validate.',
+      kinds: { airport: 'Airport', waypoint: 'Waypoint', vor: 'VOR', ndb: 'NDB', coordinate: 'Coordinate', procedure: 'Procedure' },
+      mapFail: 'The map could not be loaded.'
+    },
+    pt: {
+      title: 'Rotas', intro: 'Escreva rotas do jeito que o piloto escreve (SBSJ BOBI3A DAGUB UZ6 SBGR), confira e guarde. No viewer do simulador, o botão da rota lista todas elas: um toque e a rota é carregada.',
+      mine: 'Rotas salvas', newRoute: 'Nova rota', none: 'Nenhuma rota salva ainda.', name: 'Nome', text: 'Rota',
+      textHint: 'SBSJ BOBI3A DAGUB UZ6 ... SBGR', validate: 'Validar', save: 'Salvar', del: 'Excluir', confirmDel: 'Excluir esta rota?',
+      working: 'Lendo a rota (o simulador pode ser consultado por nomes que ainda não conhece)...', places: 'pontos', problems: 'a conferir',
+      ok: 'Todos os nomes foram encontrados.', saved: 'Salva', failed: 'Não foi possível', needName: 'Dê um nome para a rota.',
+      nameCol: 'Nome', kind: 'Tipo', pos: 'Posição', via: 'Via', empty: 'Escreva uma rota e aperte Validar.',
+      kinds: { airport: 'Aeroporto', waypoint: 'Waypoint', vor: 'VOR', ndb: 'NDB', coordinate: 'Coordenada', procedure: 'Procedimento' },
+      mapFail: 'Não foi possível carregar o mapa.'
+    }
+  };
+  const rt = (k) => (RT[lang] && RT[lang][k]) || RT.en[k] || k;
+  const routesState = { id: 0, name: '', text: '', result: null, working: false };
+  let overviewMap = null;
+
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = '/vendor/leaflet/leaflet.css';
+      document.head.appendChild(css);
+      const js = document.createElement('script');
+      js.src = '/vendor/leaflet/leaflet.js';
+      js.onload = () => resolve();
+      js.onerror = () => reject(new Error('leaflet'));
+      document.head.appendChild(js);
+    });
+  }
+
+  async function drawOverview(host, res) {
+    if (overviewMap) { overviewMap.remove(); overviewMap = null; }
+    host.replaceChildren();
+    if (!res || !res.points || !res.points.length) return;
+    try { await loadLeaflet(); } catch (e) { host.textContent = rt('mapFail'); return; }
+    const m = window.L.map(host, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
+    window.L.tileLayer('/tiles/{z}/{x}/{y}.png', { maxZoom: 12, attribution: '&copy; OpenStreetMap contributors' }).addTo(m);
+    const pts = res.points.map((p) => [p.lat, p.lon]);
+    window.L.polyline(pts, { color: '#c2185b', weight: 4, opacity: 0.9 }).addTo(m);
+    let last = '';
+    res.points.forEach((p) => {
+      const big = p.kind === 'airport';
+      const dot = window.L.circleMarker([p.lat, p.lon], { radius: big ? 7 : 4, color: '#c2185b', weight: 2, fillColor: big ? '#c2185b' : '#fff', fillOpacity: 1 }).addTo(m);
+      if (p.ident !== last) dot.bindTooltip(p.ident, { permanent: big, direction: 'right', offset: [6, 0] });
+      last = p.ident;
+    });
+    m.fitBounds(window.L.latLngBounds(pts), { padding: [30, 30] });
+    overviewMap = m;
+    setTimeout(() => m.invalidateSize(), 50);
+  }
+
+  async function renderRoutes() {
+    if (overviewMap) { overviewMap.remove(); overviewMap = null; }
+    const data = await api('GET', '/api/routes');
+    const list = data.routes;
+    const sel = list.find((r) => r.id === routesState.id);
+    if (routesState.id && !sel) { routesState.id = 0; routesState.name = ''; routesState.text = ''; routesState.result = null; }
+
+    const nameIn = h('input', { type: 'text', value: routesState.name, placeholder: rt('name') });
+    const textIn = h('textarea', { rows: 4, placeholder: rt('textHint'), class: 'routetext' });
+    textIn.value = routesState.text;
+    const status = h('div', { class: 'muted', style: 'margin:8px 0' });
+    const resultHost = h('div');
+    const mapHost = h('div', { class: 'overview' });
+
+    const showResult = (res) => {
+      routesState.result = res;
+      const head = res
+        ? h('div', { style: 'margin:8px 0' },
+          h('span', { class: 'badge' }, `${res.points.length} ${rt('places')}`),
+          res.problems.length ? h('span', { class: 'badge warn' }, `${res.problems.length} ${rt('problems')}`) : h('span', { class: 'badge ok' }, rt('ok')))
+        : null;
+      const problems = res && res.problems.length
+        ? h('div', { class: 'warnbox', style: 'margin-bottom:8px' }, res.problems.map((q) => h('div', null,
+          h('strong', null, q.token || ''), ' ', q.message,
+          q.candidates && q.candidates.length ? '  (' + q.candidates.map((c) => c.ident + '/' + c.region).join(', ') + ')' : '')))
+        : null;
+      const table = res && res.points.length
+        ? h('table', null,
+          h('thead', null, h('tr', null, h('th', null, rt('nameCol')), h('th', null, rt('kind')), h('th', null, rt('via')), h('th', null, rt('pos')))),
+          h('tbody', null, res.points.map((p) => h('tr', null,
+            h('td', null, h('strong', null, p.ident)), h('td', { class: 'muted' }, (RT[lang].kinds || {})[p.kind] || p.kind),
+            h('td', { class: 'muted' }, p.via || ''), h('td', { class: 'muted' }, fmtPos(p.lat, p.lon))))))
+        : h('p', { class: 'muted' }, rt('empty'));
+      resultHost.replaceChildren(...[head, problems, table].filter(Boolean));
+      drawOverview(mapHost, res);
+    };
+
+    const validate = async () => {
+      const text = textIn.value.trim();
+      routesState.text = text;
+      routesState.name = nameIn.value;
+      if (!text) { showResult(null); return; }
+      status.textContent = rt('working');
+      try { showResult(await api('POST', '/api/route/resolve', { route: text })); status.textContent = ''; }
+      catch (e) { status.textContent = rt('failed') + ': ' + e.message; }
+    };
+
+    const save = async () => {
+      routesState.text = textIn.value;
+      routesState.name = nameIn.value;
+      if (!nameIn.value.trim()) { toast(rt('needName')); return; }
+      try {
+        const body = { name: nameIn.value, text: textIn.value };
+        const r = routesState.id ? await api('PUT', '/api/routes/' + routesState.id, body) : await api('POST', '/api/routes', body);
+        routesState.id = r.id;
+        routesState.name = r.name;
+        routesState.text = r.text;
+        toast(rt('saved'));
+        renderRoutes();
+      } catch (e) { toast(rt('failed') + ': ' + e.message); }
+    };
+
+    const listCard = h('div', { class: 'card' },
+      h('div', { class: 'row', style: 'margin-bottom:8px' },
+        h('h3', { style: 'margin:0', class: 'grow' }, rt('mine')),
+        h('button', { class: 'btn sm primary', onclick: () => { Object.assign(routesState, { id: 0, name: '', text: '', result: null }); renderRoutes(); } }, '+ ' + rt('newRoute'))),
+      list.length === 0 ? h('p', { class: 'muted' }, rt('none')) : list.map((r) => h('div', {
+        class: 'routeitem' + (r.id === routesState.id ? ' on' : ''),
+        onclick: () => { Object.assign(routesState, { id: r.id, name: r.name, text: r.text, result: null }); renderRoutes(); }
+      }, h('strong', null, r.name), h('div', { class: 'muted' }, r.summary || r.text))));
+
+    const editor = h('div', { class: 'card' },
+      h('label', { class: 'fld' }, h('span', { class: 'muted' }, rt('name')), nameIn),
+      h('label', { class: 'fld', style: 'margin-top:10px' }, h('span', { class: 'muted' }, rt('text')), textIn),
+      h('div', { class: 'row', style: 'margin-top:10px' },
+        h('button', { class: 'btn', onclick: validate }, rt('validate')),
+        h('button', { class: 'btn primary', onclick: save }, rt('save')),
+        routesState.id ? h('button', { class: 'btn danger', onclick: async () => {
+          if (!confirm(rt('confirmDel'))) return;
+          await api('DELETE', '/api/routes/' + routesState.id);
+          Object.assign(routesState, { id: 0, name: '', text: '', result: null });
+          renderRoutes();
+        } }, rt('del')) : null),
+      status, mapHost, resultHost);
+
+    view.replaceChildren(h('h2', null, rt('title')), h('p', { class: 'muted' }, rt('intro')),
+      h('div', { class: 'routespage' }, listCard, editor));
+
+    if (routesState.result) showResult(routesState.result);
+    else if (routesState.id && routesState.text) validate();
+    else showResult(null);
+  }
+
   // ---- Guide: what every button of the in-simulator screen does. The simulator's browser shows no
   // tooltips, so this page is the legend: a drawing of the screen with numbers, and the list.
   const G = (d) => '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
@@ -1642,8 +1800,8 @@
   // x, y, w, h: where the button is on the 468 x 696 screen of the simulator's tablet (lists: no position)
   const GUIDE = [
     { key: 'box', x: 10, y: 38, w: 109, h: 44, group: 'top',
-      en: ['Route box', 'Shows the route you pasted (origin > destination). Tap it to open the list of its places. With no route, it opens the box to paste one.'],
-      pt: ['Caixa da rota', 'Mostra a rota que você colou (origem > destino). Toque para abrir a lista dos pontos. Sem rota, abre a caixa para colar uma.'] },
+      en: ['Route box', 'Shows the route in use (origin > destination). Tap it to open the list of its places and, below it, your saved routes (written in the Routes tab of the manager): one tap loads one. With no route and none saved, it opens the box to paste one.'],
+      pt: ['Caixa da rota', 'Mostra a rota em uso (origem > destino). Toque para abrir a lista dos pontos e, abaixo, as suas rotas salvas (criadas na aba Rotas do gerenciador): um toque carrega uma. Sem rota e sem nenhuma salva, abre a caixa para colar uma.'] },
     { key: 'route', x: 125, y: 38, w: 44, h: 44, group: 'top',
       en: ['Paste a route', 'Opens the box to paste a route the way pilots write it (SBSJ BOBI3A DAGUB UZ6 SBGR). The map draws it and the list shows each place.'],
       pt: ['Colar uma rota', 'Abre a caixa para colar uma rota do jeito que o piloto escreve (SBSJ BOBI3A DAGUB UZ6 SBGR). O mapa desenha e a lista mostra cada ponto.'] },

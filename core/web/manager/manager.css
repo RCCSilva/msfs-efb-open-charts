@@ -154,3 +154,12 @@ nav .navlink:hover { background: var(--bg); text-decoration: none; }
 .stat { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
 .statn { font-size: 20px; font-weight: 700; }
 .fld { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+
+/* ---- Routes page ---- */
+.routespage { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 800px) { .routespage { grid-template-columns: 1fr; } }
+.routeitem { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
+.routeitem:hover { background: var(--bg); }
+.routeitem.on { border-color: var(--accent); }
+textarea.routetext { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); padding: 8px 10px; font: inherit; resize: vertical; }
+.overview { height: 360px; margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #dfe6ea; }

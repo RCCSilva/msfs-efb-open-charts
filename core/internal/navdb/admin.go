@@ -546,3 +546,100 @@ func sign(v float64) float64 {
 	}
 	return 1
 }
+
+// ---- saved routes ----
+
+// SavedRoute is a route the user wrote down to use again: a name and the text of the route as a
+// pilot writes it. It is resolved (names turned into places) every time it is used.
+type SavedRoute struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Text      string `json:"text"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+const savedRouteSchema = `
+CREATE TABLE IF NOT EXISTS saved_route (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, text TEXT NOT NULL, created_at TEXT, updated_at TEXT
+);
+`
+
+func cleanRoute(r *SavedRoute) error {
+	r.Name = strings.TrimSpace(r.Name)
+	r.Text = strings.Join(strings.Fields(r.Text), " ")
+	switch {
+	case r.Name == "":
+		return errors.Join(ErrInvalid, errors.New("the route needs a name"))
+	case len([]rune(r.Name)) > 80:
+		return errors.Join(ErrInvalid, errors.New("the name is too long (80 characters at most)"))
+	case r.Text == "":
+		return errors.Join(ErrInvalid, errors.New("the route is empty"))
+	case len(r.Text) > 4000:
+		return errors.Join(ErrInvalid, errors.New("the route is too long"))
+	}
+	return nil
+}
+
+// SavedRoutes lists the saved routes, the most recently changed first.
+func (d *DB) SavedRoutes() ([]SavedRoute, error) {
+	rows, err := d.db.Query(`SELECT id, name, text, created_at, updated_at FROM saved_route ORDER BY updated_at DESC, id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SavedRoute{}
+	for rows.Next() {
+		var r SavedRoute
+		var c, u sql.NullString
+		if err := rows.Scan(&r.ID, &r.Name, &r.Text, &c, &u); err != nil {
+			return nil, err
+		}
+		r.CreatedAt, r.UpdatedAt = c.String, u.String
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// CreateSavedRoute stores a route.
+func (d *DB) CreateSavedRoute(r SavedRoute) (SavedRoute, error) {
+	if err := cleanRoute(&r); err != nil {
+		return r, err
+	}
+	r.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	r.UpdatedAt = r.CreatedAt
+	res, err := d.db.Exec(`INSERT INTO saved_route (name, text, created_at, updated_at) VALUES (?,?,?,?)`, r.Name, r.Text, r.CreatedAt, r.UpdatedAt)
+	if err != nil {
+		return r, err
+	}
+	r.ID, _ = res.LastInsertId()
+	return r, nil
+}
+
+// UpdateSavedRoute changes the name and the text of a route.
+func (d *DB) UpdateSavedRoute(r SavedRoute) (SavedRoute, error) {
+	if err := cleanRoute(&r); err != nil {
+		return r, err
+	}
+	r.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	res, err := d.db.Exec(`UPDATE saved_route SET name = ?, text = ?, updated_at = ? WHERE id = ?`, r.Name, r.Text, r.UpdatedAt, r.ID)
+	if err != nil {
+		return r, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return r, ErrNotFound
+	}
+	return r, nil
+}
+
+// DeleteSavedRoute removes a route.
+func (d *DB) DeleteSavedRoute(id int64) error {
+	res, err := d.db.Exec(`DELETE FROM saved_route WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
