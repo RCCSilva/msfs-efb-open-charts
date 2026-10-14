@@ -120,7 +120,10 @@ func (d *DB) init() error {
 	default:
 		return err
 	}
-	_, err = d.db.Exec(schema)
+	if _, err = d.db.Exec(schema); err != nil {
+		return err
+	}
+	_, err = d.db.Exec(extraSchema)
 	return err
 }
 

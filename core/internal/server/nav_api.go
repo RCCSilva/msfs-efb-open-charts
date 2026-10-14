@@ -23,6 +23,7 @@ type navState struct {
 	fetch  NavFetcher
 	fixes  FixFetcher
 	lookup IdentFetcher
+	job    navJob // the bulk load of the Navigation page
 }
 
 // SetNav gives the server the navigation database and, when the simulator link exists, the way
@@ -54,15 +55,25 @@ func (s *Server) resolveFixes(a *navdata.Airport) *navdata.Airport {
 // and kind), stores what it knows and marks them checked. This is the only way fixes enter the
 // database, so that "is in the database" always means "all of them are".
 func (s *Server) loadIdents(idents []string) error {
+	_, err := s.loadIdentsCount(idents, true)
+	return err
+}
+
+// loadIdentsCount is loadIdents that also says how many places the simulator knew. With
+// markEmpty false, an answer with nothing in it is not recorded (the caller doubts the simulator).
+func (s *Server) loadIdentsCount(idents []string, markEmpty bool) (int, error) {
 	if s.nav.lookup == nil || len(idents) == 0 {
-		return nil
+		return 0, nil
 	}
 	found, err := s.nav.lookup(idents)
 	if err != nil {
-		return err // not asked: nothing is marked, the next time asks again
+		return 0, err // not asked: nothing is marked, the next time asks again
+	}
+	if len(found) == 0 && !markEmpty {
+		return 0, nil
 	}
 	if err := s.nav.db.SaveFixes(found); err != nil {
-		return err
+		return 0, err
 	}
 	count := map[string]int{}
 	for _, f := range found {
@@ -70,10 +81,10 @@ func (s *Server) loadIdents(idents []string) error {
 	}
 	for _, id := range idents {
 		if err := s.nav.db.MarkIdentChecked(id, count[strings.ToUpper(id)]); err != nil {
-			return err
+			return 0, err
 		}
 	}
-	return nil
+	return len(found), nil
 }
 
 var icaoRe = regexp.MustCompile(`^[A-Z0-9]{2,8}$`)

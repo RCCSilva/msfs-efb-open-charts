@@ -148,3 +148,9 @@ nav .navlink:hover { background: var(--bg); text-decoration: none; }
 .gchip { flex: 0 0 44px; width: 44px; height: 44px; padding: 9px; border-radius: 8px; background: #1b2733; color: #fff; display: flex; align-items: center; justify-content: center; }
 .gchip.gbox { background: #fff; color: #111; border: 1px solid var(--line); font-size: 9px; padding: 2px; text-align: center; line-height: 11px; }
 .gtext { min-width: 0; }
+
+/* ---- Navigation page ---- */
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+.stat { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.statn { font-size: 20px; font-weight: 700; }
+.fld { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }

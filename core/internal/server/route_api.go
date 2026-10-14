@@ -64,13 +64,29 @@ func (p routeProvider) Fixes(ident string) ([]navdata.Fix, error) {
 		// unchecked so that the next time asks again
 		_ = s.loadIdents([]string{ident})
 	}
-	return s.nav.db.FixesByIdent(ident)
+	list, err := s.nav.db.FixesByIdent(ident)
+	if err != nil {
+		return nil, err
+	}
+	// the points the user made are places like any other
+	mine, err := s.nav.db.UserFixes(ident)
+	if err != nil {
+		return nil, err
+	}
+	return append(list, mine...), nil
 }
 
 func (p routeProvider) FixAt(ref navdata.FixRef) (*navdata.Fix, error) {
 	s := p.s
 	if s.nav.db == nil {
 		return nil, errors.New("the navigation database is not available")
+	}
+	if strings.EqualFold(ref.Region, navdb.UserRegion) {
+		mine, err := s.nav.db.UserFixes(ref.Ident)
+		if err != nil || len(mine) == 0 {
+			return nil, err
+		}
+		return &mine[0], nil
 	}
 	if checked, err := s.nav.db.IdentChecked(ref.Ident); err == nil && !checked {
 		_ = s.loadIdents([]string{ref.Ident})

@@ -45,7 +45,7 @@
       openOfficial: '1. Open official page', addFile: '2. Add file', installed: 'Installed', snapshot: 'Snapshot of',
       tabCatalog: 'Visual charts (catalog)', tabPackage: 'Aerodromes (package)', tabFiles: 'Add files',
       stepsFiles: 'Add what you downloaded', capCatalog: 'Catalog', capPackage: 'Package', capLocate: 'By date', capUpload: 'Upload',
-      about: 'About', setup: 'Setup', map: 'Map', guide: 'Guide',
+      about: 'About', setup: 'Setup', map: 'Map', guide: 'Guide', nav: 'Navigation',
       whyManualTitle: 'Why do I have to download the charts myself?',
       whyManual: 'Most chart providers do not allow redistribution, so we cannot offer the charts already processed and ready. Many also forbid any kind of bulk download or scraping script. To stay within the terms of use, we are being conservative for now: you download the files yourself and Open Charts processes them on your computer. We may look for a better way in the future.',
       guideIntro: 'The simulator screen shows no hints when you hover a button, so here is what each one does. The numbers on the drawing match the list.',
@@ -144,7 +144,7 @@
       openOfficial: '1. Abrir página oficial', addFile: '2. Adicionar arquivo', installed: 'Instalada', snapshot: 'Retrato de',
       tabCatalog: 'Cartas visuais (catálogo)', tabPackage: 'Aeródromos (pacote)', tabFiles: 'Adicionar arquivos',
       stepsFiles: 'Adicione o que você baixou', capCatalog: 'Catálogo', capPackage: 'Pacote', capLocate: 'Por data', capUpload: 'Envio',
-      about: 'Sobre', setup: 'Configuração', map: 'Mapa', guide: 'Guia',
+      about: 'Sobre', setup: 'Configuração', map: 'Mapa', guide: 'Guia', nav: 'Navegação',
       whyManualTitle: 'Por que eu tenho que baixar as cartas manualmente?',
       whyManual: 'A maior parte dos provedores não permite a redistribuição, o que impede a gente de já entregar as cartas processadas e prontas. Muitos também proíbem qualquer tipo de download em massa ou script de extração automática. Para não infringir os termos de uso, vamos ser conservadores por enquanto: você baixa os arquivos e o Open Charts os processa no seu computador. No futuro podemos avaliar uma alternativa melhor.',
       guideIntro: 'A tela do simulador não mostra dicas ao passar o mouse nos botões, então aqui está o que cada um faz. Os números do desenho batem com a lista.',
@@ -311,7 +311,7 @@
     if (state.local === undefined) {
       try { state.local = (await api('GET', '/api/health')).local !== false; } catch (e) { state.local = true; }
     }
-    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
+    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'nav', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
       pageLink('#' + id, id === tab ? 'on' : '', t(id))).concat([
         // The map (same page the EFB shows) opens in its own tab, outside the simulator too.
         h('a', { class: 'navlink', href: '/viewer.html?lang=' + lang, target: '_blank', rel: 'noopener' }, t('map') + ' \u2197')]));
@@ -324,6 +324,7 @@
       else if (r.name === 'chart') await renderChart(r.arg);
       else if (r.name === 'groups') await renderGroups();
       else if (r.name === 'setup') await renderSetup();
+      else if (r.name === 'nav') await renderNav();
       else if (r.name === 'guide') renderGuide();
       else if (r.name === 'about') renderAbout();
       else await renderLibrary();
@@ -1344,6 +1345,226 @@
   }
 
   // ---- About
+  // ---- Navigation: the data the route uses (airports, fixes, airways), the user's own points, and the
+  // bulk load. Everything here comes from the simulator; nothing is shipped with Open Charts.
+  const NV = {
+    en: {
+      title: 'Navigation data',
+      intro: 'Airports, waypoints, VORs, NDBs and airways that Open Charts uses to read a route. They are loaded from your own simulator (SimConnect), as routes ask for them, or all at once below.',
+      stats: 'Stored now', airports: 'Airports', runways: 'Runways', procedures: 'Procedures', waypoints: 'Waypoints', vors: 'VORs', ndbs: 'NDBs',
+      airways: 'Airways', segments: 'Segments', idents: 'Names asked', myPoints: 'My points',
+      loadTitle: 'Load everything',
+      loadHow: 'Two steps, always in this order: (1) the names of every waypoint, VOR and NDB are read from the navigation files the simulator keeps on this computer; (2) each name is asked to the simulator through SimConnect, which brings its region, position and airways. The simulator must be running with a flight loaded. You can stop and continue later.',
+      filesFound: 'Simulator files found', filesNone: 'No simulator navigation files found: only step 2 applies, for the names a route cites.',
+      noLink: 'SimConnect.dll was not found: the simulator cannot be asked.',
+      pending: 'names still to ask', loadAll: 'Load everything', loadFiles: 'Only read the names from the files', stop: 'Stop',
+      phase: { idle: 'Idle', reading: 'Reading the simulator files', asking: 'Asking the simulator', done: 'Finished', stopped: 'Stopped', error: 'Stopped by an error' },
+      tabAirports: 'Airports', tabFixes: 'Fixes', tabAirways: 'Airways', tabPoints: 'My points',
+      search: 'Search by name...', all: 'All', kindW: 'Waypoint', kindV: 'VOR', kindN: 'NDB',
+      ident: 'Name', region: 'Region', kind: 'Type', pos: 'Position', name: 'Description', lat: 'Latitude', lon: 'Longitude', note: 'Note',
+      fetched: 'Stored on', refresh: 'Ask again', del: 'Delete', edit: 'Edit', save: 'Save', cancel: 'Cancel', add: 'Add', next: 'Next', prev: 'Previous',
+      loadAirport: 'ICAO of an airport to load', loadAirportBtn: 'Load from the simulator',
+      noRows: 'Nothing here yet.', confirmDel: 'Delete this? It can be loaded again from the simulator.',
+      pointsIntro: 'Places you make yourself (a private waypoint, a visual reference). They can be written in a pasted route like any waypoint.',
+      newPoint: 'New point', editPoint: 'Edit point', asked: 'Names asked', airwaySegs: 'segments', hideSegs: 'Hide', showSegs: 'Show',
+      total: 'total', loaded: 'Loaded', failed: 'Could not do that'
+    },
+    pt: {
+      title: 'Dados de navegação',
+      intro: 'Aeroportos, waypoints, VORs, NDBs e aerovias que o Open Charts usa para ler uma rota. Eles vêm do seu próprio simulador (SimConnect), conforme as rotas pedem, ou todos de uma vez abaixo.',
+      stats: 'Guardado agora', airports: 'Aeroportos', runways: 'Pistas', procedures: 'Procedimentos', waypoints: 'Waypoints', vors: 'VORs', ndbs: 'NDBs',
+      airways: 'Aerovias', segments: 'Trechos', idents: 'Nomes consultados', myPoints: 'Meus pontos',
+      loadTitle: 'Carregar tudo',
+      loadHow: 'Dois passos, sempre nesta ordem: (1) os nomes de todos os waypoints, VORs e NDBs são lidos dos arquivos de navegação que o simulador guarda neste computador; (2) cada nome é perguntado ao simulador pelo SimConnect, que traz a região, a posição e as aerovias. O simulador precisa estar aberto com um voo carregado. Dá para parar e continuar depois.',
+      filesFound: 'Arquivos do simulador encontrados', filesNone: 'Nenhum arquivo de navegação do simulador encontrado: vale só o passo 2, para os nomes que uma rota cita.',
+      noLink: 'O SimConnect.dll não foi encontrado: não dá para perguntar ao simulador.',
+      pending: 'nomes ainda para perguntar', loadAll: 'Carregar tudo', loadFiles: 'Só ler os nomes dos arquivos', stop: 'Parar',
+      phase: { idle: 'Parado', reading: 'Lendo os arquivos do simulador', asking: 'Perguntando ao simulador', done: 'Concluído', stopped: 'Interrompido', error: 'Interrompido por um erro' },
+      tabAirports: 'Aeroportos', tabFixes: 'Fixos', tabAirways: 'Aerovias', tabPoints: 'Meus pontos',
+      search: 'Buscar pelo nome...', all: 'Todos', kindW: 'Waypoint', kindV: 'VOR', kindN: 'NDB',
+      ident: 'Nome', region: 'Região', kind: 'Tipo', pos: 'Posição', name: 'Descrição', lat: 'Latitude', lon: 'Longitude', note: 'Nota',
+      fetched: 'Guardado em', refresh: 'Perguntar de novo', del: 'Excluir', edit: 'Editar', save: 'Salvar', cancel: 'Cancelar', add: 'Adicionar', next: 'Próxima', prev: 'Anterior',
+      loadAirport: 'ICAO de um aeroporto para carregar', loadAirportBtn: 'Carregar do simulador',
+      noRows: 'Nada por aqui ainda.', confirmDel: 'Excluir? Dá para carregar de novo do simulador.',
+      pointsIntro: 'Lugares que você mesmo cria (um waypoint particular, uma referência visual). Podem ser escritos numa rota colada como qualquer waypoint.',
+      newPoint: 'Novo ponto', editPoint: 'Editar ponto', asked: 'Nomes consultados', airwaySegs: 'trechos', hideSegs: 'Ocultar', showSegs: 'Ver',
+      total: 'no total', loaded: 'Carregado', failed: 'Não foi possível'
+    }
+  };
+  const nv = (k) => (NV[lang] && NV[lang][k]) || NV.en[k] || k;
+  const navState = { tab: 'airports', fixQ: '', fixKind: '', fixOffset: 0, airportQ: '', airwayQ: '', edit: null, open: '' };
+  let navTimer = null;
+
+  const fmtNum = (n) => Number(n || 0).toLocaleString(lang === 'pt' ? 'pt-BR' : 'en-US');
+  const fmtPos = (lat, lon) => `${Number(lat).toFixed(4)}, ${Number(lon).toFixed(4)}`;
+
+  async function renderNav() {
+    clearTimeout(navTimer);
+    const sum = await api('GET', '/api/nav/summary');
+    const c = sum.counts;
+    const job = sum.job;
+    const stat = (label, n) => h('div', { class: 'stat' }, h('div', { class: 'statn' }, fmtNum(n)), h('div', { class: 'muted' }, label));
+
+    const pct = job.total > 0 ? Math.min(100, Math.round(job.done * 100 / job.total)) : 0;
+    const progress = h('div', null,
+      h('div', { class: 'bar' }, h('i', { style: `width:${pct}%` })),
+      h('div', { class: 'muted' }, `${nv('phase')[job.phase] || job.phase}${job.total ? ` - ${fmtNum(job.done)} / ${fmtNum(job.total)} (${pct}%)` : ''}`),
+      job.message ? h('div', { class: 'badge bad', style: 'margin-top:6px' }, job.message) : null);
+
+    const loadCard = h('div', { class: 'card' },
+      h('h3', null, nv('loadTitle')),
+      h('p', { class: 'muted' }, nv('loadHow')),
+      h('p', null,
+        sum.files.length ? h('span', { class: 'badge ok' }, `${nv('filesFound')}: ${sum.files.length}`) : h('span', { class: 'badge warn' }, nv('filesNone')),
+        !sum.simLink ? h('span', { class: 'badge bad' }, nv('noLink')) : null,
+        c.seedIdents ? h('span', { class: 'badge' }, `${fmtNum(c.seedPending)} ${nv('pending')} (${fmtNum(c.seedIdents)} ${nv('total')})`) : null),
+      progress,
+      h('div', { class: 'row', style: 'margin-top:10px' },
+        job.running
+          ? h('button', { class: 'btn danger', onclick: async () => { await api('DELETE', '/api/nav/load'); renderNav(); } }, nv('stop'))
+          : [
+            h('button', { class: 'btn primary', disabled: !sum.simLink, onclick: async () => {
+              try { await api('POST', '/api/nav/load', { mode: 'all' }); } catch (e) { toast(e.message); }
+              renderNav();
+            } }, nv('loadAll')),
+            h('button', { class: 'btn', disabled: !sum.files.length, onclick: async () => {
+              try { await api('POST', '/api/nav/load', { mode: 'files' }); } catch (e) { toast(e.message); }
+              renderNav();
+            } }, nv('loadFiles'))]));
+
+    const tabs = h('div', { class: 'row', style: 'margin-bottom:12px' },
+      [['airports', 'tabAirports'], ['fixes', 'tabFixes'], ['airways', 'tabAirways'], ['points', 'tabPoints']].map(([id, key]) =>
+        h('button', { class: 'btn' + (navState.tab === id ? ' primary' : ''), onclick: () => { navState.tab = id; navState.edit = null; renderNav(); } }, nv(key))));
+
+    const body = h('div', { class: 'card' });
+    view.replaceChildren(h('h2', null, nv('title')), h('p', { class: 'muted' }, nv('intro')),
+      h('div', { class: 'card' }, h('h3', null, nv('stats')),
+        h('div', { class: 'stats' }, stat(nv('airports'), c.airports), stat(nv('runways'), c.runways), stat(nv('procedures'), c.procedures),
+          stat(nv('waypoints'), c.waypoints), stat(nv('vors'), c.vors), stat(nv('ndbs'), c.ndbs),
+          stat(nv('airways'), c.airways), stat(nv('segments'), c.segments), stat(nv('idents'), c.identsChecked), stat(nv('myPoints'), c.userPoints))),
+      loadCard, tabs, body);
+
+    if (navState.tab === 'airports') await navAirports(body);
+    else if (navState.tab === 'fixes') await navFixes(body);
+    else if (navState.tab === 'airways') await navAirways(body);
+    else await navPoints(body);
+
+    // while a load runs the page follows it
+    if (job.running) navTimer = setTimeout(() => { if (parseRoute().name === 'nav') renderNav(); }, 1500);
+  }
+
+  function navSearch(value, placeholder, onGo) {
+    const input = h('input', { type: 'text', value, placeholder, class: 'grow' });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') onGo(input.value); });
+    return [input, h('button', { class: 'btn', onclick: () => onGo(input.value) }, '⌕')];
+  }
+
+  async function navAirports(body) {
+    const r = await api('GET', '/api/nav/airports?q=' + encodeURIComponent(navState.airportQ));
+    const add = h('input', { type: 'text', placeholder: nv('loadAirport'), style: 'max-width:260px' });
+    const doLoad = async () => {
+      const icao = add.value.trim().toUpperCase();
+      if (!icao) return;
+      try { await api('GET', '/api/nav/airport/' + encodeURIComponent(icao)); toast(nv('loaded') + ': ' + icao); } catch (e) { toast(nv('failed') + ': ' + e.message); }
+      renderNav();
+    };
+    body.replaceChildren(
+      h('div', { class: 'row' }, ...navSearch(navState.airportQ, nv('search'), (v) => { navState.airportQ = v.trim(); renderNav(); })),
+      h('div', { class: 'row', style: 'margin:10px 0' }, add, h('button', { class: 'btn', onclick: doLoad }, nv('loadAirportBtn'))),
+      r.airports.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) :
+        h('table', null,
+          h('thead', null, h('tr', null, h('th', null, 'ICAO'), h('th', null, nv('name')), h('th', null, nv('fetched')), h('th'))),
+          h('tbody', null, r.airports.map((a) => h('tr', null,
+            h('td', null, h('strong', null, a.icao)), h('td', null, a.name), h('td', { class: 'muted' }, (a.fetchedAt || '').slice(0, 10)),
+            h('td', { class: 'actions' },
+              h('button', { class: 'btn sm', onclick: async () => {
+                try { await api('GET', '/api/nav/airport/' + encodeURIComponent(a.icao) + '?refresh=1'); toast(nv('loaded') + ': ' + a.icao); } catch (e) { toast(nv('failed') + ': ' + e.message); }
+                renderNav();
+              } }, nv('refresh')),
+              ' ',
+              h('button', { class: 'btn sm danger', onclick: async () => {
+                if (!confirm(nv('confirmDel'))) return;
+                await api('DELETE', '/api/nav/airport/' + encodeURIComponent(a.icao)); renderNav();
+              } }, nv('del'))))))));
+  }
+
+  async function navFixes(body) {
+    const limit = 100;
+    const r = await api('GET', `/api/nav/fixes?q=${encodeURIComponent(navState.fixQ)}&kind=${navState.fixKind}&limit=${limit}&offset=${navState.fixOffset}`);
+    const kindSel = h('select', { onchange: (e) => { navState.fixKind = e.target.value; navState.fixOffset = 0; renderNav(); } },
+      h('option', { value: '' }, nv('all')), h('option', { value: 'W' }, nv('kindW')), h('option', { value: 'V' }, nv('kindV')), h('option', { value: 'N' }, nv('kindN')));
+    kindSel.value = navState.fixKind;
+    const kindName = { W: nv('kindW'), V: nv('kindV'), N: nv('kindN') };
+    const last = navState.fixOffset + r.fixes.length;
+    body.replaceChildren(
+      h('div', { class: 'row' }, ...navSearch(navState.fixQ, nv('search'), (v) => { navState.fixQ = v.trim(); navState.fixOffset = 0; renderNav(); }), kindSel),
+      r.fixes.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) : h('table', { style: 'margin-top:10px' },
+        h('thead', null, h('tr', null, h('th', null, nv('ident')), h('th', null, nv('kind')), h('th', null, nv('region')), h('th', null, nv('name')),
+          h('th', null, nv('pos')), h('th', null, nv('airways')), h('th'))),
+        h('tbody', null, r.fixes.map((f) => h('tr', null,
+          h('td', null, h('strong', null, f.ident)), h('td', null, kindName[f.kind] || f.kind), h('td', null, f.region || '-'),
+          h('td', null, f.name), h('td', { class: 'muted' }, fmtPos(f.lat, f.lon)), h('td', null, f.routes || ''),
+          h('td', { class: 'actions' }, h('button', { class: 'btn sm danger', onclick: async () => {
+            if (!confirm(nv('confirmDel'))) return;
+            await api('DELETE', `/api/nav/fixes?ident=${encodeURIComponent(f.ident)}&region=${encodeURIComponent(f.region)}&kind=${f.kind}`);
+            renderNav();
+          } }, nv('del'))))))),
+      h('div', { class: 'row', style: 'margin-top:10px' },
+        h('button', { class: 'btn sm', disabled: navState.fixOffset === 0, onclick: () => { navState.fixOffset = Math.max(0, navState.fixOffset - limit); renderNav(); } }, nv('prev')),
+        h('span', { class: 'muted' }, r.total ? `${fmtNum(navState.fixOffset + 1)}-${fmtNum(last)} / ${fmtNum(r.total)}` : ''),
+        h('button', { class: 'btn sm', disabled: last >= r.total, onclick: () => { navState.fixOffset += limit; renderNav(); } }, nv('next'))));
+  }
+
+  async function navAirways(body) {
+    const r = await api('GET', '/api/nav/airways?q=' + encodeURIComponent(navState.airwayQ));
+    let segs = null;
+    if (navState.open) segs = await api('GET', '/api/nav/airway/' + encodeURIComponent(navState.open));
+    body.replaceChildren(
+      h('div', { class: 'row' }, ...navSearch(navState.airwayQ, nv('search'), (v) => { navState.airwayQ = v.trim(); navState.open = ''; renderNav(); })),
+      r.airways.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) : h('table', { style: 'margin-top:10px' },
+        h('tbody', null, r.airways.map((a) => [
+          h('tr', { class: 'clickable', onclick: () => { navState.open = navState.open === a.name ? '' : a.name; renderNav(); } },
+            h('td', null, h('strong', null, a.name)), h('td', { class: 'muted' }, `${a.segments} ${nv('airwaySegs')}`),
+            h('td', { class: 'actions' }, navState.open === a.name ? nv('hideSegs') : nv('showSegs'))),
+          navState.open === a.name && segs ? h('tr', null, h('td', { colspan: 3, class: 'muted' },
+            segs.segments.map((s) => `${s.from} > ${s.to}`).join('   '))) : null]))));
+  }
+
+  async function navPoints(body) {
+    const r = await api('GET', '/api/nav/points');
+    const e = navState.edit || { id: 0, ident: '', name: '', lat: '', lon: '', note: '' };
+    const field = (key, label, extra) => h('label', { class: 'fld' }, h('span', { class: 'muted' }, label),
+      h('input', Object.assign({ type: 'text', value: e[key] === undefined ? '' : String(e[key]), 'data-k': key }, extra || {})));
+    const form = h('div', { class: 'card', style: 'margin-bottom:12px' },
+      h('h3', null, e.id ? nv('editPoint') : nv('newPoint')),
+      h('div', { class: 'row' }, field('ident', nv('ident'), { maxlength: 12, style: 'width:120px' }), field('name', nv('name'), { style: 'width:200px' }),
+        field('lat', nv('lat'), { style: 'width:120px' }), field('lon', nv('lon'), { style: 'width:120px' }), field('note', nv('note'), { style: 'width:200px' })),
+      h('div', { class: 'row', style: 'margin-top:10px' },
+        h('button', { class: 'btn primary', onclick: async () => {
+          const v = {};
+          form.querySelectorAll('input[data-k]').forEach((i) => { v[i.getAttribute('data-k')] = i.value.trim(); });
+          const payload = { ident: v.ident, name: v.name, note: v.note, lat: Number(v.lat.replace(',', '.')), lon: Number(v.lon.replace(',', '.')) };
+          if (v.lat === '' || v.lon === '' || !isFinite(payload.lat) || !isFinite(payload.lon)) { toast(nv('failed') + ': ' + nv('lat') + ' / ' + nv('lon')); return; }
+          try {
+            if (e.id) await api('PUT', '/api/nav/points/' + e.id, payload); else await api('POST', '/api/nav/points', payload);
+            navState.edit = null;
+            renderNav();
+          } catch (err) { toast(nv('failed') + ': ' + err.message); }
+        } }, e.id ? nv('save') : nv('add')),
+        e.id ? h('button', { class: 'btn', onclick: () => { navState.edit = null; renderNav(); } }, nv('cancel')) : null));
+    body.replaceChildren(h('p', { class: 'muted' }, nv('pointsIntro')), form,
+      r.points.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) : h('table', null,
+        h('thead', null, h('tr', null, h('th', null, nv('ident')), h('th', null, nv('name')), h('th', null, nv('pos')), h('th', null, nv('note')), h('th'))),
+        h('tbody', null, r.points.map((p) => h('tr', null,
+          h('td', null, h('strong', null, p.ident)), h('td', null, p.name), h('td', { class: 'muted' }, fmtPos(p.lat, p.lon)), h('td', { class: 'muted' }, p.note),
+          h('td', { class: 'actions' },
+            h('button', { class: 'btn sm', onclick: () => { navState.edit = p; renderNav(); } }, nv('edit')), ' ',
+            h('button', { class: 'btn sm danger', onclick: async () => {
+              if (!confirm(nv('confirmDel'))) return;
+              await api('DELETE', '/api/nav/points/' + p.id); renderNav();
+            } }, nv('del'))))))));
+  }
+
   // ---- Guide: what every button of the in-simulator screen does. The simulator's browser shows no
   // tooltips, so this page is the legend: a drawing of the screen with numbers, and the list.
   const G = (d) => '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';

@@ -1,0 +1,382 @@
+package navdb
+
+import (
+	"database/sql"
+	"errors"
+	"strings"
+	"time"
+
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
+)
+
+// What is in this file serves the "Navigation" page of the manager: counting, listing, deleting what
+// is stored, the points the user makes, and the identifiers read from the simulator's files.
+
+// extraSchema is created whenever the database opens and is never dropped by a schema change:
+// user_point is the user's own data, and seed_ident only grows.
+const extraSchema = `
+CREATE TABLE IF NOT EXISTS user_point (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ident TEXT NOT NULL, name TEXT, lat REAL NOT NULL, lon REAL NOT NULL,
+  note TEXT, created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS user_point_ident ON user_point (ident);
+CREATE TABLE IF NOT EXISTS seed_ident (ident TEXT PRIMARY KEY, kind INTEGER, lat REAL, lon REAL);
+`
+
+// UserRegion is the region the points made by the user are given in a route.
+const UserRegion = "USR"
+
+// Counts is what the database holds.
+type Counts struct {
+	Airports      int `json:"airports"`
+	Runways       int `json:"runways"`
+	Procedures    int `json:"procedures"`
+	Waypoints     int `json:"waypoints"`
+	VORs          int `json:"vors"`
+	NDBs          int `json:"ndbs"`
+	Airways       int `json:"airways"`
+	Segments      int `json:"segments"`
+	IdentsChecked int `json:"identsChecked"`
+	IdentsEmpty   int `json:"identsEmpty"` // asked as a whole and the simulator knew nothing by that name
+	UserPoints    int `json:"userPoints"`
+	SeedIdents    int `json:"seedIdents"`
+	SeedPending   int `json:"seedPending"` // read from the files and not asked to the simulator yet
+}
+
+// Counts counts what is stored.
+func (d *DB) Counts() (Counts, error) {
+	var c Counts
+	one := func(dst *int, q string) error { return d.db.QueryRow(q).Scan(dst) }
+	for _, it := range []struct {
+		dst *int
+		q   string
+	}{
+		{&c.Airports, `SELECT COUNT(*) FROM airport`},
+		{&c.Runways, `SELECT COUNT(*) FROM runway`},
+		{&c.Procedures, `SELECT COUNT(*) FROM procedure`},
+		{&c.Waypoints, `SELECT COUNT(*) FROM fix WHERE kind = 'W'`},
+		{&c.VORs, `SELECT COUNT(*) FROM fix WHERE kind = 'V'`},
+		{&c.NDBs, `SELECT COUNT(*) FROM fix WHERE kind = 'N'`},
+		{&c.Airways, `SELECT COUNT(DISTINCT airway) FROM route WHERE airway <> ''`},
+		{&c.Segments, `SELECT COUNT(*) FROM route`},
+		{&c.IdentsChecked, `SELECT COUNT(*) FROM ident_check`},
+		{&c.IdentsEmpty, `SELECT COUNT(*) FROM ident_check WHERE found = 0`},
+		{&c.UserPoints, `SELECT COUNT(*) FROM user_point`},
+		{&c.SeedIdents, `SELECT COUNT(*) FROM seed_ident`},
+		{&c.SeedPending, `SELECT COUNT(*) FROM seed_ident s WHERE NOT EXISTS (SELECT 1 FROM ident_check c WHERE c.ident = s.ident)`},
+	} {
+		if err := one(it.dst, it.q); err != nil {
+			return c, err
+		}
+	}
+	return c, nil
+}
+
+// FixRow is one line of the list of stored fixes.
+type FixRow struct {
+	Ident  string  `json:"ident"`
+	Region string  `json:"region"`
+	Kind   string  `json:"kind"` // W, V or N
+	Name   string  `json:"name"`
+	Lat    float64 `json:"lat"`
+	Lon    float64 `json:"lon"`
+	FreqHz int     `json:"freqHz,omitempty"`
+	Routes int     `json:"routes"` // airway segments through it
+}
+
+// ListFixes lists stored fixes whose identifier starts with q (any when empty), of one kind or all.
+func (d *DB) ListFixes(q, kind string, limit, offset int) ([]FixRow, int, error) {
+	where := `WHERE 1=1`
+	var args []any
+	if q = strings.ToUpper(strings.TrimSpace(q)); q != "" {
+		where += ` AND f.ident LIKE ?`
+		args = append(args, q+"%")
+	}
+	if kind = strings.ToUpper(kind); kind == "W" || kind == "V" || kind == "N" {
+		where += ` AND f.kind = ?`
+		args = append(args, kind)
+	}
+	var total int
+	if err := d.db.QueryRow(`SELECT COUNT(*) FROM fix f `+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := d.db.Query(`SELECT f.ident, f.region, f.kind, f.name, f.lat, f.lon, f.freq_hz,
+		(SELECT COUNT(*) FROM route r WHERE r.ident = f.ident AND r.region = f.region AND r.kind = f.kind)
+		FROM fix f `+where+` ORDER BY f.ident, f.region, f.kind LIMIT ? OFFSET ?`, append(args, limit, offset)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := []FixRow{}
+	for rows.Next() {
+		var r FixRow
+		if err := rows.Scan(&r.Ident, &r.Region, &r.Kind, &r.Name, &r.Lat, &r.Lon, &r.FreqHz, &r.Routes); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, r)
+	}
+	return out, total, rows.Err()
+}
+
+// DeleteFix removes a stored fix and the airway segments through it. The identifier is no longer
+// "asked as a whole", so the next route that cites it asks the simulator again.
+func (d *DB) DeleteFix(ident, region, kind string) error {
+	ident, region, kind = strings.ToUpper(ident), strings.ToUpper(region), strings.ToUpper(kind)
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM route WHERE ident = ? AND region = ? AND kind = ?`, ident, region, kind); err != nil {
+		return err
+	}
+	res, err := tx.Exec(`DELETE FROM fix WHERE ident = ? AND region = ? AND kind = ?`, ident, region, kind)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	if _, err := tx.Exec(`DELETE FROM ident_check WHERE ident = ?`, ident); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// DeleteAirport removes a stored airport with its runways, frequencies and procedures.
+func (d *DB) DeleteAirport(icao string) error {
+	res, err := d.db.Exec(`DELETE FROM airport WHERE icao = ?`, strings.ToUpper(icao))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// AirwayRow is one airway with how many segments of it are stored.
+type AirwayRow struct {
+	Name     string `json:"name"`
+	Segments int    `json:"segments"`
+}
+
+// Airways lists the stored airways whose name starts with q.
+func (d *DB) Airways(q string, limit int) ([]AirwayRow, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	rows, err := d.db.Query(`SELECT airway, COUNT(*) FROM route WHERE airway <> '' AND airway LIKE ? GROUP BY airway ORDER BY airway LIMIT ?`,
+		strings.ToUpper(strings.TrimSpace(q))+"%", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []AirwayRow{}
+	for rows.Next() {
+		var r AirwayRow
+		if err := rows.Scan(&r.Name, &r.Segments); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// AirwaySegment is one stretch of an airway: from one fix to the next.
+type AirwaySegment struct {
+	From  string  `json:"from"`
+	To    string  `json:"to"`
+	Lat   float64 `json:"lat"`
+	Lon   float64 `json:"lon"`
+	ToLat float64 `json:"toLat"`
+	ToLon float64 `json:"toLon"`
+}
+
+// AirwaySegments lists the segments stored for one airway (each fix lists the stretch that follows it).
+func (d *DB) AirwaySegments(name string) ([]AirwaySegment, error) {
+	rows, err := d.db.Query(`SELECT r.ident, r.next_ident, f.lat, f.lon, r.next_lat, r.next_lon FROM route r
+		JOIN fix f ON f.ident = r.ident AND f.region = r.region AND f.kind = r.kind
+		WHERE r.airway = ? AND r.next_ident <> '' ORDER BY r.ident`, strings.ToUpper(name))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []AirwaySegment{}
+	for rows.Next() {
+		var s AirwaySegment
+		if err := rows.Scan(&s.From, &s.To, &s.Lat, &s.Lon, &s.ToLat, &s.ToLon); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// ---- points made by the user ----
+
+// UserPoint is a place the user made: it can be cited in a route like any waypoint.
+type UserPoint struct {
+	ID        int64   `json:"id"`
+	Ident     string  `json:"ident"`
+	Name      string  `json:"name"`
+	Lat       float64 `json:"lat"`
+	Lon       float64 `json:"lon"`
+	Note      string  `json:"note"`
+	CreatedAt string  `json:"createdAt"`
+}
+
+// ErrInvalid is returned for a user point that cannot be stored.
+var ErrInvalid = errors.New("invalid point")
+
+func cleanPoint(p *UserPoint) error {
+	p.Ident = strings.ToUpper(strings.TrimSpace(p.Ident))
+	if len(p.Ident) < 2 || len(p.Ident) > 12 {
+		return errors.Join(ErrInvalid, errors.New("the identifier must have 2 to 12 characters"))
+	}
+	for _, c := range p.Ident {
+		if !(c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+			return errors.Join(ErrInvalid, errors.New("the identifier takes letters and digits only"))
+		}
+	}
+	if p.Lat < -90 || p.Lat > 90 || p.Lon < -180 || p.Lon > 180 {
+		return errors.Join(ErrInvalid, errors.New("latitude or longitude out of range"))
+	}
+	p.Name = strings.TrimSpace(p.Name)
+	p.Note = strings.TrimSpace(p.Note)
+	return nil
+}
+
+// UserPoints lists the user's points whose identifier starts with q.
+func (d *DB) UserPoints(q string) ([]UserPoint, error) {
+	rows, err := d.db.Query(`SELECT id, ident, name, lat, lon, note, created_at FROM user_point WHERE ident LIKE ? ORDER BY ident, id`,
+		strings.ToUpper(strings.TrimSpace(q))+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []UserPoint{}
+	for rows.Next() {
+		var p UserPoint
+		var name, note, at sql.NullString
+		if err := rows.Scan(&p.ID, &p.Ident, &name, &p.Lat, &p.Lon, &note, &at); err != nil {
+			return nil, err
+		}
+		p.Name, p.Note, p.CreatedAt = name.String, note.String, at.String
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// CreateUserPoint stores a point.
+func (d *DB) CreateUserPoint(p UserPoint) (UserPoint, error) {
+	if err := cleanPoint(&p); err != nil {
+		return p, err
+	}
+	p.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	res, err := d.db.Exec(`INSERT INTO user_point (ident, name, lat, lon, note, created_at) VALUES (?,?,?,?,?,?)`,
+		p.Ident, p.Name, p.Lat, p.Lon, p.Note, p.CreatedAt)
+	if err != nil {
+		return p, err
+	}
+	p.ID, _ = res.LastInsertId()
+	return p, nil
+}
+
+// UpdateUserPoint changes a point.
+func (d *DB) UpdateUserPoint(p UserPoint) error {
+	if err := cleanPoint(&p); err != nil {
+		return err
+	}
+	res, err := d.db.Exec(`UPDATE user_point SET ident = ?, name = ?, lat = ?, lon = ?, note = ? WHERE id = ?`,
+		p.Ident, p.Name, p.Lat, p.Lon, p.Note, p.ID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DeleteUserPoint removes a point.
+func (d *DB) DeleteUserPoint(id int64) error {
+	res, err := d.db.Exec(`DELETE FROM user_point WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UserFixes returns the user's points with that identifier as fixes (waypoints in the region
+// UserRegion), so that the route resolver treats them like any other waypoint.
+func (d *DB) UserFixes(ident string) ([]navdata.Fix, error) {
+	list, err := d.UserPoints("")
+	if err != nil {
+		return nil, err
+	}
+	ident = strings.ToUpper(ident)
+	var out []navdata.Fix
+	for _, p := range list {
+		if p.Ident == ident {
+			out = append(out, navdata.Fix{Ident: p.Ident, Region: UserRegion, Kind: navdata.FixWaypoint, Lat: p.Lat, Lon: p.Lon, Name: p.Name})
+		}
+	}
+	return out, nil
+}
+
+// ---- identifiers read from the simulator's files ----
+
+// SeedIdent is an identifier found in the simulator's package files.
+type SeedIdent struct {
+	Ident string
+	Kind  int
+	Lat   float64
+	Lon   float64
+}
+
+// SaveSeed stores identifiers read from the files (the ones already stored are kept).
+func (d *DB) SaveSeed(list []SeedIdent) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	st, err := tx.Prepare(`INSERT OR IGNORE INTO seed_ident (ident, kind, lat, lon) VALUES (?,?,?,?)`)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	for _, s := range list {
+		if _, err := st.Exec(strings.ToUpper(s.Ident), s.Kind, s.Lat, s.Lon); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// SeedPending lists up to limit identifiers read from the files that were not asked for as a
+// whole yet, in alphabetical order.
+func (d *DB) SeedPending(limit int) ([]string, error) {
+	rows, err := d.db.Query(`SELECT s.ident FROM seed_ident s WHERE NOT EXISTS (SELECT 1 FROM ident_check c WHERE c.ident = s.ident)
+		ORDER BY s.ident LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}

@@ -171,6 +171,13 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   charts under the one being opened (up to 4 extra layers, stored in `oc.multi`). Adding or removing a chart in that mode never moves the view; only the eye button of a pinned row
   (`focusChart`) fits the map to that chart.
   In chart-only mode the route goes through the chart's georeference (nothing for view-only charts).
+  The manager has a **Navigation** tab (`renderNav`; API in `server/nav_admin.go`, queries in `navdb/admin.go`): counts, lists
+  with delete/refresh for airports, fixes and airways, the user's own points (`user_point`, region `USR`, they are found by
+  the route resolver like any waypoint and are never dropped by a schema change) and the **bulk load**: (1) `navseed` reads
+  the identifiers (record 0x0108) from the simulator's `fs24-fs-base-nav` / `genericairports` `.fsarchive` files (read-only,
+  only the names and rough positions are kept, table `seed_ident`); (2) every name is asked to the simulator as a whole
+  through SimConnect (`loadIdents`), 40 names per batch, which stores region, position and airways. Resumable (pending =
+  seed names without an `ident_check`). It refuses to mark names as "unknown" until the simulator has answered something.
   The manager has a **Guide** tab (`renderGuide` in `manager.js`, data in `GUIDE`): the sim's browser shows no
   tooltips, so every button of the viewer is described there with its icon and a numbered drawing. When a button is
   added, changed or removed in the viewer, update `GUIDE` (positions are on the 468 x 696 sim screen).
