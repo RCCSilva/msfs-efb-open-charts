@@ -46,6 +46,8 @@
       tabCatalog: 'Visual charts (catalog)', tabPackage: 'Aerodromes (package)', tabFiles: 'Add files',
       stepsFiles: 'Add what you downloaded', capCatalog: 'Catalog', capPackage: 'Package', capLocate: 'By date', capUpload: 'Upload',
       about: 'About', setup: 'Setup', map: 'Map', guide: 'Guide',
+      whyManualTitle: 'Why do I have to download the charts myself?',
+      whyManual: 'Most chart providers do not allow redistribution, so we cannot offer the charts already processed and ready. Many also forbid any kind of bulk download or scraping script. To stay within the terms of use, we are being conservative for now: you download the files yourself and Open Charts processes them on your computer. We may look for a better way in the future.',
       guideIntro: 'The simulator screen shows no hints when you hover a button, so here is what each one does. The numbers on the drawing match the list.',
       guideTop: 'Top bar', guideLeft: 'Left column: moving the view', guideRight: 'Right column: how the chart is shown', guideLists: 'Inside the lists',
       diagTitle: 'Viewer browsers', diagNone: 'No viewer has reported yet. Open the viewer (in the simulator or in a browser) and come back.',
@@ -143,6 +145,8 @@
       tabCatalog: 'Cartas visuais (catálogo)', tabPackage: 'Aeródromos (pacote)', tabFiles: 'Adicionar arquivos',
       stepsFiles: 'Adicione o que você baixou', capCatalog: 'Catálogo', capPackage: 'Pacote', capLocate: 'Por data', capUpload: 'Envio',
       about: 'Sobre', setup: 'Configuração', map: 'Mapa', guide: 'Guia',
+      whyManualTitle: 'Por que eu tenho que baixar as cartas manualmente?',
+      whyManual: 'A maior parte dos provedores não permite a redistribuição, o que impede a gente de já entregar as cartas processadas e prontas. Muitos também proíbem qualquer tipo de download em massa ou script de extração automática. Para não infringir os termos de uso, vamos ser conservadores por enquanto: você baixa os arquivos e o Open Charts os processa no seu computador. No futuro podemos avaliar uma alternativa melhor.',
       guideIntro: 'A tela do simulador não mostra dicas ao passar o mouse nos botões, então aqui está o que cada um faz. Os números do desenho batem com a lista.',
       guideTop: 'Barra de cima', guideLeft: 'Coluna da esquerda: mexer na vista', guideRight: 'Coluna da direita: como a carta aparece', guideLists: 'Dentro das listas',
       diagTitle: 'Navegadores do visualizador', diagNone: 'Nenhum visualizador se apresentou ainda. Abra o visualizador (no simulador ou num navegador) e volte aqui.',
@@ -643,6 +647,7 @@
     const list = await api('GET', '/api/sources');
     const capName = { catalog: 'capCatalog', package: 'capPackage', locate: 'capLocate' };
     view.replaceChildren(h('h2', null, t('sources')),
+      h('div', { class: 'warnbox', style: 'margin-bottom:16px' }, h('strong', null, t('whyManualTitle')), h('div', null, t('whyManual'))),
       h('div', { class: 'cols' }, ...list.map((s) => h('button', { class: 'card src', onclick: () => go('#source/' + encodeURIComponent(s.id)) },
         h('h3', null, tx(s.name)),
         h('div', { class: 'muted' }, tx(s.description)),
