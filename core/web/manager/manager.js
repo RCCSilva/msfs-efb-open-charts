@@ -1409,12 +1409,20 @@
     const sum = await api('GET', '/api/nav/summary');
     const c = sum.counts;
     const job = sum.job;
-    const stat = (label, n) => h('div', { class: 'stat' }, h('div', { class: 'statn' }, fmtNum(n)), h('div', { class: 'muted' }, label));
+    const live = {};   // the parts of the page that follow the load without redrawing it
+    const stat = (label, n, key) => {
+      const num = h('div', { class: 'statn' }, fmtNum(n));
+      if (key) live[key] = num;
+      return h('div', { class: 'stat' }, num, h('div', { class: 'muted' }, label));
+    };
 
     const pct = job.total > 0 ? Math.min(100, Math.round(job.done * 100 / job.total)) : 0;
+    const barFill = h('i', { style: `width:${pct}%` });
+    const phaseText = h('div', { class: 'muted' }, navPhaseText(job, pct));
+    const pendingBadge = h('span', { class: 'badge' }, navPendingText(c));
+    live.bar = barFill; live.phase = phaseText; live.pending = pendingBadge;
     const progress = h('div', null,
-      h('div', { class: 'bar' }, h('i', { style: `width:${pct}%` })),
-      h('div', { class: 'muted' }, `${nv('phase')[job.phase] || job.phase}${job.total ? ` - ${fmtNum(job.done)} / ${fmtNum(job.total)} (${pct}%)` : ''}`),
+      h('div', { class: 'bar' }, barFill), phaseText,
       job.message ? h('div', { class: 'badge bad', style: 'margin-top:6px' }, job.message) : null);
 
     const loadCard = h('div', { class: 'card' },
@@ -1423,7 +1431,7 @@
       h('p', null,
         sum.files.length ? h('span', { class: 'badge ok' }, `${nv('filesFound')}: ${sum.files.length}`) : h('span', { class: 'badge warn' }, nv('filesNone')),
         !sum.simLink ? h('span', { class: 'badge bad' }, nv('noLink')) : null,
-        c.seedIdents ? h('span', { class: 'badge' }, `${fmtNum(c.seedPending)} ${nv('pending')} (${fmtNum(c.seedIdents)} ${nv('total')})`) : null),
+        c.seedIdents ? pendingBadge : null),
       progress,
       h('div', { class: 'row', style: 'margin-top:10px' },
         job.running
@@ -1445,9 +1453,10 @@
     const body = h('div', { class: 'card' });
     view.replaceChildren(h('h2', null, nv('title')), h('p', { class: 'muted' }, nv('intro')),
       h('div', { class: 'card' }, h('h3', null, nv('stats')),
-        h('div', { class: 'stats' }, stat(nv('airports'), c.airports), stat(nv('runways'), c.runways), stat(nv('procedures'), c.procedures),
-          stat(nv('waypoints'), c.waypoints), stat(nv('vors'), c.vors), stat(nv('ndbs'), c.ndbs),
-          stat(nv('airways'), c.airways), stat(nv('segments'), c.segments), stat(nv('idents'), c.identsChecked), stat(nv('myPoints'), c.userPoints))),
+        h('div', { class: 'stats' }, stat(nv('airports'), c.airports, 'airports'), stat(nv('runways'), c.runways, 'runways'),
+          stat(nv('procedures'), c.procedures, 'procedures'), stat(nv('waypoints'), c.waypoints, 'waypoints'), stat(nv('vors'), c.vors, 'vors'),
+          stat(nv('ndbs'), c.ndbs, 'ndbs'), stat(nv('airways'), c.airways, 'airways'), stat(nv('segments'), c.segments, 'segments'),
+          stat(nv('idents'), c.identsChecked, 'identsChecked'), stat(nv('myPoints'), c.userPoints, 'userPoints'))),
       loadCard, tabs, body);
 
     if (navState.tab === 'airports') await navAirports(body);
@@ -1455,8 +1464,28 @@
     else if (navState.tab === 'airways') await navAirways(body);
     else await navPoints(body);
 
-    // while a load runs the page follows it
-    if (job.running) navTimer = setTimeout(() => { if (parseRoute().name === 'nav') renderNav(); }, 1500);
+    // while a load runs the numbers follow it in place (the page is not redrawn: that lost the scroll
+    // position and whatever was being typed); when it ends the page is drawn once more
+    if (job.running) navTimer = setTimeout(() => navTick(live), 1500);
+  }
+
+  function navPhaseText(job, pct) {
+    return `${nv('phase')[job.phase] || job.phase}${job.total ? ` - ${fmtNum(job.done)} / ${fmtNum(job.total)} (${pct}%)` : ''}`;
+  }
+  const navPendingText = (c) => `${fmtNum(c.seedPending)} ${nv('pending')} (${fmtNum(c.seedIdents)} ${nv('total')})`;
+
+  async function navTick(live) {
+    if (parseRoute().name !== 'nav') return;
+    let sum;
+    try { sum = await api('GET', '/api/nav/summary'); } catch (e) { navTimer = setTimeout(() => navTick(live), 3000); return; }
+    if (parseRoute().name !== 'nav') return;
+    if (!sum.job.running) { renderNav(); return; }
+    for (const k of Object.keys(sum.counts)) if (live[k]) live[k].textContent = fmtNum(sum.counts[k]);
+    const pct = sum.job.total > 0 ? Math.min(100, Math.round(sum.job.done * 100 / sum.job.total)) : 0;
+    live.bar.style.width = pct + '%';
+    live.phase.textContent = navPhaseText(sum.job, pct);
+    live.pending.textContent = navPendingText(sum.counts);
+    navTimer = setTimeout(() => navTick(live), 1500);
   }
 
   function navSearch(value, placeholder, onGo) {
