@@ -1800,11 +1800,11 @@
   // x, y, w, h: where the button is on the 468 x 696 screen of the simulator's tablet (lists: no position)
   const GUIDE = [
     { key: 'box', x: 10, y: 38, w: 109, h: 44, group: 'top',
-      en: ['Route box', 'Shows the route in use (origin > destination). Tap it to open the list of its places and, below it, your saved routes (written in the Routes tab of the manager): one tap loads one. With no route and none saved, it opens the box to paste one.'],
-      pt: ['Caixa da rota', 'Mostra a rota em uso (origem > destino). Toque para abrir a lista dos pontos e, abaixo, as suas rotas salvas (criadas na aba Rotas do gerenciador): um toque carrega uma. Sem rota e sem nenhuma salva, abre a caixa para colar uma.'] },
+      en: ['Route box', 'Shows the route in use (origin > destination). Tap the text to open the box where you write, paste or change the route as text.'],
+      pt: ['Caixa da rota', 'Mostra a rota em uso (origem > destino). Toque no texto para abrir a caixa onde você escreve, cola ou altera a rota como texto.'] },
     { key: 'route', x: 125, y: 38, w: 44, h: 44, group: 'top',
-      en: ['Paste a route', 'Opens the box to paste a route the way pilots write it (SBSJ BOBI3A DAGUB UZ6 SBGR). The map draws it and the list shows each place.'],
-      pt: ['Colar uma rota', 'Abre a caixa para colar uma rota do jeito que o piloto escreve (SBSJ BOBI3A DAGUB UZ6 SBGR). O mapa desenha e a lista mostra cada ponto.'] },
+      en: ['Route places', 'Opens the list of the places of the route (each with a menu: Direct to, Remove) and, below it, your saved routes from the Routes tab of the manager: one tap loads one.'],
+      pt: ['Pontos da rota', 'Abre a lista dos pontos da rota (cada um com um menu: Direto para, Remover) e, abaixo, as suas rotas salvas na aba Rotas do gerenciador: um toque carrega uma.'] },
     { key: 'pin', x: 175, y: 38, w: 90, h: 44, group: 'top',
       en: ['Pin / Pinned', 'Adds the chart on screen to your list of pinned charts (the button then reads "Pinned"). Tap again to unpin.'],
       pt: ['Fixar / Fixada', 'Coloca a carta que está na tela na sua lista de cartas fixadas (o botão passa a dizer "Fixada"). Toque de novo para desafixar.'] },

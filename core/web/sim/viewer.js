@@ -39,7 +39,7 @@
       noChartsAirport: 'No charts of this airport in the library.', remove: 'Remove',
       routeWorking: 'Reading the route...', routeResolve: 'Resolve', routeFailed: 'Could not read the route',
       routeClear: 'Clear', routeCancel: 'Close', routeDirect: 'Direct to', routeRemove: 'Remove', routeMenu: 'Options',
-      routeBoxTitle: 'Paste the route: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
+      routeBoxTitle: 'Write or paste the route: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       pin: 'Pin', pinned: 'Pinned',
       modeOverlay: 'On map', modeChart: 'Chart only',
       waitSim: 'Waiting for MSFS (SimConnect)...',
@@ -74,7 +74,7 @@
       noChartsAirport: 'Nenhuma carta deste aeroporto na biblioteca.', remove: 'Remover',
       routeWorking: 'Lendo a rota...', routeResolve: 'Resolver', routeFailed: 'Não foi possível ler a rota',
       routeClear: 'Limpar', routeCancel: 'Fechar', routeDirect: 'Direto para', routeRemove: 'Remover', routeMenu: 'Opções',
-      routeBoxTitle: 'Cole a rota: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
+      routeBoxTitle: 'Escreva ou cole a rota: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       pin: 'Fixar', pinned: 'Fixada',
       modeOverlay: 'No mapa', modeChart: 'Só a carta',
       waitSim: 'Aguardando o MSFS (SimConnect)...',
@@ -1884,12 +1884,10 @@
   // button, or when the field is left
   qEl.addEventListener('paste', function () { window.setTimeout(resolveRoute, 0); });
   qEl.addEventListener('keydown', function (ev) { if (ev.keyCode === 13 && !ev.shiftKey) { ev.preventDefault(); resolveRoute(); } });
-  el('btn-route').addEventListener('click', openRouteBox);
-  // the box shows the route: a tap opens the list of its places (or, with no route, the box to paste one)
-  routeBoxBtn.addEventListener('click', function () {
-    if (!routePoints.length && !savedRoutes.length) { openRouteBox(); return; }
-    setLeftOpen(!leftOpen);
-  });
+  // the text of the route: a tap opens the box to write or change it; the icon beside it opens the
+  // list of its places (and the saved routes)
+  el('btn-route').addEventListener('click', function () { setLeftOpen(!leftOpen); });
+  routeBoxBtn.addEventListener('click', openRouteBox);
   routeGoBtn.addEventListener('click', resolveRoute);
   el('route-cancel').addEventListener('click', closeRouteBox);
   el('route-clear').addEventListener('click', clearWholeRoute);
