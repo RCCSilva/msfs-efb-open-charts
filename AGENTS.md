@@ -164,9 +164,11 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   to paste a route in (resolved by `POST /api/route/resolve` on Resolve, Enter, paste, or when the EFB's text dialog ends).
   Three drawers keep the screen for the map: the **route** (left; tap the box): one container per place with a three-dot
   menu, *Direct to* (drops everything before) and *Remove*, edits redraw the line and are saved (localStorage
-  `oc.routepts`); the **pinned charts** (right; pin button): vertical, grouped by airport, with the group chooser; the
+  `oc.routepts`); the **pinned charts** (right; pin button): vertical, grouped by airport (groups exist in the back end, the viewer only uses the current one and has no group UI); the
   **search** (right; magnifier): with a route and nothing typed it lists the charts of the route's airports (those that
-  match a procedure of the route first), typing searches the whole library. Tapping the map closes the drawers.
+  match a procedure of the route first), typing searches the whole library. Tapping the map closes the drawers. Drawers are at most half of the screen; their list scrolls inside, with up/down
+  buttons (the sim's screen is hard to scroll by touch). The "several charts" button (map view only) keeps the previous
+  charts under the one being opened (up to 4 extra layers, stored in `oc.multi`).
   In chart-only mode the route goes through the chart's georeference (nothing for view-only charts).
 - **AIRAC cycle:** one international calendar (`naming/airac.go`); a chart's cycle is derived from its date.
 - **Name patterns (My PDFs):** the user may write file-name templates (`{icao}_{type}_{title}_{date:YYYYMMDD}`,

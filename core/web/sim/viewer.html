@@ -37,8 +37,8 @@
       <button id="btn-route" type="button" class="tool" aria-label="Route">
         <svg viewBox="0 0 32 32"><path d="M5 25l8-12 6 7 8-12"/><circle cx="5" cy="25" r="2.2"/><circle cx="27" cy="8" r="2.2"/></svg>
       </button>
-      <button id="btn-star" type="button" class="tool" aria-label="Pin to group">
-        <svg viewBox="0 0 32 32"><path d="M11 4h10l-1 9 4 5H8l4-5z"/><path d="M16 18v10"/></svg>
+      <button id="btn-star" type="button" class="tool pinbig" aria-label="Pin chart">
+        <svg viewBox="0 0 32 32"><path d="M11 4h10l-1 9 4 5H8l4-5z"/><path d="M16 18v10"/></svg><span id="star-label"></span>
       </button>
     </div>
   </div>
@@ -68,8 +68,14 @@
       <button id="rd-paste" type="button" class="rbtn"></button>
       <button id="rd-close" type="button" class="dclose" aria-label="Close"><svg viewBox="0 0 32 32"><path d="M9 9l14 14M23 9L9 23"/></svg></button>
     </div>
-    <div id="routehead" class="routehead"></div>
-    <div id="routechips" class="dlist"></div>
+    <div id="rd-scroll" class="dscroll">
+      <div id="routehead" class="routehead"></div>
+      <div id="routechips" class="dlist"></div>
+    </div>
+    <div class="dnav">
+      <button id="rd-up" type="button" class="navbtn" aria-label="Up"><svg viewBox="0 0 32 32"><path d="M6 21l10-11 10 11"/></svg></button>
+      <button id="rd-down" type="button" class="navbtn" aria-label="Down"><svg viewBox="0 0 32 32"><path d="M6 11l10 11 10-11"/></svg></button>
+    </div>
   </div>
 
   <!-- Right drawer: the pinned charts of the group, or the search for charts -->
@@ -78,9 +84,8 @@
       <span id="cd-title" class="dtitle"></span>
       <button id="cd-close" type="button" class="dclose" aria-label="Close"><svg viewBox="0 0 32 32"><path d="M9 9l14 14M23 9L9 23"/></svg></button>
     </div>
+    <div id="cd-scroll" class="dscroll">
     <div id="cd-pinned" class="hidden">
-      <button id="btn-group" type="button" class="groupbtn"></button>
-      <div id="groups" class="panel hidden"></div>
       <div id="pins" class="dlist"></div>
     </div>
     <div id="cd-search" class="hidden">
@@ -92,6 +97,11 @@
       </div>
       <div id="kbd2" class="kbd hidden"></div>
       <div id="results" class="dlist"></div>
+    </div>
+    </div>
+    <div class="dnav">
+      <button id="cd-up" type="button" class="navbtn" aria-label="Up"><svg viewBox="0 0 32 32"><path d="M6 21l10-11 10 11"/></svg></button>
+      <button id="cd-down" type="button" class="navbtn" aria-label="Down"><svg viewBox="0 0 32 32"><path d="M6 11l10 11 10-11"/></svg></button>
     </div>
   </div>
 
@@ -137,6 +147,10 @@
     <!-- How much of the chart shows over the map: one button that steps through the levels -->
     <button id="btn-blend" type="button" aria-label="Chart over map">
       <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11"/><circle class="lvl" cx="16" cy="16" r="7.5" stroke="none"/></svg>
+    </button>
+    <!-- Several charts on the map at once (only with the map) -->
+    <button id="btn-multi" type="button" aria-label="Several charts">
+      <svg viewBox="0 0 32 32"><rect x="4" y="9" width="17" height="17" rx="1.5"/><path d="M10 5h17.5v17.5"/><path d="M9 15h8M9 20h5"/></svg>
     </button>
   </div>
 

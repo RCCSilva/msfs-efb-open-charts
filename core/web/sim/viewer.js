@@ -41,7 +41,6 @@
       routeBoxTitle: 'Paste the route: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       pin: 'Pin', pinned: 'Pinned',
       modeOverlay: 'On map', modeChart: 'Chart only',
-      group: 'Group', newGroup: 'New group',
       waitSim: 'Waiting for MSFS (SimConnect)...',
       waitPos: 'Connected - waiting for position (start a flight)',
       unreachable: 'Server unreachable',
@@ -55,8 +54,9 @@
       fixed: 'FIXED',
       simNote: 'FLIGHT SIMULATION ONLY - NOT FOR REAL-WORLD AVIATION',
       regionalTitle: 'Regional zoom (about 30 km around the aircraft)',
-      starPin: 'Pin this chart to the group', starUnpin: 'Remove this chart from the group',
-      thisGroup: 'Charts in this group', noPinsHere: 'No charts pinned in this group.', remove: 'Remove',
+      starPin: 'Pin this chart', starUnpin: 'Unpin this chart', remove: 'Unpin',
+      multiTitle: 'Several charts on the map', multiOn: 'Several charts: on', multiOff: 'Several charts: off',
+      scrollUp: 'Up', scrollDown: 'Down',
       viewWithMap: 'With map', viewChartOnly: 'Chart only', blendMap: 'Map', blendChart: 'Chart',
       blendTitle: 'Chart over the map', otherGroup: 'Other',
       prevChart: 'Scroll left', nextChart: 'Scroll right', closeChart: 'Close chart',
@@ -75,7 +75,6 @@
       routeBoxTitle: 'Cole a rota: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       pin: 'Fixar', pinned: 'Fixada',
       modeOverlay: 'No mapa', modeChart: 'Só a carta',
-      group: 'Grupo', newGroup: 'Novo grupo',
       waitSim: 'Aguardando o MSFS (SimConnect)...',
       waitPos: 'Conectado - aguardando posição (inicie um voo)',
       unreachable: 'Servidor inacessível',
@@ -89,8 +88,9 @@
       fixed: 'FIXO',
       simNote: 'APENAS SIMULAÇÃO AÉREA - PROIBIDO O USO EM AVIAÇÃO REAL',
       regionalTitle: 'Zoom regional (cerca de 30 km ao redor da aeronave)',
-      starPin: 'Fixar esta carta no grupo', starUnpin: 'Tirar esta carta do grupo',
-      thisGroup: 'Cartas deste grupo', noPinsHere: 'Nenhuma carta fixada neste grupo.', remove: 'Tirar',
+      starPin: 'Fixar esta carta', starUnpin: 'Desafixar esta carta', remove: 'Desafixar',
+      multiTitle: 'Varias cartas no mapa', multiOn: 'Varias cartas: ligado', multiOff: 'Varias cartas: desligado',
+      scrollUp: 'Subir', scrollDown: 'Descer',
       viewWithMap: 'Com mapa', viewChartOnly: 'S\u00f3 a carta', blendMap: 'Mapa', blendChart: 'Carta',
       blendTitle: 'Carta sobre o mapa', otherGroup: 'Outras',
       prevChart: 'Rolar para a esquerda', nextChart: 'Rolar para a direita', closeChart: 'Fechar carta',
@@ -102,11 +102,10 @@
   var qEl = el('q');
   var pinsEl = el('pins');
   var resultsEl = el('results');
-  var groupsEl = el('groups');
   var kbdEl = el('kbd');
   var statusEl = el('status');
   var followBtn = el('btn-follow');
-  var groupBtn = el('btn-group');
+  var multiBtn = el('btn-multi');
   var viewOverlayBtn = el('view-overlay');
   var viewChartBtn = el('view-chart');
   var blendBtn = el('btn-blend');
@@ -181,6 +180,11 @@
   var marker = null;
   var planeRot = null;
   var chartLayer = null;
+  // several charts on the map at once (map view only): the others are under the active one
+  var multi = store('multi') === '1';
+  var extras = [];              // [{ meta, img, level }], oldest first
+  var extraLayers = [];
+  var MAX_EXTRAS = 4;
   var active = null;            // { meta, img }
   var groups = { current: '', groups: [] };
   var pinned = [];              // chart objects of the current group, in pin order
@@ -529,6 +533,7 @@
       map = null;
     }
     chartLayer = null;
+    extraLayers = [];
     marker = null;
     planeRot = null;
     lastKey = null;
@@ -619,6 +624,14 @@
       }
       map.setMaxBounds(b.pad(0.75));
     } else {
+      if (multi) {
+        extras.forEach(function (e, i) {
+          extraLayers.push(new WarpLayer(e.meta, e.img, {
+            tileSize: TILE, opacity: OPACITY_STEPS[opacityIdx], minZoom: OVERLAY_MIN_ZOOM,
+            maxZoom: OVERLAY_MAX_ZOOM, updateWhenIdle: false, keepBuffer: 1, zIndex: 5 + i
+          }).addTo(map));
+        });
+      }
       chartLayer = new WarpLayer(meta, active.img, {
         tileSize: TILE, opacity: OPACITY_STEPS[opacityIdx], minZoom: OVERLAY_MIN_ZOOM,
         maxZoom: OVERLAY_MAX_ZOOM, updateWhenIdle: false, keepBuffer: 1, zIndex: 10
@@ -878,7 +891,6 @@
 
   function openChart(id, fallback) {
     setStatus(t('loading') + '...', 'warn');
-    hidePanels();
     var loadToken = {};
     showLoading(loadToken);
     window.setTimeout(function () { hideLoading(loadToken); }, 120000);   // never leave it up forever
@@ -902,6 +914,7 @@
         timing.w = img.naturalWidth;
         timing.h = img.naturalHeight;
         timing.level = level;
+        keepPreviousOnMap(meta);
         active = { meta: meta, img: img, level: level };
         store('chart', id);
         setFollow(!debugAt);
@@ -1022,8 +1035,6 @@
     getJson('/api/groups', function (st) {
       if (st) groups = st;
       var fl = currentGroup();
-      groupBtn.textContent = fl ? fl.name : '-';
-      groupBtn.title = t('group');
       if (!fl || !fl.pins.length) {
         pinned = [];
         lastSignature = signatureOf(groups, []);
@@ -1096,6 +1107,9 @@
     viewChartBtn.className = mode === 'chart' ? 'active' : '';
     // visibility, not display: the slot stays, so the buttons above never move when the mode changes
     blendBtn.style.visibility = mode === 'overlay' ? '' : 'hidden';
+    multiBtn.style.visibility = mode === 'overlay' ? '' : 'hidden';
+    multiBtn.className = multi ? 'active' : '';
+    multiBtn.title = t('multiTitle') + ': ' + (multi ? t('multiOn') : t('multiOff'));
     var lvl = blendBtn.querySelector('.lvl');
     if (lvl) lvl.setAttribute('fill-opacity', String(OPACITY_STEPS[opacityIdx]));
     blendBtn.title = t('blendTitle') + ': ' + Math.round(OPACITY_STEPS[opacityIdx] * 100) + '%';
@@ -1122,6 +1136,7 @@
     opacityIdx = idx;
     store('blend2', String(idx));
     if (chartLayer && chartLayer.setOpacity && mode === 'overlay') chartLayer.setOpacity(OPACITY_STEPS[opacityIdx]);
+    extraLayers.forEach(function (l) { if (l.setOpacity) l.setOpacity(OPACITY_STEPS[opacityIdx]); });
     updateDisplayPanel();
   }
 
@@ -1164,6 +1179,16 @@
   // way out; the viewer remembers that nothing was open.
   function closeChart() {
     if (!active) return;
+    if (mode !== 'overlay') extras = [];
+    if (extras.length) {   // the chart under it comes up
+      active = extras.pop();
+      store('chart', active.meta.id);
+      buildMap();
+      renderPins();
+      updateCloseButton();
+      saveState();
+      return;
+    }
     active = null;
     lastKey = null;
     store('chart', '');
@@ -1182,12 +1207,47 @@
     closeBtn.style.visibility = active ? '' : 'hidden';   // keeps its slot (see updateDisplayPanel)
   }
 
-  // The star pins/unpins the chart on screen for the current group.
+  // ---- several charts on the map ----
+  function isOnMap(id) {
+    for (var i = 0; i < extras.length; i++) if (extras[i].meta.id === id) return true;
+    return false;
+  }
+
+  // With "several charts" on, the chart that was on screen stays under the one being opened.
+  function keepPreviousOnMap(next) {
+    extras = extras.filter(function (e) { return e.meta.id !== next.id; });
+    if (!multi || mode !== 'overlay' || !active || next.unreferenced || active.meta.unreferenced ||
+        active.meta.id === next.id || active.level !== 1) return;
+    extras = extras.filter(function (e) { return e.meta.id !== active.meta.id; });
+    extras.push(active);
+    while (extras.length > MAX_EXTRAS) extras.shift();
+  }
+
+  function toggleMulti() {
+    multi = !multi;
+    store('multi', multi ? '1' : '0');
+    if (!multi) extras = [];
+    if (mode === 'overlay' && active) buildMap();
+    updateDisplayPanel();
+    renderPins();
+  }
+
+  // The pushpin of a pin button: filled when the chart is pinned.
+  var PIN_SVG = '<svg viewBox="0 0 32 32"><path d="M11 4h10l-1 9 4 5H8l4-5z"/><path d="M16 18v10"/></svg>';
+  function pinButton(on, title, handler) {
+    var b = button('cx' + (on ? ' on' : ''), '', handler);
+    b.innerHTML = PIN_SVG;
+    b.title = title;
+    return b;
+  }
+
+  // The button of the bar pins/unpins the chart on screen.
   function updateStar() {
     var on = !!active && isPinned(active.meta.id);
     starBtn.disabled = !active;
-    starBtn.className = 'tool' + (on ? ' on' : '');
+    starBtn.className = 'tool pinbig' + (on ? ' on' : '');
     starBtn.title = on ? t('starUnpin') : t('starPin');
+    el('star-label').textContent = on ? t('pinned') : t('pin');
   }
 
   // ---- the drawers: the route on the left; on the right the pinned charts or the search ----
@@ -1260,16 +1320,14 @@
       g.items.forEach(function (c) {
         var isActive = !!active && active.meta.id === c.id;
         var row = document.createElement('div');
-        row.className = 'crow' + (isActive ? ' active' : '');
+        row.className = 'crow' + (isActive ? ' active' : '') + (isOnMap(c.id) ? ' onmap' : '');
         row.title = label(c.name);
         row.appendChild(document.createTextNode(chipLabel(c)));
         row.addEventListener('click', function () { openFromDrawer(c.id); });
-        var x = button('cx', 'x', function (ev) {
+        row.appendChild(pinButton(true, t('remove'), function (ev) {
           if (ev.stopPropagation) ev.stopPropagation();
           togglePin({ id: c.id }, function () { renderPins(); });
-        });
-        x.title = t('remove');
-        row.appendChild(x);
+        }));
         pinsEl.appendChild(row);
       });
     });
@@ -1299,19 +1357,17 @@
   function chartRow(c, onChange, relevant) {
     var isActive = !!active && active.meta.id === c.id;
     var row = document.createElement('div');
-    row.className = 'crow' + (isActive ? ' active' : '') + (relevant ? ' relevant' : '');
+    row.className = 'crow' + (isActive ? ' active' : '') + (relevant ? ' relevant' : '') + (isOnMap(c.id) ? ' onmap' : '');
     row.appendChild(document.createTextNode(chipLabel(c)));
     var small = document.createElement('span');
     small.className = 'csmall';
     small.textContent = label(c.name);
     row.appendChild(small);
     row.addEventListener('click', function () { openFromDrawer(c.id); });
-    var pin = button('cx', isPinned(c.id) ? '*' : '+', function (ev) {
+    row.appendChild(pinButton(isPinned(c.id), isPinned(c.id) ? t('remove') : t('pin'), function (ev) {
       if (ev.stopPropagation) ev.stopPropagation();
       togglePin(c, function () { if (onChange) onChange(); });
-    });
-    pin.title = isPinned(c.id) ? t('pinned') : t('pin');
-    row.appendChild(pin);
+    }));
     return row;
   }
 
@@ -1612,68 +1668,6 @@
     }, 90000);
   }
 
-  function hidePanels() {
-    groupsEl.className = 'panel hidden';
-  }
-
-  // ---- groups panel ----
-  function showGroups() {
-    if (groupsEl.className.indexOf('hidden') < 0) { groupsEl.className = 'panel hidden'; return; }
-    drawGroups();
-  }
-
-  function drawGroups() {
-    clear(groupsEl);
-    groupsEl.className = 'panel';
-    groups.groups.forEach(function (f) {
-      var row = document.createElement('div');
-      row.className = 'item' + (f.id === groups.current ? ' current' : '');
-      row.textContent = f.name + '  (' + f.pins.length + ')';
-      row.addEventListener('click', function () {
-        request('PUT', '/api/groups/current', { id: f.id }, function () {
-          groupsEl.className = 'panel hidden';
-          loadGroups();
-        });
-      });
-      groupsEl.appendChild(row);
-    });
-    var add = document.createElement('div');
-    add.className = 'item';
-    add.textContent = '+ ' + t('newGroup');
-    add.addEventListener('click', function () {
-      var n = groups.groups.length + 1;
-      request('POST', '/api/groups', { name: t('group') + ' ' + n }, function () {
-        groupsEl.className = 'panel hidden';
-        loadGroups();
-      });
-    });
-    groupsEl.appendChild(add);
-
-    // The charts pinned to the current group, each with a button to take it out.
-    var head = document.createElement('div');
-    head.className = 'item head';
-    head.textContent = t('thisGroup') + ' (' + pinned.length + ')';
-    groupsEl.appendChild(head);
-    if (!pinned.length) {
-      var none = document.createElement('div');
-      none.className = 'empty';
-      none.textContent = t('noPinsHere');
-      groupsEl.appendChild(none);
-    }
-    pinned.forEach(function (c) {
-      var r = document.createElement('div');
-      r.className = 'item' + (active && active.meta.id === c.id ? ' current' : '');
-      var x = button('pinbtn', t('remove'), function (ev) {
-        if (ev.stopPropagation) ev.stopPropagation();
-        togglePin({ id: c.id }, function () { drawGroups(); });
-      });
-      r.appendChild(x);
-      r.appendChild(document.createTextNode(label(c.name)));
-      r.addEventListener('click', function () { openChart(c.id); });
-      groupsEl.appendChild(r);
-    });
-  }
-
   // ---- on-screen keyboard (typing may not reach the iframe inside the EFB) ----
   function buildKeyboard(container, getInput, onChange, onOk) {
     var change = function () { if (onChange) onChange(); };
@@ -1776,12 +1770,10 @@
     // taps inside the bar, a drawer, the route box and the buttons of the drawers do not close anything
     if (inside(n, barEl) || inside(n, routeDrawerEl) || inside(n, chartDrawerEl) || inside(n, routeModalEl) ||
         inside(n, stripBtn) || inside(n, searchBtn) || (routeMenuEl && inside(n, routeMenuEl))) return;
-    hidePanels();
     closeDrawers();
   }
   document.addEventListener('mousedown', closeListsFromOutside, true);
   document.addEventListener('touchstart', closeListsFromOutside, true);
-  window.addEventListener('blur', hidePanels);
   // Inside the EFB the page runs in a frame: tell the app when the search field is in use, so the
   // simulator sends the typed keys to it and not to its own key bindings (gear, flaps, camera...).
   var typing = qEl;   // the field that has the focus: the route or the chart search
@@ -1811,7 +1803,18 @@
     var hidden = kbdEl.className.indexOf('hidden') >= 0;
     kbdEl.className = hidden ? 'kbd' : 'kbd hidden';
   });
-  groupBtn.addEventListener('click', showGroups);
+  multiBtn.addEventListener('click', toggleMulti);
+  // the lists are short windows: buttons move them, a finger on the sim's screen scrolls badly
+  function wireScroll(upId, downId, boxId) {
+    var step = function (dir) {
+      var box = el(boxId);
+      box.scrollTop += dir * Math.max(60, Math.round(box.clientHeight * 0.8));
+    };
+    el(upId).addEventListener('click', function () { step(-1); });
+    el(downId).addEventListener('click', function () { step(1); });
+  }
+  wireScroll('rd-up', 'rd-down', 'rd-scroll');
+  wireScroll('cd-up', 'cd-down', 'cd-scroll');
   viewOverlayBtn.addEventListener('click', function () { setMode('overlay'); });
   viewChartBtn.addEventListener('click', function () { setMode('chart'); });
   el('btn-zoom-in').addEventListener('click', function () { map.zoomIn(1, { animate: false }); });
