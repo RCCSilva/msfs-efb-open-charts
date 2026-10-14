@@ -100,13 +100,12 @@
 
   var el = function (id) { return document.getElementById(id); };
   // The black band stands for the simulator tablet's own header: it is only needed inside the EFB (the page is
-  // in a frame there). In a browser tab it is just a black strip, so it is hidden (?band=1 shows it).
+  // in a frame there). In a browser tab it is just a black strip: it is removed and the layout moves up (?band=1 keeps it).
   (function () {
     var framed = false;
     try { framed = window.parent !== window; } catch (e) { framed = true; }
     if (!framed && window.location.search.indexOf('band=1') < 0) {
-      var band = document.querySelector('.topband');
-      if (band) band.style.display = 'none';
+      document.documentElement.className = 'noband';   // the page layout moves up by the band's height (viewer.css)
     }
   })();
   var qEl = el('q');

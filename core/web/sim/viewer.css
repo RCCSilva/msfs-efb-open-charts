@@ -378,3 +378,11 @@ body.clean .routecard { display: none !important; }
 #cd-search .kbd { margin: 0 6px 6px 6px; }
 .drawer .hidden, .drawer.hidden { display: none; }
 body.clean .drawer, body.clean .searchbtn { display: none !important; }
+
+/* ---- outside the EFB there is no tablet header: no band, and everything moves up by its 32 px ---- */
+html.noband .topband { display: none; }
+html.noband #map { top: 0 !important; }
+html.noband .bar { padding-top: 6px; }
+html.noband .cleanbtn { top: 6px; }
+html.noband .routemodal { top: 0; }
+html.noband .drawer { top: 58px; }
