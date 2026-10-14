@@ -224,6 +224,16 @@ func main() {
 			}
 		}
 		srv.SetNav(nav, fetch, fixes, lookup)
+		if simDLL != "" {
+			srv.SetAirportLister(func() ([]server.AirportRef, error) {
+				list, err := simconnect.ListAirports(simDLL, 90*time.Second)
+				out := make([]server.AirportRef, 0, len(list))
+				for _, a := range list {
+					out = append(out, server.AirportRef{ICAO: a.ICAO, Region: a.Region, Lat: a.Lat, Lon: a.Lon})
+				}
+				return out, err
+			})
+		}
 	}
 	defer srv.Close()
 	srv.Serve(ln)

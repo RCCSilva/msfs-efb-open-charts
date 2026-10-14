@@ -22,3 +22,16 @@ func FetchFixes(dllPath string, refs []navdata.FixRef, wait time.Duration) ([]na
 func FetchAirport(dllPath, icao string, wait time.Duration) (*navdata.Airport, error) {
 	return nil, errUnsupported
 }
+
+// AirportRef is one line of the simulator's list of airports.
+type AirportRef struct {
+	ICAO   string
+	Region string
+	Lat    float64
+	Lon    float64
+}
+
+// ListAirports needs the simulator's SimConnect library, which exists on Windows only.
+func ListAirports(dllPath string, wait time.Duration) ([]AirportRef, error) {
+	return nil, errUnsupported
+}

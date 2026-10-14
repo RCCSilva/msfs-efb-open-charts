@@ -180,7 +180,10 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   the identifiers (record 0x0108) from the simulator's `fs24-fs-base-nav` / `genericairports` `.fsarchive` files (read-only,
   only the names and rough positions are kept, table `seed_ident`); (2) every name is asked to the simulator as a whole
   through SimConnect (`loadIdents`), 40 names per batch, which stores region, position and airways. Resumable (pending =
-  seed names without an `ident_check`). It refuses to mark names as "unknown" until the simulator has answered something.
+  seed names without an `ident_check`); then (3) `loadAirports`: `simconnect.ListAirports` (minimal list EX1)
+  gives every airport, the ones not stored (and matching an optional code prefix such as SB) are fetched with
+  `FetchAirport`, one by one. Modes: files, fixes, airports, all. Step 3 was written without a reachable
+  simulator: the list format (same 42-byte minimal entry as the fixes) still has to be confirmed with a flight loaded. It refuses to mark names as "unknown" until the simulator has answered something.
   The manager has a **Guide** tab (`renderGuide` in `manager.js`, data in `GUIDE`): the sim's browser shows no
   tooltips, so every button of the viewer is described there with its icon and a numbered drawing. When a button is
   added, changed or removed in the viewer, update `GUIDE` (positions are on the 468 x 696 sim screen).

@@ -5,12 +5,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/lnmpoints"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navseed"
 )
@@ -343,14 +345,18 @@ func (s *Server) handleNavLoadStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Mode string `json:"mode"`
+		Mode   string `json:"mode"`   // files, fixes, airports or all (fixes, then airports)
+		Prefix string `json:"prefix"` // only airports whose code starts with this ("SB"); empty: every airport
 	}
 	_ = readJSON(r, &body)
-	if body.Mode != "files" {
+	switch body.Mode {
+	case "files", "fixes", "airports":
+	default:
 		body.Mode = "all"
 	}
+	body.Prefix = strings.ToUpper(strings.TrimSpace(body.Prefix))
 	canAsk := s.canAskSim()
-	if body.Mode == "all" && !canAsk {
+	if body.Mode != "files" && !canAsk {
 		writeErr(w, 503, errors.New("there is no link to the simulator (SimConnect.dll was not found)"))
 		return
 	}
@@ -365,7 +371,7 @@ func (s *Server) handleNavLoadStart(w http.ResponseWriter, r *http.Request) {
 	j.Started, j.Ended = time.Now(), time.Time{}
 	j.mu.Unlock()
 	s.saveJob()
-	go s.runNavLoad(db, body.Mode)
+	go s.runNavLoad(db, body.Mode, body.Prefix)
 	writeJSON(w, 202, j.snapshot())
 }
 
@@ -375,7 +381,7 @@ func (s *Server) handleNavLoadStop(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, s.nav.job.snapshot())
 }
 
-func (s *Server) runNavLoad(db *navdb.DB, mode string) {
+func (s *Server) runNavLoad(db *navdb.DB, mode, prefix string) {
 	j := &s.nav.job
 	finish := func(phase, msg string) {
 		j.set(func(j *navJob) { j.Running, j.Phase, j.Message, j.Ended = false, phase, msg, time.Now() })
@@ -387,6 +393,24 @@ func (s *Server) runNavLoad(db *navdb.DB, mode string) {
 		return j.stop
 	}
 
+	if mode != "airports" {
+		if !s.loadFixes(db, mode, finish, stopped) {
+			return
+		}
+	}
+	if mode == "all" || mode == "airports" {
+		if !s.loadAirports(db, prefix, finish, stopped) {
+			return
+		}
+	}
+	finish("done", "")
+}
+
+// loadFixes is steps 1 and 2: the identifiers from the simulator's files, then each of them asked
+// to the simulator as a whole. It returns false when the load ended (finish was called).
+func (s *Server) loadFixes(db *navdb.DB, mode string, finish func(phase, msg string), stopped func() bool) bool {
+	j := &s.nav.job
+
 	// 1. the identifiers, from the simulator's files
 	paths := navseed.Locate()
 	if len(paths) > 0 {
@@ -397,34 +421,34 @@ func (s *Server) runNavLoad(db *navdb.DB, mode string) {
 		if err != nil {
 			if stopped() {
 				finish("stopped", "")
-				return
+				return false
 			}
 			finish("error", err.Error())
-			return
+			return false
 		}
 		if err := db.SaveSeed(list); err != nil {
 			finish("error", err.Error())
-			return
+			return false
 		}
 	}
 	if mode == "files" {
 		if len(paths) == 0 {
 			finish("error", "no navigation package of the simulator was found on this computer")
-			return
+			return false
 		}
 		finish("done", "")
-		return
+		return false
 	}
 
 	// 2. each identifier is asked to the simulator, as a whole
 	c, err := db.Counts()
 	if err != nil {
 		finish("error", err.Error())
-		return
+		return false
 	}
 	if c.SeedIdents == 0 {
 		finish("error", "no identifiers to ask for: the simulator's files were not found")
-		return
+		return false
 	}
 	j.set(func(j *navJob) { j.Phase, j.Total, j.Done = "asking", c.SeedIdents, c.SeedIdents-c.SeedPending })
 	const batch = 40
@@ -432,16 +456,15 @@ func (s *Server) runNavLoad(db *navdb.DB, mode string) {
 	for {
 		if stopped() {
 			finish("stopped", "")
-			return
+			return false
 		}
 		idents, err := db.SeedPending(batch)
 		if err != nil {
 			finish("error", err.Error())
-			return
+			return false
 		}
 		if len(idents) == 0 {
-			finish("done", "")
-			return
+			return true
 		}
 		// the route page and the load take turns: a batch holds the lock, then lets it go
 		s.nav.mu.Lock()
@@ -449,7 +472,7 @@ func (s *Server) runNavLoad(db *navdb.DB, mode string) {
 		s.nav.mu.Unlock()
 		if err != nil {
 			finish("error", err.Error())
-			return
+			return false
 		}
 		if n > 0 {
 			answered = true
@@ -459,10 +482,78 @@ func (s *Server) runNavLoad(db *navdb.DB, mode string) {
 			empty++
 			if empty >= 3 {
 				finish("error", "the simulator answered nothing for 120 identifiers in a row: load a flight and try again")
-				return
+				return false
 			}
 		}
 		j.set(func(j *navJob) { j.Done += len(idents) })
 		s.saveJob()
 	}
+}
+
+// loadAirports is step 3: the simulator lists its airports, and each one that is not stored yet
+// (and starts with the prefix, when there is one) is asked in full, with its procedures.
+func (s *Server) loadAirports(db *navdb.DB, prefix string, finish func(phase, msg string), stopped func() bool) bool {
+	j := &s.nav.job
+	s.nav.ptrMu.RLock()
+	list, fetch := s.nav.list, s.nav.fetch
+	s.nav.ptrMu.RUnlock()
+	if list == nil || fetch == nil {
+		finish("error", "there is no link to the simulator to list its airports")
+		return false
+	}
+	j.set(func(j *navJob) { j.Phase, j.Message, j.Total, j.Done = "listing", "", 0, 0 })
+	s.saveJob()
+	all, err := list()
+	if err != nil {
+		finish("error", err.Error())
+		return false
+	}
+	have := map[string]bool{}
+	if stored, err := db.Airports(""); err == nil {
+		for _, a := range stored {
+			have[a.ICAO] = true
+		}
+	}
+	var todo []string
+	for _, a := range all {
+		icao := strings.ToUpper(a.ICAO)
+		if !icaoRe.MatchString(icao) || have[icao] || (prefix != "" && !strings.HasPrefix(icao, prefix)) {
+			continue
+		}
+		have[icao] = true // a repeat in the list is asked once
+		todo = append(todo, icao)
+	}
+	sort.Strings(todo)
+	j.set(func(j *navJob) { j.Phase, j.Total, j.Done = "airports", len(todo), 0 })
+	s.saveJob()
+	failures := 0
+	for i, icao := range todo {
+		if stopped() {
+			finish("stopped", "")
+			return false
+		}
+		s.nav.mu.Lock()
+		a, err := fetch(icao)
+		if err == nil {
+			err = db.SaveAirport(a)
+		}
+		s.nav.mu.Unlock()
+		switch {
+		case err == nil:
+			failures = 0
+		case errors.Is(err, navdata.ErrUnknown):
+			// the simulator listed it and then did not know it: skip
+		default:
+			failures++
+			if failures >= 5 {
+				finish("error", err.Error())
+				return false
+			}
+		}
+		j.set(func(j *navJob) { j.Done = i + 1 })
+		if i%10 == 9 {
+			s.saveJob()
+		}
+	}
+	return true
 }

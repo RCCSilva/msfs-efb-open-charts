@@ -1359,7 +1359,8 @@
       filesFound: 'Simulator files found', filesNone: 'No simulator navigation files found: only step 2 applies, for the names a route cites.',
       noLink: 'SimConnect.dll was not found: the simulator cannot be asked.',
       pending: 'names still to ask', loadAll: 'Load everything', loadFiles: 'Only read the names from the files', stop: 'Stop',
-      phase: { interrupted: 'Interrupted: the program was restarted while loading. Press Load to continue.', idle: 'Idle', reading: 'Reading the simulator files', asking: 'Asking the simulator', done: 'Finished', stopped: 'Stopped', error: 'Stopped by an error' },
+      loadAirportsOnly: 'Only airports', airportPrefix: 'Airports: only codes starting with', airportPrefixHint: 'e.g. SB (Brazil); empty = every airport of the simulator, which takes a long time',
+      phase: { listing: 'Asking the simulator for its list of airports', airports: 'Loading airports (with their procedures)', interrupted: 'Interrupted: the program was restarted while loading. Press Load to continue.', idle: 'Idle', reading: 'Reading the simulator files', asking: 'Asking the simulator', done: 'Finished', stopped: 'Stopped', error: 'Stopped by an error' },
       tabAirports: 'Airports', tabFixes: 'Fixes', tabAirways: 'Airways', tabPoints: 'My points',
       search: 'Search by name...', all: 'All', kindW: 'Waypoint', kindV: 'VOR', kindN: 'NDB',
       ident: 'Name', region: 'Region', kind: 'Type', pos: 'Position', name: 'Description', lat: 'Latitude', lon: 'Longitude', note: 'Note',
@@ -1383,7 +1384,8 @@
       filesFound: 'Arquivos do simulador encontrados', filesNone: 'Nenhum arquivo de navegação do simulador encontrado: vale só o passo 2, para os nomes que uma rota cita.',
       noLink: 'O SimConnect.dll não foi encontrado: não dá para perguntar ao simulador.',
       pending: 'nomes ainda para perguntar', loadAll: 'Carregar tudo', loadFiles: 'Só ler os nomes dos arquivos', stop: 'Parar',
-      phase: { interrupted: 'Interrompido: o programa foi reiniciado durante a carga. Aperte Carregar tudo para continuar.', idle: 'Parado', reading: 'Lendo os arquivos do simulador', asking: 'Perguntando ao simulador', done: 'Concluído', stopped: 'Interrompido', error: 'Interrompido por um erro' },
+      loadAirportsOnly: 'Só aeroportos', airportPrefix: 'Aeroportos: só os códigos que começam com', airportPrefixHint: 'ex.: SB (Brasil); vazio = todos os aeroportos do simulador, o que demora bastante',
+      phase: { listing: 'Pedindo ao simulador a lista de aeroportos', airports: 'Carregando aeroportos (com os procedimentos)', interrupted: 'Interrompido: o programa foi reiniciado durante a carga. Aperte Carregar tudo para continuar.', idle: 'Parado', reading: 'Lendo os arquivos do simulador', asking: 'Perguntando ao simulador', done: 'Concluído', stopped: 'Interrompido', error: 'Interrompido por um erro' },
       tabAirports: 'Aeroportos', tabFixes: 'Fixos', tabAirways: 'Aerovias', tabPoints: 'Meus pontos',
       search: 'Buscar pelo nome...', all: 'Todos', kindW: 'Waypoint', kindV: 'VOR', kindN: 'NDB',
       ident: 'Nome', region: 'Região', kind: 'Tipo', pos: 'Posição', name: 'Descrição', lat: 'Latitude', lon: 'Longitude', note: 'Nota',
@@ -1399,7 +1401,7 @@
     }
   };
   const nv = (k) => (NV[lang] && NV[lang][k]) || NV.en[k] || k;
-  const navState = { tab: 'airports', fixQ: '', fixKind: '', fixOffset: 0, airportQ: '', airwayQ: '', edit: null, open: '' };
+  const navState = { prefix: '', tab: 'airports', fixQ: '', fixKind: '', fixOffset: 0, airportQ: '', airwayQ: '', edit: null, open: '' };
   let navTimer = null;
 
   const fmtNum = (n) => Number(n || 0).toLocaleString(lang === 'pt' ? 'pt-BR' : 'en-US');
@@ -1435,13 +1437,20 @@
         c.seedIdents ? pendingBadge : null),
       progress,
       h('div', { class: 'row', style: 'margin-top:10px' },
+        h('label', { class: 'fld' }, h('span', { class: 'muted' }, nv('airportPrefix') + ' (' + nv('airportPrefixHint') + ')'),
+          h('input', { type: 'text', value: navState.prefix, maxlength: 4, style: 'width:90px', oninput: (e) => { navState.prefix = e.target.value.toUpperCase(); } }))),
+      h('div', { class: 'row', style: 'margin-top:10px' },
         job.running
           ? h('button', { class: 'btn danger', onclick: async () => { await api('DELETE', '/api/nav/load'); renderNav(); } }, nv('stop'))
           : [
             h('button', { class: 'btn primary', disabled: !sum.simLink, onclick: async () => {
-              try { await api('POST', '/api/nav/load', { mode: 'all' }); } catch (e) { toast(e.message); }
+              try { await api('POST', '/api/nav/load', { mode: 'all', prefix: navState.prefix }); } catch (e) { toast(e.message); }
               renderNav();
             } }, nv('loadAll')),
+            h('button', { class: 'btn', disabled: !sum.simLink, onclick: async () => {
+              try { await api('POST', '/api/nav/load', { mode: 'airports', prefix: navState.prefix }); } catch (e) { toast(e.message); }
+              renderNav();
+            } }, nv('loadAirportsOnly')),
             h('button', { class: 'btn', disabled: !sum.files.length, onclick: async () => {
               try { await api('POST', '/api/nav/load', { mode: 'files' }); } catch (e) { toast(e.message); }
               renderNav();

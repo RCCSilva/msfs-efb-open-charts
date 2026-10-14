@@ -14,6 +14,24 @@ import (
 // NavFetcher asks the simulator for one airport (see simconnect.FetchAirport).
 type NavFetcher func(icao string) (*navdata.Airport, error)
 
+// AirportRef is one line of the simulator's list of airports.
+type AirportRef struct {
+	ICAO   string
+	Region string
+	Lat    float64
+	Lon    float64
+}
+
+// AirportLister asks the simulator for the list of all its airports (see simconnect.ListAirports).
+type AirportLister func() ([]AirportRef, error)
+
+// SetAirportLister gives the server the way to list every airport of the simulator.
+func (s *Server) SetAirportLister(l AirportLister) {
+	s.nav.ptrMu.Lock()
+	s.nav.list = l
+	s.nav.ptrMu.Unlock()
+}
+
 // FixFetcher asks the simulator for waypoints, VORs and NDBs (see simconnect.FetchFixes).
 type FixFetcher func(refs []navdata.FixRef) ([]navdata.Fix, error)
 
@@ -25,6 +43,7 @@ type navState struct {
 	fixes  FixFetcher
 	lookup IdentFetcher
 	job    navJob // the bulk load of the Navigation page
+	list   AirportLister
 }
 
 // SetNav gives the server the navigation database and, when the simulator link exists, the way
