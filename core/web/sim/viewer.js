@@ -1298,6 +1298,17 @@
 
   // ---- pinned charts: a vertical list grouped by airport (the group is chosen above it) ----
   function openFromDrawer(id) {
+    // with several charts on the map, tapping one that is already there takes it off the map
+    if (multi && mode === 'overlay' && active && (isOnMap(id) || active.meta.id === id)) {
+      if (active.meta.id === id) {
+        closeChart();
+      } else {
+        extras = extras.filter(function (e) { return e.meta.id !== id; });
+        buildMap();
+      }
+      if (rightView === 'search') runChartSearch(); else renderPins();
+      return;
+    }
     closeDrawers();
     openChart(id);
   }
