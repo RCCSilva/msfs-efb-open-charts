@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/route"
@@ -18,16 +19,25 @@ type savedRouteView struct {
 	Names   int    `json:"names"`
 }
 
-func summarize(r navdb.SavedRoute) savedRouteView {
-	toks := route.Tokens(r.Text)
-	v := savedRouteView{SavedRoute: r, Names: len(toks)}
+// routeName is the name a route gets from what it says: its first and last place.
+func routeName(text string) string {
+	toks := route.Tokens(text)
 	switch {
 	case len(toks) == 1:
-		v.Summary = toks[0]
+		return toks[0]
 	case len(toks) > 1:
-		v.Summary = toks[0] + " > " + toks[len(toks)-1]
+		return toks[0] + " > " + toks[len(toks)-1]
 	}
-	return v
+	return ""
+}
+
+func summarize(r navdb.SavedRoute) savedRouteView {
+	return savedRouteView{SavedRoute: r, Names: len(route.Tokens(r.Text)), Summary: routeName(r.Text)}
+}
+
+// GET /api/routes/name?text=...: the name a route would get (the manager fills the field with it).
+func (s *Server) handleRouteName(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]string{"name": routeName(r.URL.Query().Get("text"))})
 }
 
 // GET /api/routes
@@ -60,6 +70,9 @@ func (s *Server) handleRouteSave(w http.ResponseWriter, r *http.Request) {
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, 400, err)
 		return
+	}
+	if strings.TrimSpace(body.Name) == "" {
+		body.Name = routeName(body.Text) // a route without a name is called after where it goes
 	}
 	var saved navdb.SavedRoute
 	var err error

@@ -1690,6 +1690,23 @@
     const nameIn = h('input', { type: 'text', value: routesState.name, placeholder: rt('name') });
     const textIn = h('textarea', { rows: 4, placeholder: rt('textHint'), class: 'routetext' });
     textIn.value = routesState.text;
+    // The name follows the route while the user has not chosen one: first place > last place.
+    let autoName = routesState.id === 0 && (routesState.name === '' || routesState.name === routesState.lastAuto);
+    let suggestTimer = null;
+    const suggest = () => {
+      clearTimeout(suggestTimer);
+      suggestTimer = setTimeout(async () => {
+        if (!autoName) return;
+        try {
+          const r = await api('GET', '/api/routes/name?text=' + encodeURIComponent(textIn.value));
+          if (!autoName) return;
+          nameIn.value = r.name;
+          routesState.lastAuto = r.name;
+        } catch (e) { /* the name stays as it was */ }
+      }, 250);
+    };
+    textIn.addEventListener('input', suggest);
+    nameIn.addEventListener('input', () => { autoName = nameIn.value === '' || nameIn.value === routesState.lastAuto; });
     const status = h('div', { class: 'muted', style: 'margin:8px 0' });
     const resultHost = h('div');
     const mapHost = h('div', { class: 'overview' });
@@ -1730,7 +1747,6 @@
     const save = async () => {
       routesState.text = textIn.value;
       routesState.name = nameIn.value;
-      if (!nameIn.value.trim()) { toast(rt('needName')); return; }
       try {
         const body = { name: nameIn.value, text: textIn.value };
         const r = routesState.id ? await api('PUT', '/api/routes/' + routesState.id, body) : await api('POST', '/api/routes', body);
@@ -1745,7 +1761,7 @@
     const listCard = h('div', { class: 'card' },
       h('div', { class: 'row', style: 'margin-bottom:8px' },
         h('h3', { style: 'margin:0', class: 'grow' }, rt('mine')),
-        h('button', { class: 'btn sm primary', onclick: () => { Object.assign(routesState, { id: 0, name: '', text: '', result: null }); renderRoutes(); } }, '+ ' + rt('newRoute'))),
+        h('button', { class: 'btn sm primary', onclick: () => { Object.assign(routesState, { id: 0, name: '', text: '', result: null, lastAuto: '' }); renderRoutes(); } }, '+ ' + rt('newRoute'))),
       list.length === 0 ? h('p', { class: 'muted' }, rt('none')) : list.map((r) => h('div', {
         class: 'routeitem' + (r.id === routesState.id ? ' on' : ''),
         onclick: () => { Object.assign(routesState, { id: r.id, name: r.name, text: r.text, result: null }); renderRoutes(); }
