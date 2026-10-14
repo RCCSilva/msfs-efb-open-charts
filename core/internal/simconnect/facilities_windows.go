@@ -420,6 +420,7 @@ func ProbeFix(dllPath, ident, region string, kind byte, wait time.Duration) (str
 		case recvOpen, recvSimObjData:
 		default:
 			fmt.Fprintf(&rep, "message id %d (%d bytes)\n", id, len(msg))
+			fmt.Fprintf(&rep, "  raw: %x"+string(rune(10)), msg)
 		}
 	}
 	fmt.Fprintf(&rep, "routes: %d\n", routes)
