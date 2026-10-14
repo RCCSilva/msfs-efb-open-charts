@@ -160,13 +160,14 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   (`...\StreamedPackages\fs24-fs-base-nav\content\minimal.fsarchive`, plain, BGL inside) was studied
   (`internal/fsarchive`, `internal/bgl`, `cmd/fsainspect`): identifiers there are base-38 numbers, it holds
   about a third of the fixes only; it is not used yet.
-- **Viewer flow:** the box at the top of the in-sim viewer stands for the route ("SBSJ > SBGR") and, with the route
-  button, opens a box to paste a route in; it resolves (`POST /api/route/resolve`) on Resolve, Enter, paste, or when the
-  EFB's text dialog ends (`text-blur`). The route is then kept as a list of containers under the bar, one per place,
-  each with a three-dot menu: *Direct to* (drops everything before it) and *Remove*; edits redraw the map line and are
-  saved with the route in localStorage (`oc.routepts`). Problems stay in the box. Charts are not searched from the
-  viewer any more; the pinned list (the group made in the manager) is what opens them. In chart-only mode the route goes
-  through the chart's georeference (nothing for view-only charts).
+- **Viewer flow:** the top box of the in-sim viewer stands for the route ("SBSJ > SBGR"); the route button opens a box
+  to paste a route in (resolved by `POST /api/route/resolve` on Resolve, Enter, paste, or when the EFB's text dialog ends).
+  Three drawers keep the screen for the map: the **route** (left; tap the box): one container per place with a three-dot
+  menu, *Direct to* (drops everything before) and *Remove*, edits redraw the line and are saved (localStorage
+  `oc.routepts`); the **pinned charts** (right; pin button): vertical, grouped by airport, with the group chooser; the
+  **search** (right; magnifier): with a route and nothing typed it lists the charts of the route's airports (those that
+  match a procedure of the route first), typing searches the whole library. Tapping the map closes the drawers.
+  In chart-only mode the route goes through the chart's georeference (nothing for view-only charts).
 - **AIRAC cycle:** one international calendar (`naming/airac.go`); a chart's cycle is derived from its date.
 - **Name patterns (My PDFs):** the user may write file-name templates (`{icao}_{type}_{title}_{date:YYYYMMDD}`,
   package `naming`, `pattern.go`), kept in `settings.json` and tried first for the `manual` source (`Server.identify`).

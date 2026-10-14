@@ -32,6 +32,10 @@
       search: 'Paste a route: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       noPins: 'No charts pinned to this group.',
       routePaste: 'Paste a route', routeTitle: 'Route', routePlaces: 'places', routeProblems: 'to check',
+      routeNone: 'No route yet', routePasteShort: 'Paste', routeFrom: 'from', routeTo: 'to',
+      pinnedTitle: 'Pinned charts', searchTitle: 'Search charts', searchPlaceholder: 'SBSP, ILS, sao paulo...',
+      searchHint: 'Type to search. With a route, the charts of its airports appear here.', noResults: 'No charts found.',
+      noChartsAirport: 'No charts of this airport in the library.', remove: 'Remove',
       routeWorking: 'Reading the route...', routeResolve: 'Resolve', routeFailed: 'Could not read the route',
       routeClear: 'Clear', routeCancel: 'Close', routeDirect: 'Direct to', routeRemove: 'Remove', routeMenu: 'Options',
       routeBoxTitle: 'Paste the route: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
@@ -62,6 +66,10 @@
       search: 'Cole a rota: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       noPins: 'Nenhuma carta fixada neste grupo.',
       routePaste: 'Colar a rota', routeTitle: 'Rota', routePlaces: 'pontos', routeProblems: 'a conferir',
+      routeNone: 'Nenhuma rota ainda', routePasteShort: 'Colar', routeFrom: 'origem', routeTo: 'destino',
+      pinnedTitle: 'Cartas fixadas', searchTitle: 'Buscar cartas', searchPlaceholder: 'SBSP, ILS, sao paulo...',
+      searchHint: 'Digite para buscar. Com uma rota, as cartas dos aeroportos dela aparecem aqui.', noResults: 'Nenhuma carta encontrada.',
+      noChartsAirport: 'Nenhuma carta deste aeroporto na biblioteca.', remove: 'Remover',
       routeWorking: 'Lendo a rota...', routeResolve: 'Resolver', routeFailed: 'Não foi possível ler a rota',
       routeClear: 'Limpar', routeCancel: 'Fechar', routeDirect: 'Direto para', routeRemove: 'Remover', routeMenu: 'Opções',
       routeBoxTitle: 'Cole a rota: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
@@ -104,9 +112,13 @@
   var blendBtn = el('btn-blend');
   var closeBtn = el('btn-close');
   var stripBtn = el('btn-strip');
-  var stripEl = document.querySelector('.strip');
-  var pinPrev = el('pin-prev');
-  var pinNext = el('pin-next');
+  var searchBtn = el('btn-search');
+  var routeDrawerEl = el('routedrawer');
+  var chartDrawerEl = el('chartdrawer');
+  var pinnedViewEl = el('cd-pinned');
+  var searchViewEl = el('cd-search');
+  var cqEl = el('cq');
+  var kbd2El = el('kbd2');
   var attribEl = el('attribution');
   var starBtn = el('btn-star');
   var simNoteEl = el('simnote');
@@ -1147,52 +1159,6 @@
     return -1;
   }
 
-  // The arrows only move the strip so that every chart can be reached; choosing a chart is
-  // always a tap on the chart itself. Disabled at either end.
-  function updateStripArrows() {
-    var max = pinsEl.scrollWidth - pinsEl.clientWidth;
-    pinPrev.disabled = pinsEl.scrollLeft <= 1;
-    pinNext.disabled = pinsEl.scrollLeft >= max - 1;
-  }
-
-  // Eased scroll (about a quarter of a second) over roughly half the strip: short enough to
-  // follow with the eye, so the user sees that the strip is moving.
-  var stripAnim = null;
-  function scrollStrip(dir) {
-    if (stripAnim) window.cancelAnimationFrame(stripAnim);
-    var max = pinsEl.scrollWidth - pinsEl.clientWidth;
-    var from = pinsEl.scrollLeft;
-    var to = Math.max(0, Math.min(max, from + dir * Math.max(100, Math.round(pinsEl.clientWidth * 0.5))));
-    var t0 = null;
-    var DURATION = 260;
-    var frames = 0;
-    var done = false;
-    function finish() {
-      if (done) return;
-      done = true;
-      stripAnim = null;
-      pinsEl.scrollLeft = to;
-      updateStripArrows();
-    }
-    function step(ts) {
-      if (done) return;
-      frames += 1;
-      if (t0 === null) t0 = ts;
-      var k = Math.min(1, (ts - t0) / DURATION);
-      var eased = 1 - Math.pow(1 - k, 3);
-      pinsEl.scrollLeft = from + (to - from) * eased;
-      if (k < 1) {
-        stripAnim = window.requestAnimationFrame(step);
-      } else {
-        finish();
-      }
-    }
-    stripAnim = window.requestAnimationFrame(step);
-    // Frames are not delivered while the page reports itself hidden: do not leave the arrow
-    // dead, jump to the target instead.
-    window.setTimeout(function () { if (frames === 0) finish(); }, 150);
-    window.setTimeout(finish, DURATION + 400);
-  }
 
   // Leave the chart on screen. A chart that is not pinned has no chip to tap, so this is the
   // way out; the viewer remembers that nothing was open.
@@ -1224,73 +1190,192 @@
     starBtn.title = on ? t('starUnpin') : t('starPin');
   }
 
-  // The list of pinned charts can be hidden to give the screen to the chart; it is remembered.
-  var stripVisible = true;
-  try { stripVisible = window.localStorage.getItem('oc.strip') !== '0'; } catch (e) { /* ignore */ }
-  function applyStripVisibility() {
-    stripEl.style.display = stripVisible ? '' : 'none';
-    stripBtn.className = 'cleanbtn stripbtn' + (stripVisible ? ' active' : '');
-    stripBtn.title = stripVisible ? t('showPinned') : t('hidePinned');
-    if (stripVisible) updateStripArrows();
+  // ---- the drawers: the route on the left; on the right the pinned charts or the search ----
+  var leftOpen = false;
+  var rightView = '';          // '', 'pinned' or 'search'
+
+  function updateDrawers() {
+    routeDrawerEl.className = 'drawer left' + (leftOpen ? '' : ' hidden');
+    chartDrawerEl.className = 'drawer right' + (rightView ? '' : ' hidden');
+    pinnedViewEl.className = rightView === 'pinned' ? '' : 'hidden';
+    searchViewEl.className = rightView === 'search' ? '' : 'hidden';
+    el('cd-title').textContent = rightView === 'search' ? t('searchTitle') : t('pinnedTitle');
+    stripBtn.className = 'cleanbtn stripbtn' + (rightView === 'pinned' ? ' active' : '');
+    searchBtn.className = 'cleanbtn searchbtn' + (rightView === 'search' ? ' active' : '');
+    routeBoxBtn.className = 'routebox' + (routePoints.length ? '' : ' empty') + (leftOpen ? ' on' : '');
+    if (rightView === 'search') runChartSearch();
+    if (rightView === 'pinned') renderPins();
   }
 
+  function setLeftOpen(on) {
+    leftOpen = on;
+    if (on) rightView = '';
+    hideRouteMenu();
+    updateDrawers();
+  }
 
-  // true while a chart is being opened by tapping its chip: the strip must not move then
-  var openedFromStrip = false;
+  function setRightView(v) {
+    rightView = rightView === v ? '' : v;
+    if (rightView) leftOpen = false;
+    hideRouteMenu();
+    updateDrawers();
+  }
+
+  function closeDrawers() {
+    if (!leftOpen && !rightView) return;
+    leftOpen = false;
+    rightView = '';
+    updateDrawers();
+  }
+
+  function inside(node, container) {
+    while (node) {
+      if (node === container) return true;
+      node = node.parentNode;
+    }
+    return false;
+  }
+
+  // ---- pinned charts: a vertical list grouped by airport (the group is chosen above it) ----
+  function openFromDrawer(id) {
+    closeDrawers();
+    openChart(id);
+  }
 
   function renderPins() {
     updateStar();
-    var keepScroll = pinsEl.scrollLeft;
     clear(pinsEl);
     if (!pinned.length) {
-      var hint = document.createElement('span');
-      hint.className = 'hint';
+      var hint = document.createElement('div');
+      hint.className = 'empty';
       hint.textContent = t('noPins');
       pinsEl.appendChild(hint);
-      pinPrev.disabled = true;
-      pinNext.disabled = true;
       return;
     }
-    var activeChip = null;
     pinnedByAirport().forEach(function (g) {
-      var wrap = document.createElement('span');
-      wrap.className = 'group';
-      var lbl = document.createElement('span');
-      lbl.className = 'glabel';
-      lbl.textContent = g.label;
-      wrap.appendChild(lbl);
+      var head = document.createElement('div');
+      head.className = 'dgroup';
+      head.textContent = g.label;
+      pinsEl.appendChild(head);
       g.items.forEach(function (c) {
         var isActive = !!active && active.meta.id === c.id;
-        var b = button('chip' + (isActive ? ' active' : ''), chipLabel(c), function () {
-          openedFromStrip = true;
-          openChart(c.id);
+        var row = document.createElement('div');
+        row.className = 'crow' + (isActive ? ' active' : '');
+        row.title = label(c.name);
+        row.appendChild(document.createTextNode(chipLabel(c)));
+        row.addEventListener('click', function () { openFromDrawer(c.id); });
+        var x = button('cx', 'x', function (ev) {
+          if (ev.stopPropagation) ev.stopPropagation();
+          togglePin({ id: c.id }, function () { renderPins(); });
         });
-        b.title = label(c.name);
-        if (isActive) activeChip = b;
-        wrap.appendChild(b);
+        x.title = t('remove');
+        row.appendChild(x);
+        pinsEl.appendChild(row);
       });
-      pinsEl.appendChild(wrap);
     });
-    // Same position as before the re-render: tapping a chip never moves the strip.
-    pinsEl.scrollLeft = keepScroll;
-    updateStripArrows();
-    // A chart opened some other way (search, first load) is brought into view, but only when it
-    // is not already visible. Widths settle after layout and after the web font loads, so this is
-    // checked again shortly after.
-    if (activeChip && !openedFromStrip) {
-      var reveal = function () {
-        var viewL = pinsEl.scrollLeft;
-        var viewR = viewL + pinsEl.clientWidth;
-        var l = activeChip.offsetLeft;
-        var r = l + activeChip.offsetWidth;
-        if (l < viewL + 4 || r > viewR - 4) pinsEl.scrollLeft = Math.max(0, l - 56);
-      };
-      reveal();
-      window.setTimeout(function () { reveal(); updateStripArrows(); }, 60);
-      window.setTimeout(function () { reveal(); updateStripArrows(); }, 500);
-    }
-    openedFromStrip = false;
   }
+
+  // ---- search for charts. With a route, the charts of its airports come first, without typing. ----
+  var searchSeq = 0;
+  var searchTimer = null;
+
+  function routeAirports() {
+    var out = [];
+    routePoints.forEach(function (p) {
+      if (p.kind === 'airport' && out.indexOf(p.ident) < 0) out.push(p.ident);
+    });
+    return out;
+  }
+
+  // the procedures the route uses (a SID or STAR name rides on its points as "via")
+  function routeProcedures() {
+    var out = [];
+    routePoints.forEach(function (p) {
+      if (p.via && /\d/.test(p.via) && out.indexOf(p.via) < 0) out.push(p.via);
+    });
+    return out;
+  }
+
+  function chartRow(c, onChange, relevant) {
+    var isActive = !!active && active.meta.id === c.id;
+    var row = document.createElement('div');
+    row.className = 'crow' + (isActive ? ' active' : '') + (relevant ? ' relevant' : '');
+    row.appendChild(document.createTextNode(chipLabel(c)));
+    var small = document.createElement('span');
+    small.className = 'csmall';
+    small.textContent = label(c.name);
+    row.appendChild(small);
+    row.addEventListener('click', function () { openFromDrawer(c.id); });
+    var pin = button('cx', isPinned(c.id) ? '*' : '+', function (ev) {
+      if (ev.stopPropagation) ev.stopPropagation();
+      togglePin(c, function () { if (onChange) onChange(); });
+    });
+    pin.title = isPinned(c.id) ? t('pinned') : t('pin');
+    row.appendChild(pin);
+    return row;
+  }
+
+  function runChartSearch() {
+    var box = el('results');
+    var q = cqEl.value.replace(/^\s+|\s+$/g, '');
+    var seq = ++searchSeq;
+    clear(box);
+    var again = function () { if (seq === searchSeq) runChartSearch(); };
+    if (q) {
+      getJson('/api/charts?limit=30&q=' + encodeURIComponent(q), function (list) {
+        if (seq !== searchSeq || list === null) return;
+        clear(box);
+        if (!list.length) {
+          var e = document.createElement('div');
+          e.className = 'empty';
+          e.textContent = t('noResults');
+          box.appendChild(e);
+        }
+        list.forEach(function (c) { box.appendChild(chartRow(c, function () { runChartSearch(); }, false)); });
+      });
+      return;
+    }
+    var aps = routeAirports();
+    if (!aps.length) {
+      var h = document.createElement('div');
+      h.className = 'empty';
+      h.textContent = t('searchHint');
+      box.appendChild(h);
+      return;
+    }
+    var procs = routeProcedures();
+    aps.forEach(function (icao, i) {
+      var sec = document.createElement('div');
+      var head = document.createElement('div');
+      head.className = 'dgroup';
+      head.textContent = icao + (aps.length < 2 ? '' : (i === 0 ? '  -  ' + t('routeFrom') : (i === aps.length - 1 ? '  -  ' + t('routeTo') : '')));
+      sec.appendChild(head);
+      box.appendChild(sec);
+      getJson('/api/library?icao=' + encodeURIComponent(icao) + '&limit=80', function (r) {
+        if (seq !== searchSeq || !r || !r.items) return;
+        var items = r.items.slice();
+        var mine = function (c) {
+          var name = (c.name || '').toUpperCase();
+          for (var k = 0; k < procs.length; k++) if (name.indexOf(procs[k].toUpperCase()) >= 0) return true;
+          return false;
+        };
+        items.sort(function (a, b) { return (mine(b) ? 1 : 0) - (mine(a) ? 1 : 0); });
+        if (!items.length) {
+          var none = document.createElement('div');
+          none.className = 'empty';
+          none.textContent = t('noChartsAirport');
+          sec.appendChild(none);
+        }
+        items.forEach(function (c) { sec.appendChild(chartRow(c, again, mine(c))); });
+      });
+    });
+  }
+
+  function scheduleChartSearch() {
+    if (searchTimer) window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(runChartSearch, 200);
+  }
+
 
   // ---- the route: pasted the way pilots write it, resolved by the server, kept as a list the user can edit ----
   var routePoints = [];     // the route as it is now: resolved, then edited by the user
@@ -1305,7 +1390,6 @@
   var routeModalEl = el('routemodal');
   var routeSumEl = el('routesum');
   var routeBoxBtn = el('btn-routebox');
-  var routeCardEl = el('routecard');
   var routeHeadEl = el('routehead');
   var routeChipsEl = el('routechips');
   var routeProblemsEl = el('routeproblems');
@@ -1415,18 +1499,12 @@
 
   function renderRoute() {
     var n = routePoints.length;
-    routeBoxBtn.className = 'routebox' + (n ? '' : ' empty');
-    if (!n) {
-      routeSumEl.textContent = t('routePaste');
-      routeCardEl.className = 'routecard hidden';
-      return;
-    }
-    var first = routePoints[0].ident;
-    var last = routePoints[n - 1].ident;
-    routeSumEl.textContent = first + (n > 1 ? ' > ' + last : '');
-    routeCardEl.className = 'routecard';
+    var first = n ? routePoints[0].ident : '';
+    var last = n ? routePoints[n - 1].ident : '';
+    routeBoxBtn.className = 'routebox' + (n ? '' : ' empty') + (leftOpen ? ' on' : '');
+    routeSumEl.textContent = n ? first + (n > 1 ? ' > ' + last : '') : t('routePaste');
     clear(routeHeadEl);
-    routeHeadEl.appendChild(document.createTextNode((routeOpen ? '- ' : '+ ') + t('routeTitle') + ': ' + first + (n > 1 ? ' > ' + last : '') + '  -  ' + n + ' ' + t('routePlaces')));
+    routeHeadEl.appendChild(document.createTextNode(n ? first + (n > 1 ? ' > ' + last : '') + '  -  ' + n + ' ' + t('routePlaces') : t('routeNone')));
     if (routeProblems.length) {
       var w = document.createElement('span');
       w.className = 'warn';
@@ -1434,7 +1512,6 @@
       routeHeadEl.appendChild(w);
     }
     clear(routeChipsEl);
-    routeChipsEl.className = routeOpen ? 'routechips' : 'routechips hidden';
     routePoints.forEach(function (p, i) {
       var chip = document.createElement('div');
       chip.className = 'rtchip' + (p.kind === 'airport' ? ' rtap' : '');
@@ -1443,7 +1520,11 @@
       name.textContent = p.ident;
       name.addEventListener('click', function () {
         var ll = routeLatLng(p);
-        if (ll && map) { setFollow(false); map.setView(ll, Math.max(map.getZoom(), mode === 'chart' ? map.getZoom() : 10), { animate: false }); }
+        if (ll && map) {
+          setFollow(false);
+          map.setView(ll, mode === 'chart' ? map.getZoom() : Math.max(map.getZoom(), 10), { animate: false });
+          closeDrawers();
+        }
       });
       chip.appendChild(name);
       if (p.via) {
@@ -1464,6 +1545,7 @@
       chip.appendChild(more);
       routeChipsEl.appendChild(chip);
     });
+    if (rightView === 'search') runChartSearch();   // the charts of the route follow the route
   }
 
   function renderRouteProblems() {
@@ -1522,7 +1604,6 @@
       routeText = text;
       routeOpen = true;
       saveRoute();
-      groupsEl.className = 'panel hidden';
       drawRoute(true);
       routeFitUntil = new Date().getTime() + 10000;
       renderRoute();
@@ -1532,14 +1613,12 @@
   }
 
   function hidePanels() {
-    resultsEl.className = 'panel hidden';
     groupsEl.className = 'panel hidden';
   }
 
   // ---- groups panel ----
   function showGroups() {
     if (groupsEl.className.indexOf('hidden') < 0) { groupsEl.className = 'panel hidden'; return; }
-    resultsEl.className = 'panel hidden';
     drawGroups();
   }
 
@@ -1596,27 +1675,24 @@
   }
 
   // ---- on-screen keyboard (typing may not reach the iframe inside the EFB) ----
-  function buildKeyboard() {
+  function buildKeyboard(container, getInput, onChange, onOk) {
+    var change = function () { if (onChange) onChange(); };
     var rows = ['1234567890', 'QWERTYUIOP', 'ASDFGHJKL', 'ZXCVBNM'];
     rows.forEach(function (r) {
       var d = document.createElement('div');
       d.className = 'krow';
       r.split('').forEach(function (ch) {
-        d.appendChild(button('', ch, function () { type(ch.toLowerCase()); }));
+        d.appendChild(button('', ch, function () { getInput().value += ch.toLowerCase(); change(); }));
       });
-      kbdEl.appendChild(d);
+      container.appendChild(d);
     });
     var last = document.createElement('div');
     last.className = 'krow';
-    last.appendChild(button('k-wide', '____', function () { type(' '); }));
-    last.appendChild(button('', '<', function () { qEl.value = qEl.value.slice(0, -1); }));
-    last.appendChild(button('', 'C', function () { qEl.value = ''; }));
-    last.appendChild(button('k-wide', 'OK', function () { resolveRoute(); }));
-    kbdEl.appendChild(last);
-  }
-
-  function type(ch) {
-    qEl.value += ch;
+    last.appendChild(button('k-wide', '____', function () { getInput().value += ' '; change(); }));
+    last.appendChild(button('', '<', function () { var i = getInput(); i.value = i.value.slice(0, -1); change(); }));
+    last.appendChild(button('', 'C', function () { getInput().value = ''; change(); }));
+    last.appendChild(button('k-wide', 'OK', function () { if (onOk) onOk(); }));
+    container.appendChild(last);
   }
 
   // ---- wiring ----
@@ -1637,18 +1713,19 @@
   viewChartBtn.setAttribute('aria-label', t('viewChartOnly'));
   closeBtn.setAttribute('aria-label', t('closeChart'));
   closeBtn.addEventListener('click', closeChart);
-  stripBtn.addEventListener('click', function () {
-    stripVisible = !stripVisible;
-    store('strip', stripVisible ? '1' : '0');
-    applyStripVisibility();
+  stripBtn.addEventListener('click', function () { setRightView('pinned'); });
+  searchBtn.addEventListener('click', function () { setRightView('search'); });
+  el('cd-close').addEventListener('click', closeDrawers);
+  el('rd-close').addEventListener('click', closeDrawers);
+  el('rd-paste').addEventListener('click', openRouteBox);
+  cqEl.addEventListener('input', scheduleChartSearch);
+  el('btn-kbd2').addEventListener('click', function () {
+    kbd2El.className = kbd2El.className.indexOf('hidden') >= 0 ? 'kbd' : 'kbd hidden';
   });
-  applyStripVisibility();
   updateCloseButton();
   blendBtn.addEventListener('click', cycleBlend);
   viewOverlayBtn.title = viewWithMapTitle();
   viewChartBtn.title = viewChartOnlyTitle();
-  pinPrev.title = t('prevChart');
-  pinNext.title = t('nextChart');
   simNoteEl.textContent = t('simNote');
   starBtn.addEventListener('click', function () {
     if (active) togglePin({ id: active.meta.id }, function () { renderPins(); });
@@ -1659,20 +1736,24 @@
   qEl.addEventListener('paste', function () { window.setTimeout(resolveRoute, 0); });
   qEl.addEventListener('keydown', function (ev) { if (ev.keyCode === 13 && !ev.shiftKey) { ev.preventDefault(); resolveRoute(); } });
   el('btn-route').addEventListener('click', openRouteBox);
-  routeBoxBtn.addEventListener('click', openRouteBox);
+  // the box shows the route: a tap opens the list of its places (or, with no route, the box to paste one)
+  routeBoxBtn.addEventListener('click', function () {
+    if (!routePoints.length) { openRouteBox(); return; }
+    setLeftOpen(!leftOpen);
+  });
   routeGoBtn.addEventListener('click', resolveRoute);
   el('route-cancel').addEventListener('click', closeRouteBox);
   el('route-clear').addEventListener('click', clearWholeRoute);
-  routeHeadEl.addEventListener('click', function () {
-    if (routeProblems.length && routeOpen) { openRouteBox(); return; }
-    routeOpen = !routeOpen;
-    renderRoute();
-  });
+  routeHeadEl.addEventListener('click', function () { if (routeProblems.length) openRouteBox(); });
   function applyRouteStrings() {
     routeGoBtn.textContent = t('routeResolve');
     el('route-clear').textContent = t('routeClear');
     el('route-cancel').textContent = t('routeCancel');
     el('routetitle').textContent = t('routeBoxTitle');
+    el('rd-title').textContent = t('routeTitle');
+    el('rd-paste').textContent = t('routePasteShort');
+    cqEl.placeholder = t('searchPlaceholder');
+    updateDrawers();
     qEl.placeholder = t('routePaste');
     renderRoute();
   }
@@ -1692,29 +1773,38 @@
   var barEl = el('bar');
   function closeListsFromOutside(ev) {
     var n = ev.target;
-    while (n) {
-      if (n === barEl) return;
-      n = n.parentNode;
-    }
+    // taps inside the bar, a drawer, the route box and the buttons of the drawers do not close anything
+    if (inside(n, barEl) || inside(n, routeDrawerEl) || inside(n, chartDrawerEl) || inside(n, routeModalEl) ||
+        inside(n, stripBtn) || inside(n, searchBtn) || (routeMenuEl && inside(n, routeMenuEl))) return;
     hidePanels();
+    closeDrawers();
   }
   document.addEventListener('mousedown', closeListsFromOutside, true);
   document.addEventListener('touchstart', closeListsFromOutside, true);
   window.addEventListener('blur', hidePanels);
   // Inside the EFB the page runs in a frame: tell the app when the search field is in use, so the
   // simulator sends the typed keys to it and not to its own key bindings (gear, flaps, camera...).
+  var typing = qEl;   // the field that has the focus: the route or the chart search
   function tellHost(state) {
     try {
-      if (window.parent && window.parent !== window) window.parent.postMessage({ oc: 'text-input', state: state, text: qEl.value }, '*');
+      if (window.parent && window.parent !== window) window.parent.postMessage({ oc: 'text-input', state: state, text: typing.value }, '*');
     } catch (e) { /* not in a frame */ }
   }
-  qEl.addEventListener('focus', function () { tellHost('focus'); });
+  qEl.addEventListener('focus', function () { typing = qEl; tellHost('focus'); });
   qEl.addEventListener('blur', function () { tellHost('blur'); });
+  cqEl.addEventListener('focus', function () { typing = cqEl; tellHost('focus'); });
+  cqEl.addEventListener('blur', function () { tellHost('blur'); });
   window.addEventListener('message', function (ev) {
     var d = ev && ev.data;
     if (!d || ev.source !== window.parent) return;
-    if (d.oc === 'text-value' && typeof d.text === 'string') { qEl.value = d.text.slice(0, 4000); }
-    if (d.oc === 'text-blur') { qEl.blur(); if (routeModalEl.className.indexOf('hidden') < 0) resolveRoute(); }
+    if (d.oc === 'text-value' && typeof d.text === 'string') {
+      typing.value = d.text.slice(0, 4000);
+      if (typing === cqEl) scheduleChartSearch();
+    }
+    if (d.oc === 'text-blur') {
+      typing.blur();
+      if (typing === qEl && routeModalEl.className.indexOf('hidden') < 0) resolveRoute();
+    }
   });
   qEl.addEventListener('keyup', function (ev) { if (ev.keyCode === 27) closeRouteBox(); });
   el('btn-kbd').addEventListener('click', function () {
@@ -1724,9 +1814,6 @@
   groupBtn.addEventListener('click', showGroups);
   viewOverlayBtn.addEventListener('click', function () { setMode('overlay'); });
   viewChartBtn.addEventListener('click', function () { setMode('chart'); });
-  pinPrev.addEventListener('click', function () { scrollStrip(-1); });
-  pinNext.addEventListener('click', function () { scrollStrip(1); });
-  pinsEl.addEventListener('scroll', updateStripArrows);
   el('btn-zoom-in').addEventListener('click', function () { map.zoomIn(1, { animate: false }); });
   el('btn-zoom-out').addEventListener('click', function () { map.zoomOut(1, { animate: false }); });
   followBtn.addEventListener('click', function () { setFollow(!follow); });
@@ -1897,7 +1984,8 @@
       applyRouteStrings();
       simNoteEl.textContent = t('simNote');
     }
-    buildKeyboard();
+    buildKeyboard(kbdEl, function () { return qEl; }, null, resolveRoute);
+    buildKeyboard(kbd2El, function () { return cqEl; }, scheduleChartSearch, runChartSearch);
     buildMap();
     checkSize();
     window.setInterval(checkSize, 1000);

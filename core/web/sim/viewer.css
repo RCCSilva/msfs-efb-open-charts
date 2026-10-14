@@ -318,3 +318,45 @@ body.clean .bar, body.clean #controls, body.clean #display, body.clean #status, 
 .rbtn svg { width: 22px; height: 22px; fill: none; stroke: #123; stroke-width: 2; vertical-align: middle; }
 .routemodal .kbd { margin-top: 8px; }
 body.clean .routecard { display: none !important; }
+
+/* ---- the buttons at the upper right: search, pinned charts, the eye ---- */
+.searchbtn { right: 110px; }
+.searchbtn.active { background: rgba(35, 105, 190, 0.96); }
+.bar .row { padding-right: 160px; }
+
+/* ---- drawers: the route on the left, the charts on the right ---- */
+.drawer { position: absolute; top: 90px; max-height: calc(100% - 122px); width: 64%; max-width: 340px; z-index: 1250;
+  border-radius: 8px; background: rgba(255, 255, 255, 0.98); box-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+  overflow-y: auto; }
+.drawer.left { left: 8px; }
+.drawer.right { right: 8px; }
+.dhead { position: relative; padding: 8px 10px; background: #1b2733; color: #fff; min-height: 44px; }
+.dtitle { font-size: 15px; font-weight: bold; line-height: 28px; }
+.dclose { position: absolute; right: 4px; top: 4px; width: 36px; height: 36px; margin: 0; padding: 0; border: 0;
+  background: none; cursor: pointer; }
+.dclose svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 3; vertical-align: middle; }
+.dhead .rbtn { height: 30px; margin: 0 0 0 8px; padding: 0 10px; font-size: 12px; }
+.dlist { padding: 4px; }
+.dlist .rtchip { display: block; height: 40px; margin: 3px 0; padding: 0 0 0 10px; line-height: 38px; border-radius: 8px; }
+.dlist .rtchip .rtname { font-size: 15px; }
+.dlist .rtchip .rtmore { float: right; height: 38px; width: 38px; }
+.dlist .rtchip .rtmore svg { width: 22px; height: 22px; }
+.groupbtn { display: block; width: 100%; height: 40px; margin: 0; padding: 0 12px; border: 0; border-bottom: 1px solid #dfe5ea;
+  background: #eef3f8; color: #123; font-size: 14px; text-align: left; cursor: pointer; }
+.dgroup { padding: 8px 10px 4px 10px; font-size: 12px; font-weight: bold; color: #4a5866; letter-spacing: 0.5px; }
+.crow { position: relative; min-height: 40px; margin: 2px 0; padding: 9px 44px 9px 12px; border-radius: 8px;
+  background: #f3f6f9; color: #111; font-size: 14px; line-height: 20px; cursor: pointer; }
+.crow.active { background: rgba(35, 105, 190, 0.96); color: #fff; }
+.crow.relevant { border-left: 4px solid #c2185b; }
+.crow .cx { position: absolute; right: 2px; top: 2px; width: 40px; height: 36px; margin: 0; padding: 0; border: 0;
+  background: none; font-size: 15px; color: inherit; cursor: pointer; }
+.crow .csmall { display: block; font-size: 11px; color: #667; }
+.crow.active .csmall { color: #dbe7f5; }
+.searchrow { padding: 6px; }
+.searchrow { white-space: nowrap; }
+.searchrow #cq { float: none; display: inline-block; width: calc(100% - 72px); height: 40px; margin: 0; padding: 0 10px;
+  box-sizing: border-box; border: 1px solid #b9c2cc; border-radius: 6px; font-size: 15px; box-shadow: none; }
+.searchrow .rbtn { margin: 0 0 0 6px; height: 40px; }
+#cd-search .kbd { margin: 0 6px 6px 6px; }
+.drawer .hidden, .drawer.hidden { display: none; }
+body.clean .drawer, body.clean .searchbtn { display: none !important; }

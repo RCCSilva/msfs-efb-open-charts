@@ -19,7 +19,10 @@
 
   <!-- Clean view: hides every control, so only the chart or the map is left. Always visible. -->
   <!-- The pinned charts list: shown or hidden (the chart on screen stays). Left of the eye. -->
-  <button id="btn-strip" type="button" class="cleanbtn stripbtn active" aria-label="Pinned charts">
+  <button id="btn-search" type="button" class="cleanbtn searchbtn" aria-label="Search charts">
+    <svg viewBox="0 0 32 32"><circle cx="14" cy="14" r="8"/><path d="M20 20l8 8"/></svg>
+  </button>
+  <button id="btn-strip" type="button" class="cleanbtn stripbtn" aria-label="Pinned charts">
     <svg viewBox="0 0 32 32"><path d="M5 9h13M5 16h13M5 23h13"/><path d="M23 7h6l-.7 6 2.7 3.4H20l2.7-3.4z"/><path d="M26 16.5V26"/></svg>
   </button>
   <button id="btn-clean" type="button" class="cleanbtn" aria-label="Hide controls">
@@ -37,29 +40,7 @@
       <button id="btn-star" type="button" class="tool" aria-label="Pin to group">
         <svg viewBox="0 0 32 32"><path d="M11 4h10l-1 9 4 5H8l4-5z"/><path d="M16 18v10"/></svg>
       </button>
-      <button id="btn-group" type="button" class="tool wide"></button>
     </div>
-
-    <!-- Row 2: the pinned charts of the group, grouped by airport, with previous / next -->
-    <div class="strip">
-      <button id="pin-prev" type="button" class="chev" aria-label="Scroll left">
-        <svg viewBox="0 0 32 32"><path d="M20 6l-10 10 10 10"/></svg>
-      </button>
-      <!-- The wrapper clips the scroller's own scrollbar, which must never be visible -->
-      <div class="pinswrap"><div id="pins" class="pins"></div></div>
-      <button id="pin-next" type="button" class="chev" aria-label="Scroll right">
-        <svg viewBox="0 0 32 32"><path d="M12 6l10 10-10 10"/></svg>
-      </button>
-    </div>
-
-    <!-- the route as it is now: one container per place, each with its own menu (three dots) -->
-    <div id="routecard" class="routecard hidden">
-      <div id="routehead" class="routehead"></div>
-      <div id="routechips" class="routechips"></div>
-    </div>
-
-    <div id="results" class="panel hidden"></div>
-    <div id="groups" class="panel hidden"></div>
   </div>
 
   <!-- The box to paste a route in. It stays open while something in the route needs a look. -->
@@ -77,6 +58,40 @@
         <button id="route-go" type="button" class="rbtn go"></button>
       </div>
       <div id="kbd" class="kbd hidden"></div>
+    </div>
+  </div>
+
+  <!-- Left drawer: the route, one container per place, each with a menu of its own (three dots) -->
+  <div id="routedrawer" class="drawer left hidden">
+    <div class="dhead">
+      <span id="rd-title" class="dtitle"></span>
+      <button id="rd-paste" type="button" class="rbtn"></button>
+      <button id="rd-close" type="button" class="dclose" aria-label="Close"><svg viewBox="0 0 32 32"><path d="M9 9l14 14M23 9L9 23"/></svg></button>
+    </div>
+    <div id="routehead" class="routehead"></div>
+    <div id="routechips" class="dlist"></div>
+  </div>
+
+  <!-- Right drawer: the pinned charts of the group, or the search for charts -->
+  <div id="chartdrawer" class="drawer right hidden">
+    <div class="dhead">
+      <span id="cd-title" class="dtitle"></span>
+      <button id="cd-close" type="button" class="dclose" aria-label="Close"><svg viewBox="0 0 32 32"><path d="M9 9l14 14M23 9L9 23"/></svg></button>
+    </div>
+    <div id="cd-pinned" class="hidden">
+      <button id="btn-group" type="button" class="groupbtn"></button>
+      <div id="groups" class="panel hidden"></div>
+      <div id="pins" class="dlist"></div>
+    </div>
+    <div id="cd-search" class="hidden">
+      <div class="searchrow">
+        <input id="cq" type="text" autocomplete="off" spellcheck="false">
+        <button id="btn-kbd2" type="button" class="rbtn" aria-label="Keyboard">
+          <svg viewBox="0 0 32 32"><rect x="3" y="9" width="26" height="14" rx="2"/><path d="M7 14h2M12 14h2M17 14h2M22 14h3M9 19h14"/></svg>
+        </button>
+      </div>
+      <div id="kbd2" class="kbd hidden"></div>
+      <div id="results" class="dlist"></div>
     </div>
   </div>
 
