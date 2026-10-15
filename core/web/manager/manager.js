@@ -1854,7 +1854,11 @@
       chartsOnMap: 'Charts on the map', opacity: 'Opacity', loadingChart: 'Loading the chart...', chartFail: 'Could not load the chart',
       chartsCut: 'More charts here than are drawn: zoom in.',
       chartSearch: 'Put a chart on the map: search by name or airport', outlines: 'Show the outline of every chart in view',
-      chartNone: 'No chart found.', chartNoGeo: 'This chart has no position: it cannot go on the map.', chartsHead: 'Charts'
+      chartNone: 'No chart found.', chartNoGeo: 'This chart has no position: it cannot go on the map.', chartsHead: 'Charts',
+      secSearch: 'Find a place', secRoute: 'Route', secCharts: 'Charts', secLayers: 'What the map shows', secMine: 'My points',
+      noMine: 'You have no points of your own yet.', ident: 'Identifier', lat: 'Latitude', lon: 'Longitude', createPoint: 'Create the point',
+      useCenter: 'Use the centre of the map', deletePoint: 'Delete this point', confirmDelPoint: 'Delete this point?', created: 'Point created',
+      chartsOnMapEmpty: 'No chart on the map yet.'
     },
     pt: {
       title: 'Mapa', hint: 'Clique num aeroporto ou fixo para acrescentar à rota. Clique com o botão direito num lugar vazio para criar um ponto seu ali.',
@@ -1871,7 +1875,11 @@
       chartsOnMap: 'Cartas no mapa', opacity: 'Opacidade', loadingChart: 'Carregando a carta...', chartFail: 'Não foi possível carregar a carta',
       chartsCut: 'Há mais cartas aqui do que as desenhadas: aproxime.',
       chartSearch: 'Colocar uma carta no mapa: busque pelo nome ou aeroporto', outlines: 'Mostrar o contorno de todas as cartas da vista',
-      chartNone: 'Nenhuma carta encontrada.', chartNoGeo: 'Esta carta não tem posição: não dá para colocá-la no mapa.', chartsHead: 'Cartas'
+      chartNone: 'Nenhuma carta encontrada.', chartNoGeo: 'Esta carta não tem posição: não dá para colocá-la no mapa.', chartsHead: 'Cartas',
+      secSearch: 'Procurar um lugar', secRoute: 'Rota', secCharts: 'Cartas', secLayers: 'O que o mapa mostra', secMine: 'Meus pontos',
+      noMine: 'Você ainda não tem pontos seus.', ident: 'Identificador', lat: 'Latitude', lon: 'Longitude', createPoint: 'Criar o ponto',
+      useCenter: 'Usar o centro do mapa', deletePoint: 'Excluir este ponto', confirmDelPoint: 'Excluir este ponto?', created: 'Ponto criado',
+      chartsOnMapEmpty: 'Nenhuma carta no mapa ainda.'
     }
   };
   const mp = (k) => (MP[lang] && MP[lang][k]) || MP.en[k] || k;
@@ -2015,22 +2023,62 @@
     const openSel = h('select', { style: 'width:100%' }, h('option', { value: '' }, mp('open')),
       saved.map((r) => h('option', { value: String(r.id) }, `${r.name} (${r.summary || ''})`)));
 
+    // everything is in the panel on the right, in sections that fold: the map itself stays clean
+    const section = (id, title, open, ...body) => {
+      let on = open;
+      try { const v = localStorage.getItem('oc.mapsec.' + id); if (v !== null) on = v === '1'; } catch (e) { /* ignore */ }
+      const d = h('details', { class: 'plansec' }, h('summary', null, title), h('div', { class: 'plansecbody' }, ...body));
+      d.open = on;
+      d.addEventListener('toggle', () => { try { localStorage.setItem('oc.mapsec.' + id, d.open ? '1' : '0'); } catch (e) { /* ignore */ } });
+      return d;
+    };
+    const layerCb = {};
+    const layerRow = (key, label) => {
+      const cb = h('input', { type: 'checkbox' });
+      cb.checked = true;
+      layerCb[key] = cb;
+      cb.addEventListener('change', () => {
+        const lg = layers[key];
+        if (cb.checked) lg.addTo(map); else map.removeLayer(lg);
+        later();
+      });
+      return h('label', { class: 'row', style: 'gap:6px; margin:4px 0; font-size:13px' }, cb, label);
+    };
+    const mineHost = h('div');
+    const mineForm = {
+      ident: h('input', { type: 'text', placeholder: mp('ident'), maxlength: 12, style: 'width:110px' }),
+      name: h('input', { type: 'text', placeholder: mp('name'), style: 'width:140px' }),
+      lat: h('input', { type: 'text', placeholder: mp('lat'), style: 'width:100px' }),
+      lon: h('input', { type: 'text', placeholder: mp('lon'), style: 'width:100px' })
+    };
+
     const mapDiv = h('div', { class: 'planmap' });
     const panel = h('div', { class: 'planpanel' },
-      h('h3', null, mp('route')),
-      searchIn, searchHost,
       h('p', { class: 'muted planintro' }, mp('hint')),
-      h('h3', { style: 'margin:10px 0 4px' }, mp('chartsHead')),
-      chartIn, chartRes, outlinesRow,
-      chartsHost,
-      openSel,
-      h('label', { class: 'fld', style: 'margin-top:8px' }, h('span', { class: 'muted' }, mp('name')), nameIn),
-      listHost, distHost,
-      h('div', { class: 'row', style: 'margin-top:8px' },
-        h('button', { class: 'btn', onclick: () => validatePlan() }, mp('validate')),
-        h('button', { class: 'btn primary', onclick: () => savePlan() }, mp('save')),
-        h('button', { class: 'btn', onclick: () => { plan.points = []; plan.id = 0; plan.name = ''; plan.auto = true; nameIn.value = ''; plan.result = null; redrawPlan(); } }, mp('clear'))),
-      status, resultHost, hintHost);
+      section('search', mp('secSearch'), true, searchIn, searchHost),
+      section('route', mp('secRoute'), true,
+        openSel,
+        h('label', { class: 'fld', style: 'margin-top:8px' }, h('span', { class: 'muted' }, mp('name')), nameIn),
+        listHost, distHost,
+        h('div', { class: 'row', style: 'margin-top:8px' },
+          h('button', { class: 'btn', onclick: () => validatePlan() }, mp('validate')),
+          h('button', { class: 'btn primary', onclick: () => savePlan() }, mp('save')),
+          h('button', { class: 'btn', onclick: () => { plan.points = []; plan.id = 0; plan.name = ''; plan.auto = true; nameIn.value = ''; plan.result = null; redrawPlan(); } }, mp('clear'))),
+        status, resultHost),
+      section('charts', mp('secCharts'), true, chartIn, chartRes, outlinesRow, chartsHost),
+      section('layers', mp('secLayers'), false,
+        layerRow('airports', mp('airports')), layerRow('fixes', mp('fixesLayer')), layerRow('segs', mp('airwaysLayer')), layerRow('mine', mp('pointsLayer'))),
+      section('mine', mp('secMine'), false,
+        mineHost,
+        h('div', { class: 'row', style: 'margin-top:8px' }, mineForm.ident, mineForm.name),
+        h('div', { class: 'row', style: 'margin-top:6px' }, mineForm.lat, mineForm.lon,
+          h('button', { class: 'btn sm', onclick: () => {
+            const c = plan.map.getCenter();
+            mineForm.lat.value = c.lat.toFixed(5);
+            mineForm.lon.value = c.lng.toFixed(5);
+          } }, mp('useCenter'))),
+        h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn primary', onclick: () => createMine() }, mp('createPoint')))),
+      hintHost);
     view.replaceChildren(h('div', { class: 'plan' }, mapDiv, panel));
 
     const map = L.map(mapDiv, { zoomControl: true, attributionControl: true, doubleClickZoom: false });
@@ -2042,11 +2090,6 @@
       charts: L.layerGroup()   // off until the user turns it on
     };
     const overlays = {};   // id -> { layer, meta, name }
-    L.control.layers(null, {
-      [mp('airwaysLayer')]: layers.segs, [mp('fixesLayer')]: layers.fixes, [mp('airports')]: layers.airports, [mp('pointsLayer')]: layers.mine,
-      [mp('chartsLayer')]: layers.charts
-    }, { collapsed: true }).addTo(map);
-    map.on('overlayadd overlayremove', () => later());
 
     const add = (p) => { plan.points.push(p); plan.result = null; autoName(); redrawPlan(); };
     const colorOf = { W: '#6b7280', V: '#15803d', N: '#92400e' };
@@ -2251,8 +2294,8 @@
 
     outlinesCb.addEventListener('change', () => {
       if (outlinesCb.checked) map.addLayer(layers.charts); else map.removeLayer(layers.charts);
+      later();
     });
-    map.on('overlayadd overlayremove', () => { outlinesCb.checked = map.hasLayer(layers.charts); });
     let chartTimer = null;
     let chartSeq = 0;
     chartIn.addEventListener('input', () => {
@@ -2312,6 +2355,15 @@
     const mineLayer = async () => {
       layers.mine.clearLayers();
       const pts = (await api('GET', '/api/nav/points')).points;
+      mineHost.replaceChildren(...(pts.length === 0 ? [h('div', { class: 'muted' }, mp('noMine'))] : pts.slice(0, 200).map((p) => h('div', { class: 'searchrow',
+        onclick: () => showPlace(p), title: mp('goTo') },
+        h('span', { class: 'grow' }, h('strong', null, p.ident), ' ', h('span', { class: 'muted' }, p.name || '')),
+        h('button', { class: 'btn sm', title: mp('addTo'), onclick: (ev) => { ev.stopPropagation(); add({ ident: p.ident, region: 'USR', kind: 'waypoint', lat: p.lat, lon: p.lon }); } }, '+'),
+        h('button', { class: 'btn sm danger', title: mp('deletePoint'), onclick: async (ev) => {
+          ev.stopPropagation();
+          if (!confirm(mp('confirmDelPoint'))) return;
+          try { await api('DELETE', '/api/nav/points/' + p.id); mineLayer(); } catch (e) { toast(mp('failed') + ': ' + e.message); }
+        } }, '\u00d7')))));
       pts.forEach((p) => {
         const m = L.circleMarker([p.lat, p.lon], { radius: 5, color: '#7c3aed', weight: 2, fillColor: '#ddd6fe', fillOpacity: 1 });
         m.bindTooltip(`${p.ident}${p.name ? ' ' + p.name : ''}`);
@@ -2320,6 +2372,17 @@
       });
     };
     mineLayer();
+    async function createMine() {
+      const lat = Number(mineForm.lat.value.replace(',', '.'));
+      const lon = Number(mineForm.lon.value.replace(',', '.'));
+      if (!mineForm.ident.value.trim() || mineForm.lat.value === '' || mineForm.lon.value === '' || !isFinite(lat) || !isFinite(lon)) { toast(mp('failed') + ': ' + mp('ident') + ' / ' + mp('lat') + ' / ' + mp('lon')); return; }
+      try {
+        await api('POST', '/api/nav/points', { ident: mineForm.ident.value.trim().toUpperCase(), name: mineForm.name.value.trim(), lat, lon });
+        mineForm.ident.value = ''; mineForm.name.value = ''; mineForm.lat.value = ''; mineForm.lon.value = '';
+        toast(mp('created'));
+        mineLayer();
+      } catch (e) { toast(mp('pointFailed') + ': ' + e.message); }
+    }
     map.on('contextmenu', async (ev) => {
       const ident = (prompt(mp('newPoint'), '') || '').trim().toUpperCase();
       if (!ident) return;

@@ -208,3 +208,13 @@ body.fullmap .planpanel { position: static; max-height: none; height: 100%; over
 .chartpop { min-width: 190px; }
 .chartpop .btn { margin-right: 6px; }
 .planchartlist .planrow .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+
+/* the panel's sections fold */
+.plansec { border-top: 1px solid var(--line); }
+.plansec > summary { cursor: pointer; padding: 10px 2px; font-weight: 700; font-size: 14px; list-style: none; display: flex; align-items: center; gap: 8px; }
+.plansec > summary::-webkit-details-marker { display: none; }
+.plansec > summary::before { content: ''; width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg); transition: transform .12s; }
+.plansec[open] > summary::before { transform: rotate(45deg); }
+.plansecbody { padding: 0 2px 12px; }
+.plansecbody .searchres { max-height: 200px; }
