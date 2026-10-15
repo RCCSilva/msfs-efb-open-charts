@@ -46,7 +46,7 @@
       tabCatalog: 'Visual charts (catalog)', tabPackage: 'Aerodromes (package)', tabFiles: 'Add files',
       stepsFiles: 'Add what you downloaded', capCatalog: 'Catalog', capPackage: 'Package', capLocate: 'By date', capUpload: 'Upload',
       efbTitle: "The screen the simulator's EFB shows, in its own tab",
-      about: 'About', setup: 'Setup', efb: 'EFB', guide: 'Guide', nav: 'Navigation', routes: 'Routes',
+      about: 'About', setup: 'Setup', efb: 'EFB', guide: 'Guide', nav: 'Navigation', routes: 'Routes', mapTab: 'Map',
       whyManualTitle: 'Why do I have to download the charts myself?',
       whyManual: 'Most chart providers do not allow redistribution, so we cannot offer the charts already processed and ready. Many also forbid any kind of bulk download or scraping script. To stay within the terms of use, we are being conservative for now: you download the files yourself and Open Charts processes them on your computer. We may look for a better way in the future.',
       guideIntro: 'The simulator screen shows no hints when you hover a button, so here is what each one does. The numbers on the drawing match the list.',
@@ -146,7 +146,7 @@
       tabCatalog: 'Cartas visuais (catálogo)', tabPackage: 'Aeródromos (pacote)', tabFiles: 'Adicionar arquivos',
       stepsFiles: 'Adicione o que você baixou', capCatalog: 'Catálogo', capPackage: 'Pacote', capLocate: 'Por data', capUpload: 'Envio',
       efbTitle: 'A tela que o EFB do simulador mostra, em uma aba própria',
-      about: 'Sobre', setup: 'Configuração', efb: 'EFB', guide: 'Guia', nav: 'Navegação', routes: 'Rotas',
+      about: 'Sobre', setup: 'Configuração', efb: 'EFB', guide: 'Guia', nav: 'Navegação', routes: 'Rotas', mapTab: 'Mapa',
       whyManualTitle: 'Por que eu tenho que baixar as cartas manualmente?',
       whyManual: 'A maior parte dos provedores não permite a redistribuição, o que impede a gente de já entregar as cartas processadas e prontas. Muitos também proíbem qualquer tipo de download em massa ou script de extração automática. Para não infringir os termos de uso, vamos ser conservadores por enquanto: você baixa os arquivos e o Open Charts os processa no seu computador. No futuro podemos avaliar uma alternativa melhor.',
       guideIntro: 'A tela do simulador não mostra dicas ao passar o mouse nos botões, então aqui está o que cada um faz. Os números do desenho batem com a lista.',
@@ -313,8 +313,8 @@
     if (state.local === undefined) {
       try { state.local = (await api('GET', '/api/health')).local !== false; } catch (e) { state.local = true; }
     }
-    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'routes', 'nav', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
-      pageLink('#' + id, id === tab ? 'on' : '', t(id))).concat([
+    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'routes', 'map', 'nav', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
+      pageLink('#' + id, id === tab ? 'on' : '', t(id === 'map' ? 'mapTab' : id))).concat([
         // The EFB screen (same page the simulator shows) opens in its own tab, outside the simulator too.
         h('a', { class: 'navlink', href: '/viewer.html?lang=' + lang, target: '_blank', rel: 'noopener', title: t('efbTitle') }, t('efb') + ' \u2197')]));
     try {
@@ -327,6 +327,7 @@
       else if (r.name === 'groups') await renderGroups();
       else if (r.name === 'setup') await renderSetup();
       else if (r.name === 'routes') await renderRoutes();
+      else if (r.name === 'map') await renderMap();
       else if (r.name === 'nav') await renderNav();
       else if (r.name === 'guide') renderGuide();
       else if (r.name === 'about') renderAbout();
@@ -1831,6 +1832,233 @@
     if (routesState.result) showResult(routesState.result);
     else if (routesState.id && routesState.text) validate();
     else showResult(null);
+  }
+
+  // ---- Map: the planner. A technical map to build a route by touching airports and fixes, with the
+  // airways around. The EFB screen is for flying; planning is done here, before the flight.
+  const MP = {
+    en: {
+      title: 'Map', hint: 'Click an airport or a fix to add it to the route. Right-click an empty place to make a point of your own there.',
+      route: 'Route', empty: 'The route is empty. Click airports and fixes on the map.', name: 'Name', save: 'Save', clear: 'Clear',
+      validate: 'Validate', saved: 'Saved', failed: 'Could not do that', open: 'Open a saved route...', up: 'Move up', down: 'Move down',
+      remove: 'Remove', zoomIn: 'Zoom in to see fixes and airways.', cut: 'Too many here: zoom in to see them all.',
+      airports: 'Airports', fixesLayer: 'Fixes', airwaysLayer: 'Airways', pointsLayer: 'My points', ok: 'All names were found.',
+      problems: 'to check', newPoint: 'Identifier of the new point (letters and digits):', pointFailed: 'Could not make the point',
+      noAirports: 'No airports are stored in this area yet. Load them in the Navigation tab.', places: 'places'
+    },
+    pt: {
+      title: 'Mapa', hint: 'Clique num aeroporto ou fixo para acrescentar à rota. Clique com o botão direito num lugar vazio para criar um ponto seu ali.',
+      route: 'Rota', empty: 'A rota está vazia. Clique em aeroportos e fixos no mapa.', name: 'Nome', save: 'Salvar', clear: 'Limpar',
+      validate: 'Validar', saved: 'Salva', failed: 'Não foi possível', open: 'Abrir uma rota salva...', up: 'Subir', down: 'Descer',
+      remove: 'Remover', zoomIn: 'Aproxime para ver os fixos e as aerovias.', cut: 'Tem coisa demais aqui: aproxime para ver tudo.',
+      airports: 'Aeroportos', fixesLayer: 'Fixos', airwaysLayer: 'Aerovias', pointsLayer: 'Meus pontos', ok: 'Todos os nomes foram encontrados.',
+      problems: 'a conferir', newPoint: 'Identificador do novo ponto (letras e dígitos):', pointFailed: 'Não foi possível criar o ponto',
+      noAirports: 'Ainda não há aeroportos guardados nesta área. Carregue-os na aba Navegação.', places: 'pontos'
+    }
+  };
+  const mp = (k) => (MP[lang] && MP[lang][k]) || MP.en[k] || k;
+  const KIND_WORD = { W: 'waypoint', V: 'vor', N: 'ndb' };
+  const plan = { id: 0, name: '', auto: true, points: [], choices: [], map: null, result: null };
+
+  function planText() { return plan.points.map((p) => p.ident).join(' '); }
+
+  function planChoices() {
+    // each fix is the place that was touched, even when the name exists elsewhere
+    const seen = {};
+    const out = [];
+    plan.points.forEach((p) => {
+      const n = seen[p.ident] || 0;
+      seen[p.ident] = n + 1;
+      if (p.kind !== 'airport' && p.kind !== 'coordinate' && p.region) out.push({ token: p.ident, nth: n, region: p.region, kind: p.kind });
+    });
+    return out;
+  }
+
+  async function renderMap() {
+    if (plan.map) { plan.map.remove(); plan.map = null; }
+    await loadLeaflet().catch(() => null);
+    if (!window.L) { view.replaceChildren(h('div', { class: 'card' }, mp('title'), ': Leaflet')); return; }
+    const L = window.L;
+    const saved = (await api('GET', '/api/routes')).routes;
+
+    const nameIn = h('input', { type: 'text', placeholder: mp('name'), value: plan.name });
+    nameIn.addEventListener('input', () => { plan.name = nameIn.value; plan.auto = nameIn.value === ''; });
+    const status = h('div', { class: 'muted', style: 'margin:6px 0' });
+    const listHost = h('div');
+    const resultHost = h('div');
+    const hintHost = h('div', { class: 'muted planhint' });
+    const openSel = h('select', { style: 'width:100%' }, h('option', { value: '' }, mp('open')),
+      saved.map((r) => h('option', { value: String(r.id) }, `${r.name} (${r.summary || ''})`)));
+
+    const mapDiv = h('div', { class: 'planmap' });
+    const panel = h('div', { class: 'card planpanel' },
+      h('h3', null, mp('route')),
+      openSel,
+      h('label', { class: 'fld', style: 'margin-top:8px' }, h('span', { class: 'muted' }, mp('name')), nameIn),
+      listHost,
+      h('div', { class: 'row', style: 'margin-top:8px' },
+        h('button', { class: 'btn', onclick: () => validatePlan() }, mp('validate')),
+        h('button', { class: 'btn primary', onclick: () => savePlan() }, mp('save')),
+        h('button', { class: 'btn', onclick: () => { plan.points = []; plan.id = 0; plan.name = ''; plan.auto = true; nameIn.value = ''; plan.result = null; redrawPlan(); } }, mp('clear'))),
+      status, resultHost);
+    view.replaceChildren(h('h2', null, mp('title')), h('p', { class: 'muted' }, mp('hint')),
+      h('div', { class: 'plan' }, h('div', null, mapDiv, hintHost), panel));
+
+    const map = L.map(mapDiv, { zoomControl: true, attributionControl: true, doubleClickZoom: false });
+    plan.map = map;
+    L.tileLayer('/tiles/{z}/{x}/{y}.png', { maxZoom: 12, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+    const layers = {
+      segs: L.layerGroup().addTo(map), fixes: L.layerGroup().addTo(map), airports: L.layerGroup().addTo(map),
+      mine: L.layerGroup().addTo(map), route: L.layerGroup().addTo(map)
+    };
+    L.control.layers(null, {
+      [mp('airwaysLayer')]: layers.segs, [mp('fixesLayer')]: layers.fixes, [mp('airports')]: layers.airports, [mp('pointsLayer')]: layers.mine
+    }, { collapsed: true }).addTo(map);
+
+    const add = (p) => { plan.points.push(p); plan.result = null; autoName(); redrawPlan(); };
+    const colorOf = { W: '#6b7280', V: '#15803d', N: '#92400e' };
+
+    function autoName() {
+      if (!plan.auto || plan.id) return;
+      const n = plan.points.length;
+      plan.name = n > 1 ? `${plan.points[0].ident} > ${plan.points[n - 1].ident}` : (n === 1 ? plan.points[0].ident : '');
+      nameIn.value = plan.name;
+    }
+
+    function redrawPlan() {
+      layers.route.clearLayers();
+      const pts = plan.points.map((p) => [p.lat, p.lon]);
+      if (pts.length > 1) L.polyline(pts, { color: '#c2185b', weight: 4, opacity: 0.9, interactive: false }).addTo(layers.route);
+      plan.points.forEach((p, i) => {
+        L.circleMarker([p.lat, p.lon], { radius: 6, color: '#c2185b', weight: 2, fillColor: '#fff', fillOpacity: 1, interactive: false })
+          .bindTooltip(String(i + 1), { permanent: true, direction: 'top', offset: [0, -4], className: 'plannum' }).addTo(layers.route);
+      });
+      listHost.replaceChildren(...(plan.points.length === 0 ? [h('p', { class: 'muted' }, mp('empty'))] : [
+        h('div', { class: 'planlist' }, plan.points.map((p, i) => h('div', { class: 'planrow' },
+          h('span', { class: 'plannumb' }, String(i + 1)),
+          h('span', { class: 'grow' }, h('strong', null, p.ident), h('span', { class: 'muted' }, ' ' + (p.region || '') + ' ' + (p.kind === 'airport' ? 'AP' : (p.kind || '').toUpperCase()))),
+          h('button', { class: 'btn sm', title: mp('up'), disabled: i === 0, onclick: () => { swap(i, i - 1); } }, '↑'),
+          h('button', { class: 'btn sm', title: mp('down'), disabled: i === plan.points.length - 1, onclick: () => { swap(i, i + 1); } }, '↓'),
+          h('button', { class: 'btn sm danger', title: mp('remove'), onclick: () => { plan.points.splice(i, 1); plan.result = null; autoName(); redrawPlan(); } }, '×'))))]));
+      resultHost.replaceChildren();
+    }
+    function swap(a, b) {
+      const t0 = plan.points[a]; plan.points[a] = plan.points[b]; plan.points[b] = t0;
+      plan.result = null; autoName(); redrawPlan();
+    }
+
+    async function validatePlan() {
+      if (!plan.points.length) return;
+      status.textContent = '...';
+      try {
+        const res = await api('POST', '/api/route/resolve', { route: planText(), choices: planChoices() });
+        status.textContent = '';
+        resultHost.replaceChildren(
+          h('div', null, h('span', { class: 'badge' }, `${res.points.length} ${mp('places')}`),
+            res.problems.length ? h('span', { class: 'badge warn' }, `${res.problems.length} ${mp('problems')}`) : h('span', { class: 'badge ok' }, mp('ok'))),
+          res.problems.length ? h('div', { class: 'warnbox', style: 'margin-top:6px' }, res.problems.map((q) => h('div', null, h('strong', null, q.token), ' ', q.message))) : null);
+      } catch (e) { status.textContent = mp('failed') + ': ' + e.message; }
+    }
+
+    async function savePlan() {
+      if (plan.points.length < 1) return;
+      const body = { name: nameIn.value, text: planText(), choices: planChoices() };
+      try {
+        const r = plan.id ? await api('PUT', '/api/routes/' + plan.id, body) : await api('POST', '/api/routes', body);
+        plan.id = r.id; plan.name = r.name; nameIn.value = r.name;
+        toast(mp('saved') + ': ' + r.name);
+      } catch (e) { toast(mp('failed') + ': ' + e.message); }
+    }
+
+    openSel.addEventListener('change', async () => {
+      const r = saved.find((x) => String(x.id) === openSel.value);
+      if (!r) return;
+      status.textContent = '...';
+      try {
+        const res = await api('POST', '/api/route/resolve', { route: r.text, choices: r.choices || [] });
+        plan.id = r.id; plan.name = r.name; plan.auto = false; nameIn.value = r.name;
+        plan.points = res.points.map((p) => ({ ident: p.ident, region: p.region || '', kind: p.kind, lat: p.lat, lon: p.lon }));
+        plan.result = null;
+        redrawPlan();
+        status.textContent = '';
+        if (plan.points.length) map.fitBounds(L.latLngBounds(plan.points.map((p) => [p.lat, p.lon])), { padding: [40, 40] });
+      } catch (e) { status.textContent = mp('failed') + ': ' + e.message; }
+    });
+
+    // ---- what is on the map follows the view
+    let seq = 0;
+    let timer = null;
+    async function refresh() {
+      const my = ++seq;
+      const z = map.getZoom();
+      const b = map.getBounds().pad(0.1);
+      const q = `minLat=${b.getSouth()}&minLon=${b.getWest()}&maxLat=${b.getNorth()}&maxLon=${b.getEast()}&fixes=${z >= 7 ? 1 : 0}&segments=${z >= 6 ? 1 : 0}`;
+      let a;
+      try { a = await api('GET', '/api/nav/area?' + q); } catch (e) { return; }
+      if (my !== seq) return;
+      layers.airports.clearLayers(); layers.fixes.clearLayers(); layers.segs.clearLayers();
+      a.airports.forEach((x) => {
+        const m = L.marker([x.lat, x.lon], { icon: L.divIcon({ className: 'plan-ap', html: `<b>${x.icao}</b>`, iconSize: null, iconAnchor: [-6, 8] }) });
+        m.bindTooltip(`${x.icao} ${x.name || ''}`);
+        m.on('click', () => add({ ident: x.icao, region: '', kind: 'airport', lat: x.lat, lon: x.lon }));
+        m.addTo(layers.airports);
+        L.circleMarker([x.lat, x.lon], { radius: 6, color: '#1d4ed8', weight: 2, fillColor: '#bfdbfe', fillOpacity: 1 })
+          .on('click', () => add({ ident: x.icao, region: '', kind: 'airport', lat: x.lat, lon: x.lon })).addTo(layers.airports);
+      });
+      a.fixes.forEach((x) => {
+        const m = L.circleMarker([x.lat, x.lon], { radius: x.kind === 'W' ? 3 : 5, color: colorOf[x.kind] || '#6b7280', weight: 1.5, fillOpacity: 0.7 });
+        m.bindTooltip(`${x.ident} ${x.region} ${KIND_WORD[x.kind] || ''}${x.name ? ' ' + x.name : ''}`);
+        m.on('click', () => add({ ident: x.ident, region: x.region, kind: KIND_WORD[x.kind] || 'waypoint', lat: x.lat, lon: x.lon }));
+        m.addTo(layers.fixes);
+      });
+      a.segments.forEach((s) => {
+        L.polyline([[s.lat, s.lon], [s.toLat, s.toLon]], { color: '#94a3b8', weight: 1.5, opacity: 0.8 }).bindTooltip(s.airway, { sticky: true }).addTo(layers.segs);
+      });
+      let hint = '';
+      if (z < 6) hint = mp('zoomIn');
+      else if (a.fixesCut || a.segmentsCut) hint = mp('cut');
+      else if (!a.airports.length && z >= 6) hint = mp('noAirports');
+      hintHost.textContent = hint;
+    }
+    const later = () => { clearTimeout(timer); timer = setTimeout(refresh, 250); };
+    map.on('moveend', later);
+
+    // ---- the user's own points
+    const mineLayer = async () => {
+      layers.mine.clearLayers();
+      const pts = (await api('GET', '/api/nav/points')).points;
+      pts.forEach((p) => {
+        const m = L.circleMarker([p.lat, p.lon], { radius: 5, color: '#7c3aed', weight: 2, fillColor: '#ddd6fe', fillOpacity: 1 });
+        m.bindTooltip(`${p.ident}${p.name ? ' ' + p.name : ''}`);
+        m.on('click', () => add({ ident: p.ident, region: 'USR', kind: 'waypoint', lat: p.lat, lon: p.lon }));
+        m.addTo(layers.mine);
+      });
+    };
+    mineLayer();
+    map.on('contextmenu', async (ev) => {
+      const ident = (prompt(mp('newPoint'), '') || '').trim().toUpperCase();
+      if (!ident) return;
+      try {
+        const p = await api('POST', '/api/nav/points', { ident, name: '', lat: Number(ev.latlng.lat.toFixed(5)), lon: Number(ev.latlng.lng.toFixed(5)) });
+        await mineLayer();
+        add({ ident: p.ident, region: 'USR', kind: 'waypoint', lat: p.lat, lon: p.lon });
+      } catch (e) { toast(mp('pointFailed') + ': ' + e.message); }
+    });
+
+    // the first view: the route in progress, else where the stored airports are, else Brazil
+    if (plan.points.length) map.fitBounds(L.latLngBounds(plan.points.map((p) => [p.lat, p.lon])), { padding: [40, 40] });
+    else {
+      let first = null;
+      try { first = (await api('GET', '/api/nav/airports')).airports[0]; } catch (e) { /* none */ }
+      let c = [-15, -50], z = 5;
+      if (first) {
+        try { const ap = await api('GET', '/api/nav/airport/' + encodeURIComponent(first.icao)); if (ap && ap.lat) { c = [ap.lat, ap.lon]; z = 8; } } catch (e) { /* default */ }
+      }
+      map.setView(c, z);
+    }
+    redrawPlan();
+    refresh();
+    setTimeout(() => map.invalidateSize(), 80);
   }
 
   // ---- Guide: what every button of the in-simulator screen does. The simulator's browser shows no

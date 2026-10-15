@@ -684,3 +684,100 @@ func (d *DB) DeleteSavedRoute(id int64) error {
 	}
 	return nil
 }
+
+// ---- what exists in an area of the map ----
+
+// AreaAirport is an airport in an area.
+type AreaAirport struct {
+	ICAO string  `json:"icao"`
+	Name string  `json:"name"`
+	Lat  float64 `json:"lat"`
+	Lon  float64 `json:"lon"`
+}
+
+// AreaSegment is a stretch of an airway.
+type AreaSegment struct {
+	Airway string  `json:"airway"`
+	From   string  `json:"from"`
+	To     string  `json:"to"`
+	Lat    float64 `json:"lat"`
+	Lon    float64 `json:"lon"`
+	ToLat  float64 `json:"toLat"`
+	ToLon  float64 `json:"toLon"`
+}
+
+// Area is what is stored inside a rectangle of the map.
+type Area struct {
+	Airports    []AreaAirport `json:"airports"`
+	Fixes       []FixRow      `json:"fixes"`
+	Segments    []AreaSegment `json:"segments"`
+	FixesCut    bool          `json:"fixesCut"`    // there are more fixes than were sent
+	SegmentsCut bool          `json:"segmentsCut"` // there are more segments than were sent
+}
+
+// InArea returns the airports, the fixes and the airway segments inside the rectangle. Fixes and
+// segments are capped (the area of a whole country holds a hundred thousand of them); the caps
+// are reported so that the map can ask the user to zoom in.
+func (d *DB) InArea(minLat, minLon, maxLat, maxLon float64, maxFixes, maxSegments int, withFixes, withSegments bool) (Area, error) {
+	a := Area{Airports: []AreaAirport{}, Fixes: []FixRow{}, Segments: []AreaSegment{}}
+	rows, err := d.db.Query(`SELECT icao, name, lat, lon FROM airport WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ? LIMIT 2000`,
+		minLat, maxLat, minLon, maxLon)
+	if err != nil {
+		return a, err
+	}
+	for rows.Next() {
+		var x AreaAirport
+		var name sql.NullString
+		if err := rows.Scan(&x.ICAO, &name, &x.Lat, &x.Lon); err != nil {
+			rows.Close()
+			return a, err
+		}
+		x.Name = name.String
+		a.Airports = append(a.Airports, x)
+	}
+	rows.Close()
+
+	if withFixes {
+		rows, err := d.db.Query(`SELECT ident, region, kind, name, lat, lon FROM fix WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ? LIMIT ?`,
+			minLat, maxLat, minLon, maxLon, maxFixes+1)
+		if err != nil {
+			return a, err
+		}
+		for rows.Next() {
+			var x FixRow
+			var name sql.NullString
+			if err := rows.Scan(&x.Ident, &x.Region, &x.Kind, &name, &x.Lat, &x.Lon); err != nil {
+				rows.Close()
+				return a, err
+			}
+			x.Name = name.String
+			a.Fixes = append(a.Fixes, x)
+		}
+		rows.Close()
+		if len(a.Fixes) > maxFixes {
+			a.Fixes, a.FixesCut = a.Fixes[:maxFixes], true
+		}
+	}
+	if withSegments {
+		rows, err := d.db.Query(`SELECT r.airway, r.ident, r.next_ident, f.lat, f.lon, r.next_lat, r.next_lon
+			FROM fix f JOIN route r ON r.ident = f.ident AND r.region = f.region AND r.kind = f.kind
+			WHERE f.lat BETWEEN ? AND ? AND f.lon BETWEEN ? AND ? AND r.next_ident <> '' AND r.airway <> '' LIMIT ?`,
+			minLat, maxLat, minLon, maxLon, maxSegments+1)
+		if err != nil {
+			return a, err
+		}
+		for rows.Next() {
+			var s AreaSegment
+			if err := rows.Scan(&s.Airway, &s.From, &s.To, &s.Lat, &s.Lon, &s.ToLat, &s.ToLon); err != nil {
+				rows.Close()
+				return a, err
+			}
+			a.Segments = append(a.Segments, s)
+		}
+		rows.Close()
+		if len(a.Segments) > maxSegments {
+			a.Segments, a.SegmentsCut = a.Segments[:maxSegments], true
+		}
+	}
+	return a, nil
+}

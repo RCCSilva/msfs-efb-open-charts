@@ -95,6 +95,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/routes/{id}", s.handleRouteSave)
 	mux.HandleFunc("DELETE /api/routes/{id}", s.handleRouteDelete)
 	mux.HandleFunc("GET /api/nav/summary", s.handleNavSummary)
+	mux.HandleFunc("GET /api/nav/area", s.handleNavArea)
 	mux.HandleFunc("GET /api/nav/fixes", s.handleNavFixes)
 	mux.HandleFunc("DELETE /api/nav/fixes", s.handleNavFixDelete)
 	mux.HandleFunc("DELETE /api/nav/airport/{icao}", s.handleNavAirportDelete)

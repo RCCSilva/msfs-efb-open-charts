@@ -171,6 +171,10 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   charts under the one being opened (up to 4 extra layers, stored in `oc.multi`). Adding or removing a chart in that mode never moves the view; only the eye button of a pinned row
   (`focusChart`) fits the map to that chart.
   In chart-only mode the route goes through the chart's georeference (nothing for view-only charts).
+  The manager's **Map** tab (`renderMap`) is the route planner: Leaflet over the server's tiles, `GET /api/nav/area` (airports,
+  fixes from zoom 7, airway segments from zoom 6, capped and reported as cut), click an airport/fix/point of the user to add it,
+  right-click to make a point of one's own, save with `choices` so that the touched place is the one used. The name
+  "Map" is the planner; the in-simulator screen is called EFB.
   **Conflicts** (a name that exists in several places): the resolver takes the closest to the previous point and lists
   every candidate on the point (`candidates`, with the distance); the user may pick another one, which is a
   `route.Choice` {token, nth occurrence, region, kind} kept with the saved route (`choices`) and sent with

@@ -96,3 +96,41 @@ func TestSavedRoutes(t *testing.T) {
 		t.Fatalf("second delete: %v", err)
 	}
 }
+
+func TestInArea(t *testing.T) {
+	d, err := Open(filepath.Join(t.TempDir(), "a.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if err := d.SaveAirport(&navdata.Airport{ICAO: "SBSJ", Name: "Sao Jose", Lat: -23.2, Lon: -45.9}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SaveAirport(&navdata.Airport{ICAO: "KJFK", Name: "JFK", Lat: 40.6, Lon: -73.8}); err != nil {
+		t.Fatal(err)
+	}
+	fixes := []navdata.Fix{
+		{Ident: "AAAAA", Region: "SB", Kind: navdata.FixWaypoint, Lat: -23.0, Lon: -46.0, Routes: []navdata.Route{
+			{Airway: "UZ6", NextIdent: "BBBBB", NextRegion: "SB", NextKind: navdata.FixWaypoint, NextLat: -22.5, NextLon: -46.5}}},
+		{Ident: "BBBBB", Region: "SB", Kind: navdata.FixWaypoint, Lat: -22.5, Lon: -46.5},
+		{Ident: "FAR", Region: "K6", Kind: navdata.FixWaypoint, Lat: 40.0, Lon: -74.0},
+	}
+	if err := d.SaveFixes(fixes); err != nil {
+		t.Fatal(err)
+	}
+	a, err := d.InArea(-24, -47, -22, -45, 100, 100, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(a.Airports) != 1 || a.Airports[0].ICAO != "SBSJ" || len(a.Fixes) != 2 || len(a.Segments) != 1 || a.Segments[0].Airway != "UZ6" {
+		t.Fatalf("area: %+v", a)
+	}
+	capped, _ := d.InArea(-24, -47, -22, -45, 1, 100, true, false)
+	if len(capped.Fixes) != 1 || !capped.FixesCut {
+		t.Fatalf("cap not reported: %+v", capped)
+	}
+	none, _ := d.InArea(-24, -47, -22, -45, 100, 100, false, false)
+	if len(none.Fixes) != 0 || len(none.Segments) != 0 {
+		t.Fatalf("fixes and segments are asked for: %+v", none)
+	}
+}

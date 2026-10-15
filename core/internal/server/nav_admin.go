@@ -557,3 +557,32 @@ func (s *Server) loadAirports(db *navdb.DB, prefix string, finish func(phase, ms
 	}
 	return true
 }
+
+// GET /api/nav/area?minLat=&minLon=&maxLat=&maxLon=&fixes=1&segments=1
+// What is stored inside a rectangle of the map, for the planner.
+func (s *Server) handleNavArea(w http.ResponseWriter, r *http.Request) {
+	db := s.navDB()
+	if db == nil {
+		navUnavailable(w)
+		return
+	}
+	q := r.URL.Query()
+	num := func(k string) (float64, bool) {
+		v, err := strconv.ParseFloat(q.Get(k), 64)
+		return v, err == nil
+	}
+	minLat, ok1 := num("minLat")
+	minLon, ok2 := num("minLon")
+	maxLat, ok3 := num("maxLat")
+	maxLon, ok4 := num("maxLon")
+	if !(ok1 && ok2 && ok3 && ok4) || minLat > maxLat || minLon > maxLon {
+		writeErr(w, 400, errors.New("minLat, minLon, maxLat and maxLon are required"))
+		return
+	}
+	a, err := db.InArea(minLat, minLon, maxLat, maxLon, 1500, 3000, q.Get("fixes") == "1", q.Get("segments") == "1")
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	writeJSON(w, 200, a)
+}

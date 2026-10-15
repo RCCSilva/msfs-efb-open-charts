@@ -171,3 +171,16 @@ textarea.routetext { width: 100%; border: 1px solid var(--line); border-radius: 
 .doubt { padding: 6px 4px; }
 .doubtrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 8px; }
 .doubtrow.on { background: var(--bg); }
+
+/* ---- Map (planner) ---- */
+.plan { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .plan { grid-template-columns: 1fr; } }
+.planmap { height: calc(100vh - 230px); min-height: 420px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #dfe6ea; }
+.planhint { margin-top: 6px; min-height: 18px; }
+.planpanel { position: sticky; top: 70px; max-height: calc(100vh - 100px); overflow: auto; }
+.planlist { margin-top: 8px; }
+.planrow { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-top: 1px solid var(--line); }
+.plannumb { flex: 0 0 22px; height: 22px; border-radius: 11px; background: #c2185b; color: #fff; font-size: 12px; font-weight: 700; line-height: 22px; text-align: center; }
+.plan-ap b { font-size: 11px; color: #1e3a8a; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; white-space: nowrap; }
+.plannum { background: #c2185b; border: 0; color: #fff; font-weight: 700; padding: 0 4px; box-shadow: none; }
+.plannum:before { display: none; }
