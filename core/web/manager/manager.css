@@ -204,3 +204,7 @@ body.fullmap .planpanel { position: static; max-height: none; height: 100%; over
 .searchrow:hover { background: var(--bg); }
 .plandist { margin-top: 8px; font-weight: 600; }
 .planleg { font-size: 12px; font-weight: 400; }
+
+.chartpop { min-width: 190px; }
+.chartpop .btn { margin-right: 6px; }
+.planchartlist .planrow .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }

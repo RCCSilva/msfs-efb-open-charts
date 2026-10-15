@@ -1849,7 +1849,10 @@
       noAirports: 'No airports are stored in this area yet. Load them in the Navigation tab.', places: 'places',
       search: 'Search a place: identifier or name', noResults: 'Nothing found.', goTo: 'Show on the map', addTo: 'Add to the route',
       distance: 'Distance', nm: 'NM', typeAirport: 'Airport', typePoint: 'My point',
-      kindsShort: { W: 'Waypoint', V: 'VOR', N: 'NDB' }
+      kindsShort: { W: 'Waypoint', V: 'VOR', N: 'NDB' },
+      chartsLayer: 'Charts (outline)', showChart: 'Show the chart on the map', hideChart: 'Remove from the map', openChart: 'Open the chart page',
+      chartsOnMap: 'Charts on the map', opacity: 'Opacity', loadingChart: 'Loading the chart...', chartFail: 'Could not load the chart',
+      chartsCut: 'More charts here than are drawn: zoom in.'
     },
     pt: {
       title: 'Mapa', hint: 'Clique num aeroporto ou fixo para acrescentar à rota. Clique com o botão direito num lugar vazio para criar um ponto seu ali.',
@@ -1861,7 +1864,10 @@
       noAirports: 'Ainda não há aeroportos guardados nesta área. Carregue-os na aba Navegação.', places: 'pontos',
       search: 'Buscar um ponto: identificador ou nome', noResults: 'Nada encontrado.', goTo: 'Mostrar no mapa', addTo: 'Acrescentar à rota',
       distance: 'Distância', nm: 'NM', typeAirport: 'Aeroporto', typePoint: 'Meu ponto',
-      kindsShort: { W: 'Waypoint', V: 'VOR', N: 'NDB' }
+      kindsShort: { W: 'Waypoint', V: 'VOR', N: 'NDB' },
+      chartsLayer: 'Cartas (contorno)', showChart: 'Mostrar a carta no mapa', hideChart: 'Tirar do mapa', openChart: 'Abrir a página da carta',
+      chartsOnMap: 'Cartas no mapa', opacity: 'Opacidade', loadingChart: 'Carregando a carta...', chartFail: 'Não foi possível carregar a carta',
+      chartsCut: 'Há mais cartas aqui do que as desenhadas: aproxime.'
     }
   };
   const mp = (k) => (MP[lang] && MP[lang][k]) || MP.en[k] || k;
@@ -1882,6 +1888,105 @@
     return out;
   }
 
+  // A chart over the map: every tile is drawn by cutting the picture into small triangles and
+  // placing each where the chart's own georeference says it belongs (same method as the viewer).
+  let geoReady = null;
+  function loadGeo() {
+    if (window.LMMGeo) return Promise.resolve();
+    if (!geoReady) {
+      geoReady = new Promise((resolve, reject) => {
+        const js = document.createElement('script');
+        js.src = '/geo.js';
+        js.onload = () => resolve();
+        js.onerror = () => reject(new Error('geo.js'));
+        document.head.appendChild(js);
+      });
+    }
+    return geoReady;
+  }
+
+  function drawTri(ctx, img, s0, s1, s2, d0, d1, d2, fr) {
+    const det = (s1.x - s0.x) * (s2.y - s0.y) - (s2.x - s0.x) * (s1.y - s0.y);
+    if (Math.abs(det) < 1e-9) return;
+    const a = ((d1.x - d0.x) * (s2.y - s0.y) - (d2.x - d0.x) * (s1.y - s0.y)) / det;
+    const c = ((d2.x - d0.x) * (s1.x - s0.x) - (d1.x - d0.x) * (s2.x - s0.x)) / det;
+    const b = ((d1.y - d0.y) * (s2.y - s0.y) - (d2.y - d0.y) * (s1.y - s0.y)) / det;
+    const d = ((d2.y - d0.y) * (s1.x - s0.x) - (d1.y - d0.y) * (s2.x - s0.x)) / det;
+    const e = d0.x - a * s0.x - c * s0.y;
+    const f = d0.y - b * s0.x - d * s0.y;
+    const cx = (d0.x + d1.x + d2.x) / 3;
+    const cy = (d0.y + d1.y + d2.y) / 3;
+    const grow = (pt) => {
+      const dx = pt.x - cx;
+      const dy = pt.y - cy;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      return { x: pt.x + dx / len * 0.6, y: pt.y + dy / len * 0.6 };
+    };
+    const g0 = grow(d0), g1 = grow(d1), g2 = grow(d2);
+    const sx0 = Math.max(fr.left, Math.min(s0.x, s1.x, s2.x) - 1);
+    const sy0 = Math.max(fr.top, Math.min(s0.y, s1.y, s2.y) - 1);
+    const sx1 = Math.min(fr.right, Math.max(s0.x, s1.x, s2.x) + 1);
+    const sy1 = Math.min(fr.bottom, Math.max(s0.y, s1.y, s2.y) + 1);
+    if (sx1 <= sx0 || sy1 <= sy0) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(g0.x, g0.y); ctx.lineTo(g1.x, g1.y); ctx.lineTo(g2.x, g2.y);
+    ctx.closePath();
+    ctx.clip();
+    ctx.setTransform(a, b, c, d, e, f);
+    ctx.drawImage(img, sx0, sy0, sx1 - sx0, sy1 - sy0, sx0, sy0, sx1 - sx0, sy1 - sy0);
+    ctx.restore();
+  }
+
+  function chartWarpLayer(L, meta, img, opacity) {
+    const MESH = 8;
+    const Layer = L.GridLayer.extend({
+      createTile(coords, done) {
+        const T = 256;
+        const tile = document.createElement('canvas');
+        tile.width = T; tile.height = T;
+        const fr = meta.mapFramePx;
+        const n = Math.pow(2, coords.z);
+        const ll = (x, y) => {
+          const lon = x / n * 360 - 180;
+          const m = Math.PI * (1 - 2 * y / n);
+          return { lat: Math.atan((Math.exp(m) - Math.exp(-m)) / 2) * 180 / Math.PI, lon };
+        };
+        const k = img.naturalWidth / meta.image.width;   // the picture may be a reduced copy
+        const src = [];
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (let j = 0; j <= MESH; j++) {
+          src[j] = [];
+          for (let i = 0; i <= MESH; i++) {
+            const p = ll(coords.x + i / MESH, coords.y + j / MESH);
+            const px = window.LMMGeo.toPixel(meta, p.lat, p.lon);
+            src[j][i] = { x: px.px * k, y: px.py * k };
+            minX = Math.min(minX, px.px); maxX = Math.max(maxX, px.px);
+            minY = Math.min(minY, px.py); maxY = Math.max(maxY, px.py);
+          }
+        }
+        const inside = !(maxX < fr.left || minX > fr.right || maxY < fr.top || minY > fr.bottom);
+        if (inside) {
+          const ctx = tile.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          const step = T / MESH;
+          const frame = { left: fr.left * k, top: fr.top * k, right: fr.right * k, bottom: fr.bottom * k };
+          for (let j = 0; j < MESH; j++) {
+            for (let i = 0; i < MESH; i++) {
+              const p00 = { x: i * step, y: j * step }, p10 = { x: (i + 1) * step, y: j * step };
+              const p11 = { x: (i + 1) * step, y: (j + 1) * step }, p01 = { x: i * step, y: (j + 1) * step };
+              drawTri(ctx, img, src[j][i], src[j][i + 1], src[j + 1][i + 1], p00, p10, p11, frame);
+              drawTri(ctx, img, src[j][i], src[j + 1][i + 1], src[j + 1][i], p00, p11, p01, frame);
+            }
+          }
+        }
+        setTimeout(() => done(null, tile), 0);
+        return tile;
+      }
+    });
+    return new Layer({ opacity, minZoom: 3, maxZoom: 14, updateWhenIdle: true, keepBuffer: 1 });
+  }
+
   async function renderMap() {
     if (plan.map) { plan.map.remove(); plan.map = null; }
     await loadLeaflet().catch(() => null);
@@ -1893,6 +1998,7 @@
     nameIn.addEventListener('input', () => { plan.name = nameIn.value; plan.auto = nameIn.value === ''; });
     const status = h('div', { class: 'muted', style: 'margin:6px 0' });
     const distHost = h('div', { class: 'plandist' });
+    const chartsHost = h('div', { class: 'planchartlist' });
     const searchIn = h('input', { type: 'text', placeholder: mp('search'), autocomplete: 'off' });
     const searchHost = h('div', { class: 'searchres' });
     const listHost = h('div');
@@ -1906,6 +2012,7 @@
       h('h3', null, mp('route')),
       searchIn, searchHost,
       h('p', { class: 'muted planintro' }, mp('hint')),
+      chartsHost,
       openSel,
       h('label', { class: 'fld', style: 'margin-top:8px' }, h('span', { class: 'muted' }, mp('name')), nameIn),
       listHost, distHost,
@@ -1921,11 +2028,15 @@
     L.tileLayer('/tiles/{z}/{x}/{y}.png', { maxZoom: 12, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
     const layers = {
       segs: L.layerGroup().addTo(map), fixes: L.layerGroup().addTo(map), airports: L.layerGroup().addTo(map),
-      mine: L.layerGroup().addTo(map), route: L.layerGroup().addTo(map)
+      mine: L.layerGroup().addTo(map), route: L.layerGroup().addTo(map),
+      charts: L.layerGroup()   // off until the user turns it on
     };
+    const overlays = {};   // id -> { layer, meta, name }
     L.control.layers(null, {
-      [mp('airwaysLayer')]: layers.segs, [mp('fixesLayer')]: layers.fixes, [mp('airports')]: layers.airports, [mp('pointsLayer')]: layers.mine
+      [mp('airwaysLayer')]: layers.segs, [mp('fixesLayer')]: layers.fixes, [mp('airports')]: layers.airports, [mp('pointsLayer')]: layers.mine,
+      [mp('chartsLayer')]: layers.charts
     }, { collapsed: true }).addTo(map);
+    map.on('overlayadd overlayremove', () => later());
 
     const add = (p) => { plan.points.push(p); plan.result = null; autoName(); redrawPlan(); };
     const colorOf = { W: '#6b7280', V: '#15803d', N: '#92400e' };
@@ -2046,14 +2157,81 @@
       a.segments.forEach((s) => {
         L.polyline([[s.lat, s.lon], [s.toLat, s.toLon]], { color: '#94a3b8', weight: 1.5, opacity: 0.8 }).bindTooltip(s.airway, { sticky: true }).addTo(layers.segs);
       });
+      layers.charts.clearLayers();
+      let chartsCut = false;
+      if (map.hasLayer(layers.charts) && z >= 6) {
+        try {
+          const f = await api('GET', `/api/charts/footprints?minLat=${b.getSouth()}&minLon=${b.getWest()}&maxLat=${b.getNorth()}&maxLon=${b.getEast()}&limit=300`);
+          if (my !== seq) return;
+          chartsCut = f.cut;
+          f.charts.forEach((c) => {
+            const poly = L.polygon(c.corners.map((p) => [p.lat, p.lon]), { color: '#2563eb', weight: 1.5, fillOpacity: 0.04 });
+            poly.bindTooltip(c.name || c.id, { sticky: true });
+            poly.on('click', (ev) => {
+              L.DomEvent.stopPropagation(ev);
+              const on = !!overlays[c.id];
+              const box = h('div', { class: 'chartpop' },
+                h('strong', null, c.name || c.id),
+                h('div', { class: 'row', style: 'margin-top:8px' },
+                  h('button', { class: 'btn sm primary', onclick: () => { map.closePopup(); on ? removeOverlay(c.id) : showOverlay(c); } }, on ? mp('hideChart') : mp('showChart')),
+                  h('a', { class: 'btn sm', href: '#chart/' + encodeURIComponent(c.id) }, mp('openChart'))));
+              L.popup().setLatLng(ev.latlng).setContent(box).openOn(map);
+            });
+            poly.addTo(layers.charts);
+          });
+        } catch (e) { /* the outlines are an extra */ }
+      }
       let hint = '';
-      if (z < 6) hint = mp('zoomIn');
+      if (chartsCut) hint = mp('chartsCut');
+      else if (z < 6) hint = mp('zoomIn');
       else if (a.fixesCut || a.segmentsCut) hint = mp('cut');
       else if (!a.airports.length && z >= 6) hint = mp('noAirports');
       hintHost.textContent = hint;
     }
     const later = () => { clearTimeout(timer); timer = setTimeout(refresh, 250); };
     map.on('moveend', later);
+
+    // ---- charts over the map
+    function drawChartList() {
+      chartsHost.replaceChildren(...(Object.keys(overlays).length === 0 ? [] : [
+        h('h3', { style: 'margin:10px 0 4px' }, mp('chartsOnMap')),
+        ...Object.keys(overlays).map((id) => {
+          const o = overlays[id];
+          const slider = h('input', { type: 'range', min: 20, max: 100, value: String(Math.round(o.opacity * 100)), title: mp('opacity'), style: 'width:80px' });
+          slider.addEventListener('input', () => { o.opacity = slider.value / 100; o.layer.setOpacity(o.opacity); });
+          return h('div', { class: 'planrow' },
+            h('span', { class: 'grow', title: o.name }, o.name),
+            slider,
+            h('button', { class: 'btn sm danger', title: mp('hideChart'), onclick: () => removeOverlay(id) }, '\u00d7'));
+        })]));
+    }
+    function removeOverlay(id) {
+      const o = overlays[id];
+      if (!o) return;
+      map.removeLayer(o.layer);
+      delete overlays[id];
+      drawChartList();
+    }
+    async function showOverlay(c) {
+      if (overlays[c.id]) return;
+      status.textContent = mp('loadingChart');
+      try {
+        await loadGeo();
+        const meta = await (await fetch('/charts/' + encodeURIComponent(c.id) + '/chart.json?v=' + Date.now())).json();
+        // a pyramid keeps the whole chart small in chart.png; any other chart: a reduced copy is enough here
+        const file = meta.tiles || meta.image.file !== 'chart.png' ? meta.image.file : (meta.image.width > 3000 ? 'chart@4.png' : 'chart.png');
+        const img = await new Promise((resolve, reject) => {
+          const im = new Image();
+          im.onload = () => resolve(im);
+          im.onerror = () => reject(new Error('image'));
+          im.src = '/charts/' + encodeURIComponent(c.id) + '/' + file;
+        });
+        const layer = chartWarpLayer(L, meta, img, 0.75).addTo(map);
+        overlays[c.id] = { layer, meta, name: c.name || c.id, opacity: 0.75 };
+        status.textContent = '';
+        drawChartList();
+      } catch (e) { status.textContent = mp('chartFail'); }
+    }
 
     // ---- search: when there are many small marks, ask for the one by name
     let searchSeq = 0;
@@ -2110,16 +2288,35 @@
       } catch (e) { toast(mp('pointFailed') + ': ' + e.message); }
     });
 
-    // the first view: the route in progress, else where the stored airports are, else Brazil
+    // the first view: the route in progress; else where the aircraft is; else the last route that was
+    // saved; else where the stored airports are; else Brazil
     if (plan.points.length) map.fitBounds(L.latLngBounds(plan.points.map((p) => [p.lat, p.lon])), { padding: [40, 40] });
     else {
-      let first = null;
-      try { first = (await api('GET', '/api/nav/airports')).airports[0]; } catch (e) { /* none */ }
-      let c = [-15, -50], z = 5;
-      if (first) {
-        try { const ap = await api('GET', '/api/nav/airport/' + encodeURIComponent(first.icao)); if (ap && ap.lat) { c = [ap.lat, ap.lon]; z = 8; } } catch (e) { /* default */ }
+      let placed = false;
+      try {
+        const pos = await api('GET', '/api/position');
+        if (pos && pos.valid && pos.lat !== undefined && !pos.simulated) { map.setView([pos.lat, pos.lon], 9); placed = true; }
+      } catch (e) { /* no position */ }
+      if (!placed && saved.length) {
+        try {
+          const res = await api('POST', '/api/route/resolve', { route: saved[0].text, choices: saved[0].choices || [] });
+          if (res.points.length) {
+            map.fitBounds(L.latLngBounds(res.points.map((p) => [p.lat, p.lon])), { padding: [40, 40] });
+            placed = true;
+          }
+        } catch (e) { /* the next one */ }
       }
-      map.setView(c, z);
+      if (!placed) {
+        let c = [-15, -50], z = 5;
+        try {
+          const first = (await api('GET', '/api/nav/airports')).airports[0];
+          if (first) {
+            const ap = await api('GET', '/api/nav/airport/' + encodeURIComponent(first.icao));
+            if (ap && ap.lat) { c = [ap.lat, ap.lon]; z = 8; }
+          }
+        } catch (e) { /* default */ }
+        map.setView(c, z);
+      }
     }
     redrawPlan();
     refresh();

@@ -175,6 +175,10 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   fixes from zoom 7, airway segments from zoom 6, capped and reported as cut), click an airport/fix/point of the user to add it,
   right-click to make a point of one's own, save with `choices` so that the touched place is the one used. The name
   "Map" is the planner; the in-simulator screen is called EFB.
+  Charts on the planner: `GET /api/charts/footprints` (corners of every georeferenced chart in the view, cached by the
+  mtime of chart.json) draws the outlines (layer "Charts", off by default); a click offers to show the chart over the
+  map (a compact copy of the viewer's triangle-mesh warp, `chartWarpLayer`, using `/geo.js`; opacity per chart). The
+  first view is the aircraft, else the last saved route, else the first stored airport.
   **Conflicts** (a name that exists in several places): the resolver takes the closest to the previous point and lists
   every candidate on the point (`candidates`, with the distance); the user may pick another one, which is a
   `route.Choice` {token, nth occurrence, region, kind} kept with the saved route (`choices`) and sent with
