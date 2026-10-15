@@ -2044,14 +2044,6 @@
       });
       return h('label', { class: 'row', style: 'gap:6px; margin:4px 0; font-size:13px' }, cb, label);
     };
-    const mineHost = h('div');
-    const mineForm = {
-      ident: h('input', { type: 'text', placeholder: mp('ident'), maxlength: 12, style: 'width:110px' }),
-      name: h('input', { type: 'text', placeholder: mp('name'), style: 'width:140px' }),
-      lat: h('input', { type: 'text', placeholder: mp('lat'), style: 'width:100px' }),
-      lon: h('input', { type: 'text', placeholder: mp('lon'), style: 'width:100px' })
-    };
-
     const mapDiv = h('div', { class: 'planmap' });
     const panel = h('div', { class: 'planpanel' },
       h('p', { class: 'muted planintro' }, mp('hint')),
@@ -2068,16 +2060,6 @@
       section('charts', mp('secCharts'), true, chartIn, chartRes, outlinesRow, chartsHost),
       section('layers', mp('secLayers'), false,
         layerRow('airports', mp('airports')), layerRow('fixes', mp('fixesLayer')), layerRow('segs', mp('airwaysLayer')), layerRow('mine', mp('pointsLayer'))),
-      section('mine', mp('secMine'), false,
-        mineHost,
-        h('div', { class: 'row', style: 'margin-top:8px' }, mineForm.ident, mineForm.name),
-        h('div', { class: 'row', style: 'margin-top:6px' }, mineForm.lat, mineForm.lon,
-          h('button', { class: 'btn sm', onclick: () => {
-            const c = plan.map.getCenter();
-            mineForm.lat.value = c.lat.toFixed(5);
-            mineForm.lon.value = c.lng.toFixed(5);
-          } }, mp('useCenter'))),
-        h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn primary', onclick: () => createMine() }, mp('createPoint')))),
       hintHost);
     view.replaceChildren(h('div', { class: 'plan' }, mapDiv, panel));
 
@@ -2355,15 +2337,6 @@
     const mineLayer = async () => {
       layers.mine.clearLayers();
       const pts = (await api('GET', '/api/nav/points')).points;
-      mineHost.replaceChildren(...(pts.length === 0 ? [h('div', { class: 'muted' }, mp('noMine'))] : pts.slice(0, 200).map((p) => h('div', { class: 'searchrow',
-        onclick: () => showPlace(p), title: mp('goTo') },
-        h('span', { class: 'grow' }, h('strong', null, p.ident), ' ', h('span', { class: 'muted' }, p.name || '')),
-        h('button', { class: 'btn sm', title: mp('addTo'), onclick: (ev) => { ev.stopPropagation(); add({ ident: p.ident, region: 'USR', kind: 'waypoint', lat: p.lat, lon: p.lon }); } }, '+'),
-        h('button', { class: 'btn sm danger', title: mp('deletePoint'), onclick: async (ev) => {
-          ev.stopPropagation();
-          if (!confirm(mp('confirmDelPoint'))) return;
-          try { await api('DELETE', '/api/nav/points/' + p.id); mineLayer(); } catch (e) { toast(mp('failed') + ': ' + e.message); }
-        } }, '\u00d7')))));
       pts.forEach((p) => {
         const m = L.circleMarker([p.lat, p.lon], { radius: 5, color: '#7c3aed', weight: 2, fillColor: '#ddd6fe', fillOpacity: 1 });
         m.bindTooltip(`${p.ident}${p.name ? ' ' + p.name : ''}`);
@@ -2372,17 +2345,6 @@
       });
     };
     mineLayer();
-    async function createMine() {
-      const lat = Number(mineForm.lat.value.replace(',', '.'));
-      const lon = Number(mineForm.lon.value.replace(',', '.'));
-      if (!mineForm.ident.value.trim() || mineForm.lat.value === '' || mineForm.lon.value === '' || !isFinite(lat) || !isFinite(lon)) { toast(mp('failed') + ': ' + mp('ident') + ' / ' + mp('lat') + ' / ' + mp('lon')); return; }
-      try {
-        await api('POST', '/api/nav/points', { ident: mineForm.ident.value.trim().toUpperCase(), name: mineForm.name.value.trim(), lat, lon });
-        mineForm.ident.value = ''; mineForm.name.value = ''; mineForm.lat.value = ''; mineForm.lon.value = '';
-        toast(mp('created'));
-        mineLayer();
-      } catch (e) { toast(mp('pointFailed') + ': ' + e.message); }
-    }
     map.on('contextmenu', async (ev) => {
       const ident = (prompt(mp('newPoint'), '') || '').trim().toUpperCase();
       if (!ident) return;
