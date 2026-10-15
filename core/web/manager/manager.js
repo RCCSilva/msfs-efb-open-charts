@@ -45,7 +45,8 @@
       openOfficial: '1. Open official page', addFile: '2. Add file', installed: 'Installed', snapshot: 'Snapshot of',
       tabCatalog: 'Visual charts (catalog)', tabPackage: 'Aerodromes (package)', tabFiles: 'Add files',
       stepsFiles: 'Add what you downloaded', capCatalog: 'Catalog', capPackage: 'Package', capLocate: 'By date', capUpload: 'Upload',
-      about: 'About', setup: 'Setup', map: 'Map', guide: 'Guide', nav: 'Navigation', routes: 'Routes',
+      efbTitle: "The screen the simulator's EFB shows, in its own tab",
+      about: 'About', setup: 'Setup', efb: 'EFB', guide: 'Guide', nav: 'Navigation', routes: 'Routes',
       whyManualTitle: 'Why do I have to download the charts myself?',
       whyManual: 'Most chart providers do not allow redistribution, so we cannot offer the charts already processed and ready. Many also forbid any kind of bulk download or scraping script. To stay within the terms of use, we are being conservative for now: you download the files yourself and Open Charts processes them on your computer. We may look for a better way in the future.',
       guideIntro: 'The simulator screen shows no hints when you hover a button, so here is what each one does. The numbers on the drawing match the list.',
@@ -144,7 +145,8 @@
       openOfficial: '1. Abrir página oficial', addFile: '2. Adicionar arquivo', installed: 'Instalada', snapshot: 'Retrato de',
       tabCatalog: 'Cartas visuais (catálogo)', tabPackage: 'Aeródromos (pacote)', tabFiles: 'Adicionar arquivos',
       stepsFiles: 'Adicione o que você baixou', capCatalog: 'Catálogo', capPackage: 'Pacote', capLocate: 'Por data', capUpload: 'Envio',
-      about: 'Sobre', setup: 'Configuração', map: 'Mapa', guide: 'Guia', nav: 'Navegação', routes: 'Rotas',
+      efbTitle: 'A tela que o EFB do simulador mostra, em uma aba própria',
+      about: 'Sobre', setup: 'Configuração', efb: 'EFB', guide: 'Guia', nav: 'Navegação', routes: 'Rotas',
       whyManualTitle: 'Por que eu tenho que baixar as cartas manualmente?',
       whyManual: 'A maior parte dos provedores não permite a redistribuição, o que impede a gente de já entregar as cartas processadas e prontas. Muitos também proíbem qualquer tipo de download em massa ou script de extração automática. Para não infringir os termos de uso, vamos ser conservadores por enquanto: você baixa os arquivos e o Open Charts os processa no seu computador. No futuro podemos avaliar uma alternativa melhor.',
       guideIntro: 'A tela do simulador não mostra dicas ao passar o mouse nos botões, então aqui está o que cada um faz. Os números do desenho batem com a lista.',
@@ -313,8 +315,8 @@
     }
     document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'routes', 'nav', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
       pageLink('#' + id, id === tab ? 'on' : '', t(id))).concat([
-        // The map (same page the EFB shows) opens in its own tab, outside the simulator too.
-        h('a', { class: 'navlink', href: '/viewer.html?lang=' + lang, target: '_blank', rel: 'noopener' }, t('map') + ' \u2197')]));
+        // The EFB screen (same page the simulator shows) opens in its own tab, outside the simulator too.
+        h('a', { class: 'navlink', href: '/viewer.html?lang=' + lang, target: '_blank', rel: 'noopener', title: t('efbTitle') }, t('efb') + ' \u2197')]));
     try {
       await loadGroups();
       drawGroupBar();
