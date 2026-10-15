@@ -308,6 +308,7 @@
 
   async function render() {
     const r = parseRoute();
+    document.body.classList.toggle('fullmap', r.name === 'map');
     const tab = r.name === 'source' ? 'sources' : (r.name === 'chart' ? 'library' : r.name);
     document.getElementById('brand').replaceChildren(pageLink('#library', '', 'Open Charts'));
     if (state.local === undefined) {
@@ -1891,8 +1892,9 @@
       saved.map((r) => h('option', { value: String(r.id) }, `${r.name} (${r.summary || ''})`)));
 
     const mapDiv = h('div', { class: 'planmap' });
-    const panel = h('div', { class: 'card planpanel' },
+    const panel = h('div', { class: 'planpanel' },
       h('h3', null, mp('route')),
+      h('p', { class: 'muted planintro' }, mp('hint')),
       openSel,
       h('label', { class: 'fld', style: 'margin-top:8px' }, h('span', { class: 'muted' }, mp('name')), nameIn),
       listHost,
@@ -1900,9 +1902,8 @@
         h('button', { class: 'btn', onclick: () => validatePlan() }, mp('validate')),
         h('button', { class: 'btn primary', onclick: () => savePlan() }, mp('save')),
         h('button', { class: 'btn', onclick: () => { plan.points = []; plan.id = 0; plan.name = ''; plan.auto = true; nameIn.value = ''; plan.result = null; redrawPlan(); } }, mp('clear'))),
-      status, resultHost);
-    view.replaceChildren(h('h2', null, mp('title')), h('p', { class: 'muted' }, mp('hint')),
-      h('div', { class: 'plan' }, h('div', null, mapDiv, hintHost), panel));
+      status, resultHost, hintHost);
+    view.replaceChildren(h('div', { class: 'plan' }, mapDiv, panel));
 
     const map = L.map(mapDiv, { zoomControl: true, attributionControl: true, doubleClickZoom: false });
     plan.map = map;
