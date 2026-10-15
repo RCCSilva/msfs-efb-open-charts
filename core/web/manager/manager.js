@@ -1736,6 +1736,7 @@
         ? h('div', { style: 'margin:8px 0' },
           h('span', { class: 'badge' }, `${res.points.length} ${rt('places')}`),
           res.problems.length ? h('span', { class: 'badge warn' }, `${res.problems.length} ${rt('problems')}`) : h('span', { class: 'badge ok' }, rt('ok')),
+          res.totalNm ? h('span', { class: 'badge' }, `${fmtNum(res.totalNm)} NM`) : null,
           res.points.some((p) => p.candidates && p.candidates.length > 1) ? h('span', { class: 'badge warn' }, '! ' + rt('conflicts')) : null)
         : null;
       const problems = res && res.problems.length
@@ -1845,7 +1846,10 @@
       remove: 'Remove', zoomIn: 'Zoom in to see fixes and airways.', cut: 'Too many here: zoom in to see them all.',
       airports: 'Airports', fixesLayer: 'Fixes', airwaysLayer: 'Airways', pointsLayer: 'My points', ok: 'All names were found.',
       problems: 'to check', newPoint: 'Identifier of the new point (letters and digits):', pointFailed: 'Could not make the point',
-      noAirports: 'No airports are stored in this area yet. Load them in the Navigation tab.', places: 'places'
+      noAirports: 'No airports are stored in this area yet. Load them in the Navigation tab.', places: 'places',
+      search: 'Search a place: identifier or name', noResults: 'Nothing found.', goTo: 'Show on the map', addTo: 'Add to the route',
+      distance: 'Distance', nm: 'NM', typeAirport: 'Airport', typePoint: 'My point',
+      kindsShort: { W: 'Waypoint', V: 'VOR', N: 'NDB' }
     },
     pt: {
       title: 'Mapa', hint: 'Clique num aeroporto ou fixo para acrescentar à rota. Clique com o botão direito num lugar vazio para criar um ponto seu ali.',
@@ -1854,7 +1858,10 @@
       remove: 'Remover', zoomIn: 'Aproxime para ver os fixos e as aerovias.', cut: 'Tem coisa demais aqui: aproxime para ver tudo.',
       airports: 'Aeroportos', fixesLayer: 'Fixos', airwaysLayer: 'Aerovias', pointsLayer: 'Meus pontos', ok: 'Todos os nomes foram encontrados.',
       problems: 'a conferir', newPoint: 'Identificador do novo ponto (letras e dígitos):', pointFailed: 'Não foi possível criar o ponto',
-      noAirports: 'Ainda não há aeroportos guardados nesta área. Carregue-os na aba Navegação.', places: 'pontos'
+      noAirports: 'Ainda não há aeroportos guardados nesta área. Carregue-os na aba Navegação.', places: 'pontos',
+      search: 'Buscar um ponto: identificador ou nome', noResults: 'Nada encontrado.', goTo: 'Mostrar no mapa', addTo: 'Acrescentar à rota',
+      distance: 'Distância', nm: 'NM', typeAirport: 'Aeroporto', typePoint: 'Meu ponto',
+      kindsShort: { W: 'Waypoint', V: 'VOR', N: 'NDB' }
     }
   };
   const mp = (k) => (MP[lang] && MP[lang][k]) || MP.en[k] || k;
@@ -1885,6 +1892,9 @@
     const nameIn = h('input', { type: 'text', placeholder: mp('name'), value: plan.name });
     nameIn.addEventListener('input', () => { plan.name = nameIn.value; plan.auto = nameIn.value === ''; });
     const status = h('div', { class: 'muted', style: 'margin:6px 0' });
+    const distHost = h('div', { class: 'plandist' });
+    const searchIn = h('input', { type: 'text', placeholder: mp('search'), autocomplete: 'off' });
+    const searchHost = h('div', { class: 'searchres' });
     const listHost = h('div');
     const resultHost = h('div');
     const hintHost = h('div', { class: 'muted planhint' });
@@ -1894,10 +1904,11 @@
     const mapDiv = h('div', { class: 'planmap' });
     const panel = h('div', { class: 'planpanel' },
       h('h3', null, mp('route')),
+      searchIn, searchHost,
       h('p', { class: 'muted planintro' }, mp('hint')),
       openSel,
       h('label', { class: 'fld', style: 'margin-top:8px' }, h('span', { class: 'muted' }, mp('name')), nameIn),
-      listHost,
+      listHost, distHost,
       h('div', { class: 'row', style: 'margin-top:8px' },
         h('button', { class: 'btn', onclick: () => validatePlan() }, mp('validate')),
         h('button', { class: 'btn primary', onclick: () => savePlan() }, mp('save')),
@@ -1937,11 +1948,30 @@
       listHost.replaceChildren(...(plan.points.length === 0 ? [h('p', { class: 'muted' }, mp('empty'))] : [
         h('div', { class: 'planlist' }, plan.points.map((p, i) => h('div', { class: 'planrow' },
           h('span', { class: 'plannumb' }, String(i + 1)),
-          h('span', { class: 'grow' }, h('strong', null, p.ident), h('span', { class: 'muted' }, ' ' + (p.region || '') + ' ' + (p.kind === 'airport' ? 'AP' : (p.kind || '').toUpperCase()))),
+          h('span', { class: 'grow' }, h('strong', null, p.ident), h('span', { class: 'muted' }, ' ' + (p.region || '') + ' ' + (p.kind === 'airport' ? 'AP' : (p.kind || '').toUpperCase())),
+            h('span', { class: 'planleg muted', 'data-i': String(i) })),
           h('button', { class: 'btn sm', title: mp('up'), disabled: i === 0, onclick: () => { swap(i, i - 1); } }, '↑'),
           h('button', { class: 'btn sm', title: mp('down'), disabled: i === plan.points.length - 1, onclick: () => { swap(i, i + 1); } }, '↓'),
           h('button', { class: 'btn sm danger', title: mp('remove'), onclick: () => { plan.points.splice(i, 1); plan.result = null; autoName(); redrawPlan(); } }, '×'))))]));
       resultHost.replaceChildren();
+      showDistance();
+    }
+
+    // The length of the route is the server's: the planner only shows it, a moment after the last change.
+    let distTimer = null;
+    function showDistance() {
+      clearTimeout(distTimer);
+      if (plan.points.length < 2) { distHost.textContent = ''; return; }
+      distTimer = setTimeout(async () => {
+        try {
+          const d = await api('POST', '/api/route/distance', { points: plan.points.map((p) => ({ lat: p.lat, lon: p.lon })) });
+          distHost.textContent = `${mp('distance')}: ${fmtNum(d.totalNm)} ${mp('nm')}`;
+          listHost.querySelectorAll('.planleg').forEach((el) => {
+            const v = d.legs[Number(el.getAttribute('data-i'))];
+            el.textContent = v ? ` \u00b7 ${fmtNum(v)} ${mp('nm')}` : '';
+          });
+        } catch (e) { distHost.textContent = ''; }
+      }, 150);
     }
     function swap(a, b) {
       const t0 = plan.points[a]; plan.points[a] = plan.points[b]; plan.points[b] = t0;
@@ -1956,6 +1986,7 @@
         status.textContent = '';
         resultHost.replaceChildren(
           h('div', null, h('span', { class: 'badge' }, `${res.points.length} ${mp('places')}`),
+            h('span', { class: 'badge' }, `${fmtNum(res.totalNm)} ${mp('nm')}`),
             res.problems.length ? h('span', { class: 'badge warn' }, `${res.problems.length} ${mp('problems')}`) : h('span', { class: 'badge ok' }, mp('ok'))),
           res.problems.length ? h('div', { class: 'warnbox', style: 'margin-top:6px' }, res.problems.map((q) => h('div', null, h('strong', null, q.token), ' ', q.message))) : null);
       } catch (e) { status.textContent = mp('failed') + ': ' + e.message; }
@@ -2023,6 +2054,39 @@
     }
     const later = () => { clearTimeout(timer); timer = setTimeout(refresh, 250); };
     map.on('moveend', later);
+
+    // ---- search: when there are many small marks, ask for the one by name
+    let searchSeq = 0;
+    let searchTimer = null;
+    let ring = null;
+    function showPlace(h0) {
+      if (ring) { map.removeLayer(ring); ring = null; }
+      map.setView([h0.lat, h0.lon], Math.max(map.getZoom(), 11));
+      ring = L.circleMarker([h0.lat, h0.lon], { radius: 16, color: '#f59e0b', weight: 4, fillOpacity: 0, interactive: false }).addTo(map);
+      const mine = ring;
+      setTimeout(() => { if (ring === mine) { map.removeLayer(mine); ring = null; } }, 8000);
+    }
+    searchIn.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(async () => {
+        const q = searchIn.value.trim();
+        const my = ++searchSeq;
+        if (q.length < 2) { searchHost.replaceChildren(); return; }
+        let r;
+        try { r = await api('GET', '/api/nav/search?q=' + encodeURIComponent(q) + '&limit=12'); } catch (e) { return; }
+        if (my !== searchSeq) return;
+        if (!r.results.length) { searchHost.replaceChildren(h('div', { class: 'muted' }, mp('noResults'))); return; }
+        searchHost.replaceChildren(...r.results.map((x) => {
+          const kind = x.type === 'airport' ? mp('typeAirport') : (x.type === 'point' ? mp('typePoint') : (MP[lang].kindsShort[x.kind] || ''));
+          const pt = x.type === 'airport' ? { ident: x.ident, region: '', kind: 'airport', lat: x.lat, lon: x.lon }
+            : (x.type === 'point' ? { ident: x.ident, region: 'USR', kind: 'waypoint', lat: x.lat, lon: x.lon }
+              : { ident: x.ident, region: x.region, kind: KIND_WORD[x.kind] || 'waypoint', lat: x.lat, lon: x.lon });
+          return h('div', { class: 'searchrow', title: mp('goTo'), onclick: () => showPlace(x) },
+            h('span', { class: 'grow' }, h('strong', null, x.ident), ' ', h('span', { class: 'muted' }, [x.region, kind, x.name].filter(Boolean).join(' \u00b7 '))),
+            h('button', { class: 'btn sm', title: mp('addTo'), onclick: (ev) => { ev.stopPropagation(); add(pt); } }, '+'));
+        }));
+      }, 250);
+    });
 
     // ---- the user's own points
     const mineLayer = async () => {

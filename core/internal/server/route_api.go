@@ -94,6 +94,29 @@ func (p routeProvider) FixAt(ref navdata.FixRef) (*navdata.Fix, error) {
 	return s.nav.db.FixAt(ref)
 }
 
+// POST /api/route/distance  {"points": [{"lat": .., "lon": ..}, ...]}
+// The straight-line length of each leg and of the whole route, in nautical miles (the planner asks
+// this while the route is being built, without resolving any name).
+func (s *Server) handleRouteDistance(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Points []struct {
+			Lat float64 `json:"lat"`
+			Lon float64 `json:"lon"`
+		} `json:"points"`
+	}
+	if err := readJSON(r, &body); err != nil || len(body.Points) > 2000 {
+		writeErr(w, 400, errors.New("send up to 2000 points as {lat, lon}"))
+		return
+	}
+	lat := make([]float64, len(body.Points))
+	lon := make([]float64, len(body.Points))
+	for i, p := range body.Points {
+		lat[i], lon[i] = p.Lat, p.Lon
+	}
+	legs, total := route.Legs(lat, lon)
+	writeJSON(w, 200, map[string]any{"legs": legs, "totalNm": total})
+}
+
 // POST /api/route/resolve  {"route": "SBSJ BOBI3A DAGUB UZ6 ..."}  (GET with ?route= as well)
 func (s *Server) handleRouteResolve(w http.ResponseWriter, r *http.Request) {
 	var text string

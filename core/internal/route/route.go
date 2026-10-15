@@ -42,6 +42,8 @@ type Point struct {
 	Via string `json:"via,omitempty"`
 	// Nth is which occurrence of this name in the route it is (0 for the first), the key of a choice.
 	Nth int `json:"nth"`
+	// LegNm is the great-circle distance from the previous point, in nautical miles (0 for the first).
+	LegNm float64 `json:"legNm"`
 	// Candidates lists every place the name can mean when there is more than one (the point is the
 	// one used). Chosen tells that the user picked it, instead of the closest being taken.
 	Candidates []Candidate `json:"candidates,omitempty"`
@@ -80,6 +82,30 @@ type Problem struct {
 type Result struct {
 	Points   []Point   `json:"points"`
 	Problems []Problem `json:"problems"`
+	// TotalNm is the sum of the legs in nautical miles: the straight-line estimate of the route.
+	TotalNm float64 `json:"totalNm"`
+}
+
+const earthRadiusNm = 3440.065
+
+// GreatCircleNm is the distance between two positions along the surface, in nautical miles.
+func GreatCircleNm(aLat, aLon, bLat, bLon float64) float64 {
+	rad := math.Pi / 180
+	p1, p2 := aLat*rad, bLat*rad
+	dp, dl := (bLat-aLat)*rad, (bLon-aLon)*rad
+	h := math.Sin(dp/2)*math.Sin(dp/2) + math.Cos(p1)*math.Cos(p2)*math.Sin(dl/2)*math.Sin(dl/2)
+	return 2 * earthRadiusNm * math.Asin(math.Min(1, math.Sqrt(h)))
+}
+
+// Legs returns the length in nautical miles of each leg between consecutive positions (the first
+// is 0) and their sum.
+func Legs(lat, lon []float64) (legs []float64, total float64) {
+	legs = make([]float64, len(lat))
+	for i := 1; i < len(lat) && i < len(lon); i++ {
+		legs[i] = math.Round(GreatCircleNm(lat[i-1], lon[i-1], lat[i], lon[i])*10) / 10
+		total += legs[i]
+	}
+	return legs, math.Round(total*10) / 10
 }
 
 var (
@@ -191,6 +217,16 @@ func ResolveWith(text string, p Provider, choices []Choice) (*Result, error) {
 		i += consumed
 		_ = tok
 	}
+	lat := make([]float64, len(r.res.Points))
+	lon := make([]float64, len(r.res.Points))
+	for i, p := range r.res.Points {
+		lat[i], lon[i] = p.Lat, p.Lon
+	}
+	legs, total := Legs(lat, lon)
+	for i := range r.res.Points {
+		r.res.Points[i].LegNm = legs[i]
+	}
+	r.res.TotalNm = total
 	return &r.res, nil
 }
 

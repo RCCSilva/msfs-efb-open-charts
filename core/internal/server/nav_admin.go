@@ -464,7 +464,17 @@ func (s *Server) loadFixes(db *navdb.DB, mode string, finish func(phase, msg str
 			return false
 		}
 		if len(idents) == 0 {
-			return true
+			// the names of the files are done: the fixes that airways cite and the files did not
+			// have are asked too, until no airway leads to a place the database does not have
+			idents, err = db.MissingNeighbors(batch)
+			if err != nil {
+				finish("error", err.Error())
+				return false
+			}
+			if len(idents) == 0 {
+				return true
+			}
+			j.set(func(j *navJob) { j.Total += len(idents) })
 		}
 		// the route page and the load take turns: a batch holds the lock, then lets it go
 		s.nav.mu.Lock()
@@ -585,4 +595,21 @@ func (s *Server) handleNavArea(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, a)
+}
+
+// GET /api/nav/search?q=BOB&limit=30
+// Places by identifier (starts with) or name (contains): airports, fixes and the user's points.
+func (s *Server) handleNavSearch(w http.ResponseWriter, r *http.Request) {
+	db := s.navDB()
+	if db == nil {
+		navUnavailable(w)
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	list, err := db.Search(r.URL.Query().Get("q"), limit)
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"results": list})
 }

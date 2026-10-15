@@ -188,3 +188,22 @@ func TestChoiceOverridesTheClosest(t *testing.T) {
 		}
 	}
 }
+
+func TestGreatCircleNm(t *testing.T) {
+	// one degree of latitude is 60 nautical miles, within a few tenths
+	d := GreatCircleNm(0, 0, 1, 0)
+	if d < 59.9 || d > 60.2 {
+		t.Fatalf("1 degree of latitude: %.2f NM", d)
+	}
+	legs, total := Legs([]float64{0, 1, 2}, []float64{0, 0, 0})
+	if len(legs) != 3 || legs[0] != 0 || total < 119.8 || total > 120.4 {
+		t.Fatalf("legs %v total %.1f", legs, total)
+	}
+}
+
+func TestResolveGivesTheLengthOfTheRoute(t *testing.T) {
+	res, _ := Resolve("SBSJ AAAAA UZ6 DDDDD SBGR", provider())
+	if res.TotalNm <= 0 || res.Points[0].LegNm != 0 || res.Points[1].LegNm <= 0 {
+		t.Fatalf("total %.1f, legs %+v", res.TotalNm, res.Points)
+	}
+}

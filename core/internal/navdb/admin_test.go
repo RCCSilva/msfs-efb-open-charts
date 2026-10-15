@@ -134,3 +134,64 @@ func TestInArea(t *testing.T) {
 		t.Fatalf("fixes and segments are asked for: %+v", none)
 	}
 }
+
+func TestSearch(t *testing.T) {
+	d, err := Open(filepath.Join(t.TempDir(), "s.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if err := d.SaveAirport(&navdata.Airport{ICAO: "SBSJ", Name: "Sao Jose dos Campos", Lat: -23.2, Lon: -45.9}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SaveFixes([]navdata.Fix{
+		{Ident: "RBV", Region: "K6", Kind: navdata.FixVOR, Name: "ROBBINSVILLE", Lat: 40, Lon: -74},
+		{Ident: "RBVAA", Region: "SB", Kind: navdata.FixWaypoint, Lat: -22, Lon: -46},
+		{Ident: "ZZZZZ", Region: "SB", Kind: navdata.FixVOR, Name: "ROBIN VOR", Lat: -21, Lon: -45},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.CreateUserPoint(UserPoint{Ident: "RBVHOME", Name: "Casa", Lat: -23, Lon: -46}); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := d.Search("rbv", 10)
+	if err != nil || len(hits) != 3 || hits[0].Ident != "RBV" {
+		t.Fatalf("hits: %+v %v", hits, err)
+	}
+	byName, _ := d.Search("jose", 10)
+	if len(byName) != 1 || byName[0].Ident != "SBSJ" || byName[0].Type != "airport" {
+		t.Fatalf("by name: %+v", byName)
+	}
+	if short, _ := d.Search("r", 10); len(short) != 0 {
+		t.Fatalf("one letter must not search: %+v", short)
+	}
+}
+
+func TestAirwaysShowWhenOneEndIsMissing(t *testing.T) {
+	d, err := Open(filepath.Join(t.TempDir(), "w.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	// B is stored (and says that the airway comes from A and goes to C); A and C are not stored
+	if err := d.SaveFixes([]navdata.Fix{{Ident: "BBBBB", Region: "SB", Kind: navdata.FixWaypoint, Lat: -22.5, Lon: -46.5, Routes: []navdata.Route{{
+		Airway: "UZ6", PrevIdent: "AAAAA", PrevRegion: "SB", PrevKind: navdata.FixWaypoint, PrevLat: -23, PrevLon: -46,
+		NextIdent: "CCCCC", NextRegion: "SB", NextKind: navdata.FixWaypoint, NextLat: -22, NextLon: -47}}}}); err != nil {
+		t.Fatal(err)
+	}
+	a, err := d.InArea(-24, -48, -21, -45, 100, 100, false, true)
+	if err != nil || len(a.Segments) != 2 {
+		t.Fatalf("both stretches must show: %+v %v", a.Segments, err)
+	}
+	miss, err := d.MissingNeighbors(10)
+	if err != nil || len(miss) != 2 || miss[0] != "AAAAA" || miss[1] != "CCCCC" {
+		t.Fatalf("missing neighbours: %v %v", miss, err)
+	}
+	if err := d.MarkIdentChecked("AAAAA", 0); err != nil {
+		t.Fatal(err)
+	}
+	miss, _ = d.MissingNeighbors(10)
+	if len(miss) != 1 || miss[0] != "CCCCC" {
+		t.Fatalf("a name already asked is not asked again: %v", miss)
+	}
+}

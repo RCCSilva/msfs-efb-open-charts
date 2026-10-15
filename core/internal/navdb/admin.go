@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -759,25 +760,155 @@ func (d *DB) InArea(minLat, minLon, maxLat, maxLon float64, maxFixes, maxSegment
 		}
 	}
 	if withSegments {
-		rows, err := d.db.Query(`SELECT r.airway, r.ident, r.next_ident, f.lat, f.lon, r.next_lat, r.next_lon
-			FROM fix f JOIN route r ON r.ident = f.ident AND r.region = f.region AND r.kind = f.kind
-			WHERE f.lat BETWEEN ? AND ? AND f.lon BETWEEN ? AND ? AND r.next_ident <> '' AND r.airway <> '' LIMIT ?`,
-			minLat, maxLat, minLon, maxLon, maxSegments+1)
-		if err != nil {
-			return a, err
-		}
-		for rows.Next() {
-			var s AreaSegment
-			if err := rows.Scan(&s.Airway, &s.From, &s.To, &s.Lat, &s.Lon, &s.ToLat, &s.ToLon); err != nil {
-				rows.Close()
+		// A segment is stored twice: on its first fix (as "next") and on its last (as "prev"). Both
+		// are used, so that a segment shows when only one of its ends is known to the database: an
+		// airway is not broken where a fix was never loaded. A wider rectangle catches the
+		// segments that cross the view with both ends outside it.
+		padLat, padLon := (maxLat-minLat)*0.25, (maxLon-minLon)*0.25
+		args := []any{minLat - padLat, maxLat + padLat, minLon - padLon, maxLon + padLon}
+		seen := map[[5]string]bool{}
+		for _, q := range []string{
+			`SELECT r.airway, r.ident, r.next_ident, f.lat, f.lon, r.next_lat, r.next_lon
+				FROM fix f JOIN route r ON r.ident = f.ident AND r.region = f.region AND r.kind = f.kind
+				WHERE f.lat BETWEEN ? AND ? AND f.lon BETWEEN ? AND ? AND r.next_ident <> '' AND r.airway <> ''`,
+			`SELECT r.airway, r.prev_ident, r.ident, r.prev_lat, r.prev_lon, f.lat, f.lon
+				FROM fix f JOIN route r ON r.ident = f.ident AND r.region = f.region AND r.kind = f.kind
+				WHERE f.lat BETWEEN ? AND ? AND f.lon BETWEEN ? AND ? AND r.prev_ident <> '' AND r.airway <> ''`,
+		} {
+			rows, err := d.db.Query(q, args...)
+			if err != nil {
 				return a, err
 			}
-			a.Segments = append(a.Segments, s)
-		}
-		rows.Close()
-		if len(a.Segments) > maxSegments {
-			a.Segments, a.SegmentsCut = a.Segments[:maxSegments], true
+			for rows.Next() {
+				var s AreaSegment
+				if err := rows.Scan(&s.Airway, &s.From, &s.To, &s.Lat, &s.Lon, &s.ToLat, &s.ToLon); err != nil {
+					rows.Close()
+					return a, err
+				}
+				if s.Lat == 0 && s.Lon == 0 || s.ToLat == 0 && s.ToLon == 0 {
+					continue // an end whose position is not known
+				}
+				key := [5]string{s.Airway, strconv.FormatFloat(s.Lat, 'f', 3, 64), strconv.FormatFloat(s.Lon, 'f', 3, 64),
+					strconv.FormatFloat(s.ToLat, 'f', 3, 64), strconv.FormatFloat(s.ToLon, 'f', 3, 64)}
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				if len(a.Segments) >= maxSegments {
+					a.SegmentsCut = true
+					continue
+				}
+				a.Segments = append(a.Segments, s)
+			}
+			rows.Close()
 		}
 	}
 	return a, nil
+}
+
+// MissingNeighbors lists up to limit identifiers that airways cite as the next or previous fix of
+// a stored fix, that are not stored and were never asked for as a whole. Asking for them closes
+// the airways: every segment then has both of its ends.
+func (d *DB) MissingNeighbors(limit int) ([]string, error) {
+	rows, err := d.db.Query(`SELECT ident FROM (
+			SELECT DISTINCT next_ident AS ident FROM route WHERE next_ident <> ''
+			UNION
+			SELECT DISTINCT prev_ident AS ident FROM route WHERE prev_ident <> ''
+		) n WHERE NOT EXISTS (SELECT 1 FROM fix f WHERE f.ident = n.ident)
+		AND NOT EXISTS (SELECT 1 FROM ident_check c WHERE c.ident = n.ident)
+		ORDER BY ident LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// ---- search ----
+
+// SearchHit is one place found by a search.
+type SearchHit struct {
+	Type   string  `json:"type"` // airport, fix, point
+	Ident  string  `json:"ident"`
+	Region string  `json:"region"`
+	Kind   string  `json:"kind"` // W, V, N for fixes
+	Name   string  `json:"name"`
+	Lat    float64 `json:"lat"`
+	Lon    float64 `json:"lon"`
+}
+
+// Search finds airports, fixes and the user's points by identifier (starts with) or by name
+// (contains), identifiers first.
+func (d *DB) Search(q string, limit int) ([]SearchHit, error) {
+	q = strings.TrimSpace(q)
+	if len([]rune(q)) < 2 {
+		return []SearchHit{}, nil
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 30
+	}
+	up := strings.ToUpper(q)
+	prefix := up + "%"
+	contains := "%" + up + "%"
+	out := []SearchHit{}
+	add := func(rows *sql.Rows, typ string) error {
+		defer rows.Close()
+		for rows.Next() {
+			h := SearchHit{Type: typ}
+			var name, region, kind sql.NullString
+			if err := rows.Scan(&h.Ident, &region, &kind, &name, &h.Lat, &h.Lon); err != nil {
+				return err
+			}
+			h.Region, h.Kind, h.Name = region.String, kind.String, name.String
+			out = append(out, h)
+		}
+		return rows.Err()
+	}
+	rows, err := d.db.Query(`SELECT icao, region, '', name, lat, lon FROM airport
+		WHERE icao LIKE ? OR UPPER(name) LIKE ? ORDER BY (icao = ?) DESC, (icao LIKE ?) DESC, icao LIMIT ?`, prefix, contains, up, prefix, limit)
+	if err != nil {
+		return nil, err
+	}
+	if err := add(rows, "airport"); err != nil {
+		return nil, err
+	}
+	rows, err = d.db.Query(`SELECT ident, '', '', name, lat, lon FROM user_point
+		WHERE ident LIKE ? OR UPPER(name) LIKE ? ORDER BY (ident = ?) DESC, ident LIMIT ?`, prefix, contains, up, limit)
+	if err != nil {
+		return nil, err
+	}
+	if err := add(rows, "point"); err != nil {
+		return nil, err
+	}
+	rows, err = d.db.Query(`SELECT ident, region, kind, name, lat, lon FROM fix
+		WHERE ident LIKE ? OR UPPER(name) LIKE ? ORDER BY (ident = ?) DESC, (ident LIKE ?) DESC, ident LIMIT ?`, prefix, contains, up, prefix, limit)
+	if err != nil {
+		return nil, err
+	}
+	if err := add(rows, "fix"); err != nil {
+		return nil, err
+	}
+	// the exact identifier first, then the ones that start with it, then the ones with it in the name
+	rank := func(h SearchHit) int {
+		switch {
+		case strings.EqualFold(h.Ident, q):
+			return 0
+		case strings.HasPrefix(strings.ToUpper(h.Ident), up):
+			return 1
+		}
+		return 2
+	}
+	sort.SliceStable(out, func(i, j int) bool { return rank(out[i]) < rank(out[j]) })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }

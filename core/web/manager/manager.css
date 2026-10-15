@@ -198,3 +198,9 @@ body.fullmap .planpanel { position: static; max-height: none; height: 100%; over
 .toast { z-index: 5000; }
 
 .planmap { position: relative; z-index: 0; }
+
+.searchres { margin: 6px 0 4px; max-height: 240px; overflow: auto; }
+.searchrow { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.searchrow:hover { background: var(--bg); }
+.plandist { margin-top: 8px; font-weight: 600; }
+.planleg { font-size: 12px; font-weight: 400; }
