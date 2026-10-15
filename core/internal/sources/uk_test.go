@@ -64,3 +64,24 @@ func TestUKLocatesTheCycle(t *testing.T) {
 		t.Fatalf("%+v", in)
 	}
 }
+
+func TestUKPlacesGoStraightToTheAerodromePage(t *testing.T) {
+	on := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
+	byCode := (uk{}).Places("egll", on)
+	if len(byCode) != 1 || byCode[0].ICAO != "EGLL" || !strings.HasSuffix(byCode[0].URL, "/2026-10-01-AIRAC/html/eAIP/EG-AD-2.EGLL-en-GB.html") {
+		t.Fatalf("by code: %+v", byCode)
+	}
+	byName := (uk{}).Places("heathrow", on)
+	if len(byName) != 1 || byName[0].ICAO != "EGLL" {
+		t.Fatalf("by name: %+v", byName)
+	}
+	if many := (uk{}).Places("london", on); len(many) < 3 {
+		t.Fatalf("several London aerodromes: %+v", many)
+	}
+	if none := (uk{}).Places("zzzz", on); len(none) != 0 {
+		t.Fatalf("%+v", none)
+	}
+	if Places("faa-us", "x", on) != nil {
+		t.Fatal("a source with no places gives none")
+	}
+}

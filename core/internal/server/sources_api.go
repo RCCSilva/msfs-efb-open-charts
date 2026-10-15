@@ -20,6 +20,7 @@ func (s *Server) registerSourceRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/sources", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, sources.All()) })
 	mux.HandleFunc("GET /api/sources/{id}/catalog", s.handleCatalog)
 	mux.HandleFunc("GET /api/sources/{id}/locate", s.handleLocate)
+	mux.HandleFunc("GET /api/sources/{id}/places", s.handlePlaces)
 	mux.HandleFunc("GET /api/sources/{id}/package", s.handlePackageInfo)
 	mux.HandleFunc("POST /api/sources/{id}/package/import", s.handlePackageImport)
 	mux.HandleFunc("GET /api/jobs/{id}", s.handleJob)
@@ -33,6 +34,26 @@ type catalogRow struct {
 	sources.CatalogItem
 	Installed bool   `json:"installed"`
 	ChartID   string `json:"chartId,omitempty"`
+}
+
+// GET /api/sources/{id}/places?q=: the aerodromes of a provider, each with the address of the page
+// where its charts are (the one of the cycle in force). The user opens it; the app does not.
+func (s *Server) handlePlaces(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, ok := sources.Get(id); !ok {
+		writeErr(w, 404, errors.New("unknown source"))
+		return
+	}
+	list := sources.Places(id, r.URL.Query().Get("q"), time.Now())
+	if list == nil {
+		list = []sources.Place{}
+	}
+	limit := 60
+	truncated := len(list) > limit
+	if truncated {
+		list = list[:limit]
+	}
+	writeJSON(w, 200, map[string]any{"places": list, "truncated": truncated})
 }
 
 func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {

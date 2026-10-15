@@ -36,6 +36,9 @@
       inbox: 'Inbox folder', inboxHelp: 'What you add here stays in this folder, on this computer. PDFs are imported when you click the button; for a .zip, read it and choose the aerodromes.',
       importInbox: 'Import the PDFs of the inbox', noInbox: 'The inbox is empty.',
       imported: 'imported', skipped: 'skipped', failed: 'failed', done: 'Done', error: 'Error',
+      placesTitle: 'Go straight to an aerodrome', placesHelp: 'Type the code or the name: the link opens the page of that aerodrome in the cycle in force, where its charts are listed.',
+      placesInput: 'EGLL, heathrow, gatwick...', placesNone: 'No aerodrome matches.', placesOpen: 'Open the charts page', placesMore: 'More aerodromes match: type more of the name.',
+      capPlaces: 'By aerodrome',
       srcFilter: 'Filter by name...', srcAllCountries: 'All countries', srcCountry: 'Country', srcSource: 'Source', srcWhat: 'What it gives',
       srcNone: 'No source matches.', srcAnyCountry: 'Any country', srcOpen: 'Open',
       builtin: 'Built in', noAuto: 'No automatic download', policyLink: 'Usage policy', official: 'Official page',
@@ -138,6 +141,9 @@
       inbox: 'Pasta de entrada', inboxHelp: 'O que você adiciona aqui fica nesta pasta, no seu computador. Os PDFs são importados quando você clicar no botão; de um .zip, leia o pacote e escolha os aeródromos.',
       importInbox: 'Importar os PDFs da pasta de entrada', noInbox: 'A pasta de entrada está vazia.',
       imported: 'importadas', skipped: 'ignoradas', failed: 'com erro', done: 'Concluído', error: 'Erro',
+      placesTitle: 'Ir direto para um aeródromo', placesHelp: 'Digite o código ou o nome: o link abre a página daquele aeródromo no ciclo em vigor, onde as cartas estão listadas.',
+      placesInput: 'EGLL, heathrow, gatwick...', placesNone: 'Nenhum aeródromo encontrado.', placesOpen: 'Abrir a página das cartas', placesMore: 'Mais aeródromos combinam: digite mais do nome.',
+      capPlaces: 'Por aeródromo',
       srcFilter: 'Filtrar pelo nome...', srcAllCountries: 'Todos os países', srcCountry: 'País', srcSource: 'Fonte', srcWhat: 'O que oferece',
       srcNone: 'Nenhuma fonte encontrada.', srcAnyCountry: 'Qualquer país', srcOpen: 'Abrir',
       builtin: 'Embutida', noAuto: 'Sem download automático', policyLink: 'Política de uso', official: 'Página oficial',
@@ -657,7 +663,7 @@
 
   async function renderSources() {
     const list = await api('GET', '/api/sources');
-    const capName = { catalog: 'capCatalog', package: 'capPackage', locate: 'capLocate' };
+    const capName = { catalog: 'capCatalog', package: 'capPackage', locate: 'capLocate', places: 'capPlaces' };
     // the countries that have a source, by name in the language of the page
     const countries = {};
     list.forEach((x) => { if (x.country) countries[x.country] = tx(x.countryName) || x.country; });
@@ -741,8 +747,35 @@
     const linksShown = !!s.homepage || rows.length > 0;
 
     // 3. what the user downloaded goes here, PDFs and packages alike
-    view.replaceChildren(head, ...(s.id === 'manual' ? [await patternCard()] : []), ...(linksShown ? [links] : []),
+    view.replaceChildren(head, ...(s.id === 'manual' ? [await patternCard()] : []),
+      ...(caps.includes('places') ? [placesCard(s)] : []), ...(linksShown ? [links] : []),
       ...(s.id === 'faa-us' ? [await faaMetadataCard()] : []), filesPanel(s));
+  }
+
+  // A provider that keeps its charts aerodrome by aerodrome: type the code or the name and the link
+  // goes straight to that aerodrome's page (the app opens nothing and downloads nothing).
+  function placesCard(s) {
+    const input = h('input', { type: 'text', placeholder: t('placesInput'), autocomplete: 'off', class: 'grow' });
+    const out = h('div', { style: 'margin-top:10px' });
+    let seq = 0;
+    let timer = null;
+    const run = async () => {
+      const q = input.value.trim();
+      const my = ++seq;
+      if (q.length < 2) { out.replaceChildren(); return; }
+      let r;
+      try { r = await api('GET', '/api/sources/' + encodeURIComponent(s.id) + '/places?q=' + encodeURIComponent(q)); } catch (e) { return; }
+      if (my !== seq) return;
+      if (!r.places.length) { out.replaceChildren(h('div', { class: 'muted' }, t('placesNone'))); return; }
+      const rows = r.places.map((p) => h('div', { class: 'row', style: 'padding:6px 0;border-top:1px solid var(--line)' },
+        h('span', { class: 'grow' }, h('strong', null, p.icao), ' ', h('span', { class: 'muted' }, p.name)),
+        h('a', { class: 'btn sm', href: p.url, target: '_blank', rel: 'noopener noreferrer' }, t('placesOpen') + ' ↗')));
+      if (r.truncated) rows.push(h('div', { class: 'muted', style: 'margin-top:6px' }, t('placesMore')));
+      out.replaceChildren(...rows);
+    };
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 200); });
+    return h('div', { class: 'card' }, h('h3', null, t('placesTitle')), h('p', { class: 'muted' }, t('placesHelp')),
+      h('div', { class: 'row' }, input), out);
   }
 
   // Upload PDFs on behalf of a source (recognition and naming use that source's rules).

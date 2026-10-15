@@ -119,6 +119,20 @@ type Locator interface {
 	Locate(on time.Time) []Location
 }
 
+// Place is an aerodrome (or any place) of a provider, with the address of the page where its
+// charts are, for the cycle in force.
+type Place struct {
+	ICAO string `json:"icao"`
+	Name string `json:"name"`
+	URL  string `json:"url"`
+}
+
+// Placer is implemented by sources whose charts are found aerodrome by aerodrome on a provider's
+// site: it takes the user straight to the page of the aerodrome instead of the provider's home.
+type Placer interface {
+	Places(q string, on time.Time) []Place
+}
+
 // Packager is implemented by sources that understand a downloaded archive.
 type Packager interface {
 	OpenPackage(path string) (*PackageInfo, error)
@@ -169,6 +183,9 @@ func describe(s Source) Info {
 	if _, ok := s.(Packager); ok {
 		caps = append(caps, "package")
 	}
+	if _, ok := s.(Placer); ok {
+		caps = append(caps, "places")
+	}
 	in.Capabilities = caps
 	return in
 }
@@ -197,6 +214,20 @@ func Locate(sourceID string, on time.Time) []Location {
 		return nil
 	}
 	return l.Locate(on)
+}
+
+// Places returns the aerodromes of a source that match q (identifier prefix or part of the name),
+// or nil when it has none.
+func Places(sourceID, q string, on time.Time) []Place {
+	s, ok := Lookup(sourceID)
+	if !ok {
+		return nil
+	}
+	p, ok := s.(Placer)
+	if !ok {
+		return nil
+	}
+	return p.Places(q, on)
 }
 
 // PackagerFor returns the archive reader of a source.

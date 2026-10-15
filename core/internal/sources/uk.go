@@ -1,6 +1,7 @@
 package sources
 
 import (
+	_ "embed"
 	"fmt"
 	"regexp"
 	"strings"
@@ -16,6 +17,12 @@ import (
 //
 // The procedure charts (SID, STAR, approach) are georeferenced PDFs; aerodrome and ground-movement
 // charts are not (they are imported as view-only).
+
+//go:embed data/uk-aerodromes.psv
+var ukAerodromes string
+
+// the page of an aerodrome in the eAIP of a cycle: its charts (AD 2.24) are listed there
+const ukAerodromePage = "https://www.aurora.nats.co.uk/htmlAIP/Publications/%s-AIRAC/html/eAIP/EG-AD-2.%s-en-GB.html"
 
 const (
 	ukHome     = "https://nats-uk.ead-it.com/cms-nats/opencms/en/Publications/AIP/"
@@ -56,12 +63,46 @@ func (uk) Info() Info {
 			},
 		},
 		Guide: []Text{
-			{PT: "Abra o AIP do Reino Unido pelo link abaixo (ou pelo endereço do ciclo, mais abaixo) e entre na parte AD 2 do aeródromo que você quer.", EN: "Open the UK AIP through the link below (or the address of the cycle, further down) and go to part AD 2 of the aerodrome you want."},
-			{PT: "Na seção AD 2.24 estão as cartas. Abra a carta e salve o PDF (os arquivos têm nomes numéricos, como 475382.pdf: não renomeie).", EN: "Section AD 2.24 lists the charts. Open the chart and save the PDF (the files have numeric names like 475382.pdf: do not rename them)."},
+			{PT: "Digite o código ou o nome do aeródromo na caixa \"Ir direto para um aeródromo\" e abra o link: ele leva direto à página do aeródromo, sem passar pelo menu do site.", EN: "Type the code or the name of the aerodrome in the \"Go straight to an aerodrome\" box and open the link: it takes you straight to the aerodrome's page, without going through the site's menu."},
+			{PT: "Na página, a seção AD 2.24 lista as cartas. Abra a carta e salve o PDF (os arquivos têm nomes numéricos, como 475382.pdf: não renomeie).", EN: "On that page, section AD 2.24 lists the charts. Open the chart and save the PDF (the files have numeric names like 475382.pdf: do not rename them)."},
 			{PT: "Solte os PDFs na área \"Adicione o que você baixou\". O aplicativo lê no rodapé da carta o código (por exemplo AD 2-EGLL-6-1) e descobre o aeródromo e o tipo sozinho.", EN: "Drop the PDFs in the \"Add what you downloaded\" area. The app reads the chart's own reference in the footer (for example AD 2-EGLL-6-1) and works out the aerodrome and the type by itself."},
 			{PT: "Cartas de SID, STAR e aproximação são posicionadas no mapa. As demais (aeródromo, solo) entram só para visualização.", EN: "SID, STAR and approach charts are placed on the map. The others (aerodrome, ground) are view-only."},
 		},
 	}
+}
+
+// Places lists the aerodromes of the UK AIP, each with the address of its page in the cycle in
+// force: from there the charts are one click away.
+func (uk) Places(q string, on time.Time) []Place {
+	cur, _ := naming.AIRAC(on)
+	day := cur.Format("2006-01-02")
+	words := naming.Tokens(q)
+	var out []Place
+	for _, line := range strings.Split(ukAerodromes, "\n") {
+		icao, name, ok := strings.Cut(strings.TrimSpace(line), "|")
+		if !ok {
+			continue
+		}
+		hay := strings.Fields(naming.Fold(icao + " " + name))
+		match := true
+		for _, w := range words {
+			found := false
+			for _, h := range hay {
+				if strings.HasPrefix(h, w) || (len(w) >= 3 && strings.Contains(h, w)) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				match = false
+				break
+			}
+		}
+		if match {
+			out = append(out, Place{ICAO: icao, Name: name, URL: fmt.Sprintf(ukAerodromePage, day, icao)})
+		}
+	}
+	return out
 }
 
 // Recognize: the file names of this provider are numbers and say nothing.
