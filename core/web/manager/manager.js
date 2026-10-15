@@ -1852,7 +1852,9 @@
       kindsShort: { W: 'Waypoint', V: 'VOR', N: 'NDB' },
       chartsLayer: 'Charts (outline)', showChart: 'Show the chart on the map', hideChart: 'Remove from the map', openChart: 'Open the chart page',
       chartsOnMap: 'Charts on the map', opacity: 'Opacity', loadingChart: 'Loading the chart...', chartFail: 'Could not load the chart',
-      chartsCut: 'More charts here than are drawn: zoom in.'
+      chartsCut: 'More charts here than are drawn: zoom in.',
+      chartSearch: 'Put a chart on the map: search by name or airport', outlines: 'Show the outline of every chart in view',
+      chartNone: 'No chart found.', chartNoGeo: 'This chart has no position: it cannot go on the map.', chartsHead: 'Charts'
     },
     pt: {
       title: 'Mapa', hint: 'Clique num aeroporto ou fixo para acrescentar à rota. Clique com o botão direito num lugar vazio para criar um ponto seu ali.',
@@ -1867,7 +1869,9 @@
       kindsShort: { W: 'Waypoint', V: 'VOR', N: 'NDB' },
       chartsLayer: 'Cartas (contorno)', showChart: 'Mostrar a carta no mapa', hideChart: 'Tirar do mapa', openChart: 'Abrir a página da carta',
       chartsOnMap: 'Cartas no mapa', opacity: 'Opacidade', loadingChart: 'Carregando a carta...', chartFail: 'Não foi possível carregar a carta',
-      chartsCut: 'Há mais cartas aqui do que as desenhadas: aproxime.'
+      chartsCut: 'Há mais cartas aqui do que as desenhadas: aproxime.',
+      chartSearch: 'Colocar uma carta no mapa: busque pelo nome ou aeroporto', outlines: 'Mostrar o contorno de todas as cartas da vista',
+      chartNone: 'Nenhuma carta encontrada.', chartNoGeo: 'Esta carta não tem posição: não dá para colocá-la no mapa.', chartsHead: 'Cartas'
     }
   };
   const mp = (k) => (MP[lang] && MP[lang][k]) || MP.en[k] || k;
@@ -1999,6 +2003,10 @@
     const status = h('div', { class: 'muted', style: 'margin:6px 0' });
     const distHost = h('div', { class: 'plandist' });
     const chartsHost = h('div', { class: 'planchartlist' });
+    const chartIn = h('input', { type: 'text', placeholder: mp('chartSearch'), autocomplete: 'off' });
+    const chartRes = h('div', { class: 'searchres' });
+    const outlinesCb = h('input', { type: 'checkbox' });
+    const outlinesRow = h('label', { class: 'row', style: 'margin:6px 0; gap:6px; font-size:13px' }, outlinesCb, mp('outlines'));
     const searchIn = h('input', { type: 'text', placeholder: mp('search'), autocomplete: 'off' });
     const searchHost = h('div', { class: 'searchres' });
     const listHost = h('div');
@@ -2012,6 +2020,8 @@
       h('h3', null, mp('route')),
       searchIn, searchHost,
       h('p', { class: 'muted planintro' }, mp('hint')),
+      h('h3', { style: 'margin:10px 0 4px' }, mp('chartsHead')),
+      chartIn, chartRes, outlinesRow,
       chartsHost,
       openSel,
       h('label', { class: 'fld', style: 'margin-top:8px' }, h('span', { class: 'muted' }, mp('name')), nameIn),
@@ -2025,7 +2035,7 @@
 
     const map = L.map(mapDiv, { zoomControl: true, attributionControl: true, doubleClickZoom: false });
     plan.map = map;
-    L.tileLayer('/tiles/{z}/{x}/{y}.png', { maxZoom: 12, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+    L.tileLayer('/tiles/{z}/{x}/{y}.png', { maxZoom: 17, maxNativeZoom: 16, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
     const layers = {
       segs: L.layerGroup().addTo(map), fixes: L.layerGroup().addTo(map), airports: L.layerGroup().addTo(map),
       mine: L.layerGroup().addTo(map), route: L.layerGroup().addTo(map),
@@ -2213,7 +2223,10 @@
       drawChartList();
     }
     async function showOverlay(c) {
-      if (overlays[c.id]) return;
+      if (overlays[c.id]) {
+        if (c.goTo && overlays[c.id].meta.geoCorners) map.fitBounds(L.latLngBounds(overlays[c.id].meta.geoCorners.map((p) => [p.lat, p.lon])), { padding: [30, 30] });
+        return;
+      }
       status.textContent = mp('loadingChart');
       try {
         await loadGeo();
@@ -2230,8 +2243,37 @@
         overlays[c.id] = { layer, meta, name: c.name || c.id, opacity: 0.75 };
         status.textContent = '';
         drawChartList();
+        if (c.goTo && meta.geoCorners && meta.geoCorners.length) {
+          map.fitBounds(L.latLngBounds(meta.geoCorners.map((p) => [p.lat, p.lon])), { padding: [30, 30] });
+        }
       } catch (e) { status.textContent = mp('chartFail'); }
     }
+
+    outlinesCb.addEventListener('change', () => {
+      if (outlinesCb.checked) map.addLayer(layers.charts); else map.removeLayer(layers.charts);
+    });
+    map.on('overlayadd overlayremove', () => { outlinesCb.checked = map.hasLayer(layers.charts); });
+    let chartTimer = null;
+    let chartSeq = 0;
+    chartIn.addEventListener('input', () => {
+      clearTimeout(chartTimer);
+      chartTimer = setTimeout(async () => {
+        const q = chartIn.value.trim();
+        const my = ++chartSeq;
+        if (q.length < 2) { chartRes.replaceChildren(); return; }
+        let list;
+        try { list = await api('GET', '/api/charts?limit=12&q=' + encodeURIComponent(q)); } catch (e) { return; }
+        if (my !== chartSeq) return;
+        if (!list.length) { chartRes.replaceChildren(h('div', { class: 'muted' }, mp('chartNone'))); return; }
+        chartRes.replaceChildren(...list.map((c) => {
+          const noGeo = !!c.unreferenced;
+          return h('div', { class: 'searchrow', title: noGeo ? mp('chartNoGeo') : mp('showChart'), style: noGeo ? 'opacity:.5' : '',
+            onclick: () => { if (!noGeo) showOverlay({ id: c.id, name: c.name, goTo: true }); } },
+            h('span', { class: 'grow' }, h('strong', null, c.icao || ''), ' ', h('span', { class: 'muted' }, c.name)),
+            noGeo ? h('span', { class: 'badge warn' }, '\u2014') : h('button', { class: 'btn sm', title: mp('showChart'), onclick: (ev) => { ev.stopPropagation(); showOverlay({ id: c.id, name: c.name, goTo: true }); } }, '+'));
+        }));
+      }, 250);
+    });
 
     // ---- search: when there are many small marks, ask for the one by name
     let searchSeq = 0;
