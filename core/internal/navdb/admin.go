@@ -2,6 +2,7 @@ package navdb
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -552,11 +553,14 @@ func sign(v float64) float64 {
 // SavedRoute is a route the user wrote down to use again: a name and the text of the route as a
 // pilot writes it. It is resolved (names turned into places) every time it is used.
 type SavedRoute struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Text      string `json:"text"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	Text string `json:"text"`
+	// Choices holds the user's picks between places that share a name (a JSON array, see
+	// route.Choice); the store does not look inside.
+	Choices   json.RawMessage `json:"choices"`
+	CreatedAt string          `json:"createdAt"`
+	UpdatedAt string          `json:"updatedAt"`
 }
 
 const savedRouteSchema = `
@@ -578,12 +582,19 @@ func cleanRoute(r *SavedRoute) error {
 	case len(r.Text) > 4000:
 		return errors.Join(ErrInvalid, errors.New("the route is too long"))
 	}
+	if len(r.Choices) == 0 || string(r.Choices) == "null" {
+		r.Choices = json.RawMessage("[]")
+	}
+	var list []json.RawMessage
+	if err := json.Unmarshal(r.Choices, &list); err != nil || len(list) > 200 || len(r.Choices) > 32<<10 {
+		return errors.Join(ErrInvalid, errors.New("the choices are not a list"))
+	}
 	return nil
 }
 
 // SavedRoutes lists the saved routes, the most recently changed first.
 func (d *DB) SavedRoutes() ([]SavedRoute, error) {
-	rows, err := d.db.Query(`SELECT id, name, text, created_at, updated_at FROM saved_route ORDER BY updated_at DESC, id DESC`)
+	rows, err := d.db.Query(`SELECT id, name, text, choices, created_at, updated_at FROM saved_route ORDER BY updated_at DESC, id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -591,9 +602,13 @@ func (d *DB) SavedRoutes() ([]SavedRoute, error) {
 	out := []SavedRoute{}
 	for rows.Next() {
 		var r SavedRoute
-		var c, u sql.NullString
-		if err := rows.Scan(&r.ID, &r.Name, &r.Text, &c, &u); err != nil {
+		var c, u, ch sql.NullString
+		if err := rows.Scan(&r.ID, &r.Name, &r.Text, &ch, &c, &u); err != nil {
 			return nil, err
+		}
+		r.Choices = json.RawMessage("[]")
+		if ch.Valid && ch.String != "" {
+			r.Choices = json.RawMessage(ch.String)
 		}
 		r.CreatedAt, r.UpdatedAt = c.String, u.String
 		out = append(out, r)
@@ -608,7 +623,7 @@ func (d *DB) CreateSavedRoute(r SavedRoute) (SavedRoute, error) {
 	}
 	r.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	r.UpdatedAt = r.CreatedAt
-	res, err := d.db.Exec(`INSERT INTO saved_route (name, text, created_at, updated_at) VALUES (?,?,?,?)`, r.Name, r.Text, r.CreatedAt, r.UpdatedAt)
+	res, err := d.db.Exec(`INSERT INTO saved_route (name, text, choices, created_at, updated_at) VALUES (?,?,?,?,?)`, r.Name, r.Text, string(r.Choices), r.CreatedAt, r.UpdatedAt)
 	if err != nil {
 		return r, err
 	}
@@ -622,7 +637,7 @@ func (d *DB) UpdateSavedRoute(r SavedRoute) (SavedRoute, error) {
 		return r, err
 	}
 	r.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	res, err := d.db.Exec(`UPDATE saved_route SET name = ?, text = ?, updated_at = ? WHERE id = ?`, r.Name, r.Text, r.UpdatedAt, r.ID)
+	res, err := d.db.Exec(`UPDATE saved_route SET name = ?, text = ?, choices = ?, updated_at = ? WHERE id = ?`, r.Name, r.Text, string(r.Choices), r.UpdatedAt, r.ID)
 	if err != nil {
 		return r, err
 	}
@@ -630,6 +645,32 @@ func (d *DB) UpdateSavedRoute(r SavedRoute) (SavedRoute, error) {
 		return r, ErrNotFound
 	}
 	return r, nil
+}
+
+// migrateSavedRoutes adds the columns a table made by an earlier version does not have.
+func (d *DB) migrateSavedRoutes() error {
+	rows, err := d.db.Query(`PRAGMA table_info(saved_route)`)
+	if err != nil {
+		return err
+	}
+	has := false
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "choices" {
+			has = true
+		}
+	}
+	rows.Close()
+	if !has {
+		_, err = d.db.Exec(`ALTER TABLE saved_route ADD COLUMN choices TEXT`)
+	}
+	return err
 }
 
 // DeleteSavedRoute removes a route.

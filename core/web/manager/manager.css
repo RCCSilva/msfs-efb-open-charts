@@ -163,3 +163,11 @@ nav .navlink:hover { background: var(--bg); text-decoration: none; }
 .routeitem.on { border-color: var(--accent); }
 textarea.routetext { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); padding: 8px 10px; font: inherit; resize: vertical; }
 .overview { height: 360px; margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #dfe6ea; }
+
+/* a place whose name is shared: the orange mark opens the other places */
+.bang { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: #f59e0b; color: #fff; font-weight: 800; font-size: 13px;
+  line-height: 20px; cursor: pointer; vertical-align: middle; }
+.bang.done { background: #9aa3b2; }
+.doubt { padding: 6px 4px; }
+.doubtrow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 8px; }
+.doubtrow.on { background: var(--bg); }

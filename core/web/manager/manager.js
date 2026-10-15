@@ -1638,7 +1638,10 @@
       ok: 'All names were found.', saved: 'Saved', failed: 'Could not do that', needName: 'Give the route a name.',
       nameCol: 'Name', kind: 'Type', pos: 'Position', via: 'Via', empty: 'Write a route and press Validate.',
       kinds: { airport: 'Airport', waypoint: 'Waypoint', vor: 'VOR', ndb: 'NDB', coordinate: 'Coordinate', procedure: 'Procedure' },
-      mapFail: 'The map could not be loaded.'
+      mapFail: 'The map could not be loaded.',
+      conflict: 'More than one place has this name. The closest to the previous point is used; tap to choose another.',
+      chosen: 'You chose this one. Tap to change.', usingClosest: 'In use (closest)', usingChosen: 'In use (your choice)', useThis: 'Use this one',
+      backToClosest: 'Go back to the closest', km: 'km', conflicts: 'with doubt'
     },
     pt: {
       title: 'Rotas', intro: 'Escreva rotas do jeito que o piloto escreve (SBSJ BOBI3A DAGUB UZ6 SBGR), confira e guarde. No viewer do simulador, o botão da rota lista todas elas: um toque e a rota é carregada.',
@@ -1648,11 +1651,14 @@
       ok: 'Todos os nomes foram encontrados.', saved: 'Salva', failed: 'Não foi possível', needName: 'Dê um nome para a rota.',
       nameCol: 'Nome', kind: 'Tipo', pos: 'Posição', via: 'Via', empty: 'Escreva uma rota e aperte Validar.',
       kinds: { airport: 'Aeroporto', waypoint: 'Waypoint', vor: 'VOR', ndb: 'NDB', coordinate: 'Coordenada', procedure: 'Procedimento' },
-      mapFail: 'Não foi possível carregar o mapa.'
+      mapFail: 'Não foi possível carregar o mapa.',
+      conflict: 'Mais de um lugar tem este nome. Está sendo usado o mais próximo do ponto anterior; toque para escolher outro.',
+      chosen: 'Você escolheu este. Toque para mudar.', usingClosest: 'Em uso (o mais próximo)', usingChosen: 'Em uso (sua escolha)', useThis: 'Usar este',
+      backToClosest: 'Voltar para o mais próximo', km: 'km', conflicts: 'com dúvida'
     }
   };
   const rt = (k) => (RT[lang] && RT[lang][k]) || RT.en[k] || k;
-  const routesState = { id: 0, name: '', text: '', result: null, working: false };
+  const routesState = { id: 0, name: '', text: '', choices: [], result: null, working: false };
   let overviewMap = null;
 
   function loadLeaflet() {
@@ -1727,19 +1733,46 @@
       const head = res
         ? h('div', { style: 'margin:8px 0' },
           h('span', { class: 'badge' }, `${res.points.length} ${rt('places')}`),
-          res.problems.length ? h('span', { class: 'badge warn' }, `${res.problems.length} ${rt('problems')}`) : h('span', { class: 'badge ok' }, rt('ok')))
+          res.problems.length ? h('span', { class: 'badge warn' }, `${res.problems.length} ${rt('problems')}`) : h('span', { class: 'badge ok' }, rt('ok')),
+          res.points.some((p) => p.candidates && p.candidates.length > 1) ? h('span', { class: 'badge warn' }, '! ' + rt('conflicts')) : null)
         : null;
       const problems = res && res.problems.length
         ? h('div', { class: 'warnbox', style: 'margin-bottom:8px' }, res.problems.map((q) => h('div', null,
           h('strong', null, q.token || ''), ' ', q.message,
           q.candidates && q.candidates.length ? '  (' + q.candidates.map((c) => c.ident + '/' + c.region).join(', ') + ')' : '')))
         : null;
+      const choose = (p, c) => {
+        routesState.choices = routesState.choices.filter((x) => !(x.token === p.token && x.nth === p.nth));
+        if (c) routesState.choices.push({ token: p.token, nth: p.nth, region: c.region, kind: c.kind });
+        validate();
+      };
+      const kinds = RT[lang].kinds || {};
+      const rows = [];
+      (res ? res.points : []).forEach((p) => {
+        const doubt = p.candidates && p.candidates.length > 1;
+        const detail = h('tr', { hidden: true }, h('td', { colspan: 4 }, doubt ? h('div', { class: 'doubt' },
+          p.candidates.map((c) => {
+            const inUse = c.region === p.region && c.kind === p.kind;
+            return h('div', { class: 'doubtrow' + (inUse ? ' on' : '') },
+              h('span', null, h('strong', null, c.ident), ' ', c.region || '-', ' \u00b7 ', kinds[c.kind] || c.kind,
+                c.name ? ' \u00b7 ' + c.name : '', ' \u00b7 ', fmtPos(c.lat, c.lon), c.distKm ? ' \u00b7 ' + c.distKm + ' ' + rt('km') : ''),
+              inUse ? h('span', { class: 'badge' }, p.chosen ? rt('usingChosen') : rt('usingClosest'))
+                : h('button', { class: 'btn sm', onclick: () => choose(p, c) }, rt('useThis')));
+          }),
+          p.chosen ? h('div', { style: 'margin-top:6px' }, h('button', { class: 'btn sm', onclick: () => choose(p, null) }, rt('backToClosest'))) : null) : ''));
+        const bang = doubt ? h('button', {
+          class: 'bang' + (p.chosen ? ' done' : ''), title: p.chosen ? rt('chosen') : rt('conflict'),
+          onclick: () => { detail.hidden = !detail.hidden; }
+        }, '!') : null;
+        rows.push(h('tr', null,
+          h('td', null, h('strong', null, p.ident), ' ', bang), h('td', { class: 'muted' }, kinds[p.kind] || p.kind),
+          h('td', { class: 'muted' }, p.via || ''), h('td', { class: 'muted' }, fmtPos(p.lat, p.lon))));
+        rows.push(detail);
+      });
       const table = res && res.points.length
         ? h('table', null,
           h('thead', null, h('tr', null, h('th', null, rt('nameCol')), h('th', null, rt('kind')), h('th', null, rt('via')), h('th', null, rt('pos')))),
-          h('tbody', null, res.points.map((p) => h('tr', null,
-            h('td', null, h('strong', null, p.ident)), h('td', { class: 'muted' }, (RT[lang].kinds || {})[p.kind] || p.kind),
-            h('td', { class: 'muted' }, p.via || ''), h('td', { class: 'muted' }, fmtPos(p.lat, p.lon))))))
+          h('tbody', null, rows))
         : h('p', { class: 'muted' }, rt('empty'));
       resultHost.replaceChildren(...[head, problems, table].filter(Boolean));
       drawOverview(mapHost, res);
@@ -1751,7 +1784,7 @@
       routesState.name = nameIn.value;
       if (!text) { showResult(null); return; }
       status.textContent = rt('working');
-      try { showResult(await api('POST', '/api/route/resolve', { route: text })); status.textContent = ''; }
+      try { showResult(await api('POST', '/api/route/resolve', { route: text, choices: routesState.choices })); status.textContent = ''; }
       catch (e) { status.textContent = rt('failed') + ': ' + e.message; }
     };
 
@@ -1759,7 +1792,7 @@
       routesState.text = textIn.value;
       routesState.name = nameIn.value;
       try {
-        const body = { name: nameIn.value, text: textIn.value };
+        const body = { name: nameIn.value, text: textIn.value, choices: routesState.choices };
         const r = routesState.id ? await api('PUT', '/api/routes/' + routesState.id, body) : await api('POST', '/api/routes', body);
         routesState.id = r.id;
         routesState.name = r.name;
@@ -1772,10 +1805,10 @@
     const listCard = h('div', { class: 'card' },
       h('div', { class: 'row', style: 'margin-bottom:8px' },
         h('h3', { style: 'margin:0', class: 'grow' }, rt('mine')),
-        h('button', { class: 'btn sm primary', onclick: () => { Object.assign(routesState, { id: 0, name: '', text: '', result: null, lastAuto: '' }); renderRoutes(); } }, '+ ' + rt('newRoute'))),
+        h('button', { class: 'btn sm primary', onclick: () => { Object.assign(routesState, { id: 0, name: '', text: '', choices: [], result: null, lastAuto: '' }); renderRoutes(); } }, '+ ' + rt('newRoute'))),
       list.length === 0 ? h('p', { class: 'muted' }, rt('none')) : list.map((r) => h('div', {
         class: 'routeitem' + (r.id === routesState.id ? ' on' : ''),
-        onclick: () => { Object.assign(routesState, { id: r.id, name: r.name, text: r.text, result: null }); renderRoutes(); }
+        onclick: () => { Object.assign(routesState, { id: r.id, name: r.name, text: r.text, choices: r.choices || [], result: null }); renderRoutes(); }
       }, h('strong', null, r.name), h('div', { class: 'muted' }, r.summary || r.text))));
 
     const editor = h('div', { class: 'card' },
@@ -1787,7 +1820,7 @@
         routesState.id ? h('button', { class: 'btn danger', onclick: async () => {
           if (!confirm(rt('confirmDel'))) return;
           await api('DELETE', '/api/routes/' + routesState.id);
-          Object.assign(routesState, { id: 0, name: '', text: '', result: null });
+          Object.assign(routesState, { id: 0, name: '', text: '', choices: [], result: null });
           renderRoutes();
         } }, rt('del')) : null),
       status, mapHost, resultHost);
@@ -1821,6 +1854,7 @@
     blend: G('<circle cx="16" cy="16" r="11"/><circle cx="16" cy="16" r="7.5" fill="currentColor" stroke="none" fill-opacity=".5"/>'),
     multi: G('<rect x="4" y="9" width="17" height="17" rx="1.5"/><path d="M10 5h17.5v17.5"/><path d="M9 15h8M9 20h5"/>'),
     updown: G('<path d="M6 12l10-8 10 8M6 20l10 8 10-8"/>'),
+    bang: '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="#f59e0b" stroke="none"/><path d="M16 9v9" stroke="#fff" stroke-width="3.2"/><circle cx="16" cy="23" r="1.8" fill="#fff" stroke="none"/></svg>',
     dots: G('<circle cx="16" cy="7" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/><circle cx="16" cy="25" r="2" fill="currentColor"/>')
   };
 
@@ -1882,6 +1916,9 @@
     { key: 'updown', group: 'lists',
       en: ['Up / down arrows', 'At the bottom of every list. They scroll the list, because touch scrolling is hard on the simulator screen.'],
       pt: ['Setas subir / descer', 'No rodapé de toda lista. Rolam a lista, porque rolar com o toque é difícil na tela do simulador.'] },
+    { key: 'bang', group: 'lists',
+      en: ['Orange "!" on a route place', 'More than one place has that name. The closest to the previous point is already used, so you do not have to do anything; tap the mark to see the others and pick one. It turns grey once you chose.'],
+      pt: ['"!" laranja num ponto da rota', 'Mais de um lugar tem esse nome. Já está sendo usado o mais próximo do ponto anterior, então você não precisa fazer nada; toque na marca para ver os outros e escolher. Ela fica cinza depois que você escolhe.'] },
     { key: 'dots', group: 'lists',
       en: ['Three dots on a route place', 'In the route list: "Direct to" drops every place before this one; "Remove" takes this place out.'],
       pt: ['Três pontos num ponto da rota', 'Na lista da rota: "Direto para" descarta tudo antes deste ponto; "Remover" tira este ponto.'] }

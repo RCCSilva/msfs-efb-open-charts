@@ -171,6 +171,10 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   charts under the one being opened (up to 4 extra layers, stored in `oc.multi`). Adding or removing a chart in that mode never moves the view; only the eye button of a pinned row
   (`focusChart`) fits the map to that chart.
   In chart-only mode the route goes through the chart's georeference (nothing for view-only charts).
+  **Conflicts** (a name that exists in several places): the resolver takes the closest to the previous point and lists
+  every candidate on the point (`candidates`, with the distance); the user may pick another one, which is a
+  `route.Choice` {token, nth occurrence, region, kind} kept with the saved route (`choices`) and sent with
+  `/api/route/resolve`. The text never carries a region. The orange `!` in the manager and in the viewer opens the list.
   **Saved routes** (`saved_route` table, `/api/routes`, `server/routes_saved.go`): written, validated (`/api/route/resolve`) and
   shown on a high overview map in the manager's **Routes** tab; the viewer lists them under the route in the left drawer
   and one tap resolves and draws one. The server only keeps name + text; places are resolved each time.

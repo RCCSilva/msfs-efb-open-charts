@@ -11,6 +11,7 @@ import (
 	"errors"
 	"math"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -39,6 +40,21 @@ type Point struct {
 	// Via is the airway or the procedure that leads here from the previous point; empty for a
 	// direct leg.
 	Via string `json:"via,omitempty"`
+	// Nth is which occurrence of this name in the route it is (0 for the first), the key of a choice.
+	Nth int `json:"nth"`
+	// Candidates lists every place the name can mean when there is more than one (the point is the
+	// one used). Chosen tells that the user picked it, instead of the closest being taken.
+	Candidates []Candidate `json:"candidates,omitempty"`
+	Chosen     bool        `json:"chosen,omitempty"`
+}
+
+// Choice is the user's pick between places that share a name. It refers to the Nth occurrence of
+// the name in the route, so editing other parts of the text does not move it.
+type Choice struct {
+	Token  string `json:"token"`
+	Nth    int    `json:"nth"`
+	Region string `json:"region"`
+	Kind   string `json:"kind"` // waypoint, vor, ndb
 }
 
 // Candidate is one of several places a name can mean.
@@ -46,8 +62,11 @@ type Candidate struct {
 	Ident  string  `json:"ident"`
 	Region string  `json:"region"`
 	Kind   string  `json:"kind"`
+	Name   string  `json:"name,omitempty"`
 	Lat    float64 `json:"lat"`
 	Lon    float64 `json:"lon"`
+	// DistKm is how far it is from the previous point of the route (0 when there is none).
+	DistKm float64 `json:"distKm,omitempty"`
 }
 
 // Problem is a part of the route that could not be resolved, or was resolved with a doubt.
@@ -146,12 +165,20 @@ type resolver struct {
 	res      Result
 	airports map[string]*navdata.Airport
 	last     *Point // the last resolved point, for choosing between homonyms
+	choices  []Choice
+	seen     map[string]int // occurrences of each name met so far
+	nth      int            // occurrence number of the name being resolved
 }
 
 // Resolve finds every name of the route.
-func Resolve(text string, p Provider) (*Result, error) {
+func Resolve(text string, p Provider) (*Result, error) { return ResolveWith(text, p, nil) }
+
+// ResolveWith is Resolve with the user's picks between places that share a name. A name with
+// several places gets the closest to the previous point, unless a choice says otherwise.
+func ResolveWith(text string, p Provider, choices []Choice) (*Result, error) {
 	toks := Tokens(text)
-	r := &resolver{p: p, res: Result{Points: []Point{}, Problems: []Problem{}}, airports: map[string]*navdata.Airport{}}
+	r := &resolver{p: p, res: Result{Points: []Point{}, Problems: []Problem{}}, airports: map[string]*navdata.Airport{},
+		choices: choices, seen: map[string]int{}}
 	if len(toks) == 0 {
 		return &r.res, nil
 	}
@@ -202,6 +229,8 @@ func (r *resolver) firstAirport() *navdata.Airport {
 func (r *resolver) step(toks []string, i int) (int, error) {
 	tok := toks[i]
 	first, last := i == 0, i == len(toks)-1
+	r.nth = r.seen[tok]
+	r.seen[tok]++
 
 	// an airport at either end
 	if (first || last) && icaoAirport.MatchString(tok) {
@@ -262,16 +291,43 @@ func (r *resolver) step(toks []string, i int) (int, error) {
 		return 0, nil
 	}
 	f := fixes[0]
+	var cands []Candidate
+	chosen := false
 	if len(fixes) > 1 {
 		f = r.nearest(fixes)
-		c := make([]Candidate, 0, len(fixes))
 		for _, x := range fixes {
-			c = append(c, Candidate{Ident: x.Ident, Region: x.Region, Kind: kindName(x.Kind), Lat: x.Lat, Lon: x.Lon})
+			c := Candidate{Ident: x.Ident, Region: x.Region, Kind: kindName(x.Kind), Name: x.Name, Lat: x.Lat, Lon: x.Lon}
+			if r.last != nil {
+				c.DistKm = math.Round(distance(r.last.Lat, r.last.Lon, x.Lat, x.Lon)*10) / 10
+			}
+			cands = append(cands, c)
 		}
-		r.problem(tok, "more than one place has this name: the one closest to the route so far was used", c)
+		sort.SliceStable(cands, func(a, b int) bool { return cands[a].DistKm < cands[b].DistKm })
+		if pick, ok := r.pick(tok, fixes); ok {
+			f, chosen = pick, true
+		} else {
+			r.problem(tok, "more than one place has this name: the one closest to the route so far was used", cands)
+		}
 	}
-	r.add(Point{Token: tok, Kind: kindName(f.Kind), Ident: f.Ident, Region: f.Region, Lat: f.Lat, Lon: f.Lon})
+	r.add(Point{Token: tok, Kind: kindName(f.Kind), Ident: f.Ident, Region: f.Region, Lat: f.Lat, Lon: f.Lon,
+		Nth: r.nth, Candidates: cands, Chosen: chosen})
 	return 0, nil
+}
+
+// pick applies the user's choice for this occurrence of the name, when there is one and it still
+// matches one of the places.
+func (r *resolver) pick(tok string, fixes []navdata.Fix) (navdata.Fix, bool) {
+	for _, c := range r.choices {
+		if !strings.EqualFold(c.Token, tok) || c.Nth != r.nth {
+			continue
+		}
+		for _, f := range fixes {
+			if strings.EqualFold(f.Region, c.Region) && (c.Kind == "" || kindName(f.Kind) == c.Kind) {
+				return f, true
+			}
+		}
+	}
+	return navdata.Fix{}, false
 }
 
 func (r *resolver) nearest(fixes []navdata.Fix) navdata.Fix {

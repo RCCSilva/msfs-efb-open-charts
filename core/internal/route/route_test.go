@@ -142,3 +142,49 @@ func TestAirwayThatDoesNotConnect(t *testing.T) {
 		t.Fatalf("an unknown airway must be a problem: %+v", res)
 	}
 }
+
+func TestChoiceOverridesTheClosest(t *testing.T) {
+	// the other RBV is the one the user wants; the choice is by region and survives text edits
+	res, _ := Resolve("SBSJ RBV SBGR", provider())
+	var other string
+	var cands []Candidate
+	for _, p := range res.Points {
+		if p.Ident == "RBV" {
+			cands = p.Candidates
+			if len(cands) != 2 || p.Chosen {
+				t.Fatalf("point must list both places and not be chosen: %+v", p)
+			}
+		}
+	}
+	for _, c := range cands {
+		if c.Region != "FA" {
+			other = c.Region
+		}
+	}
+	res, err := ResolveWith("SBSJ RBV SBGR", provider(), []Choice{{Token: "RBV", Nth: 0, Region: other, Kind: "vor"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, p := range res.Points {
+		if p.Ident == "RBV" {
+			found = true
+			if p.Region != other || !p.Chosen {
+				t.Fatalf("the choice was not applied: %+v", p)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("RBV missing")
+	}
+	if len(res.Problems) != 0 {
+		t.Fatalf("a chosen place is not a doubt: %+v", res.Problems)
+	}
+	// a choice for another occurrence changes nothing
+	res, _ = ResolveWith("SBSJ RBV SBGR", provider(), []Choice{{Token: "RBV", Nth: 1, Region: other}})
+	for _, p := range res.Points {
+		if p.Ident == "RBV" && p.Region != "FA" {
+			t.Fatalf("a choice for the second RBV must not change the first: %+v", p)
+		}
+	}
+}

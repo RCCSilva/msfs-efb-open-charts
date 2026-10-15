@@ -97,15 +97,17 @@ func (p routeProvider) FixAt(ref navdata.FixRef) (*navdata.Fix, error) {
 // POST /api/route/resolve  {"route": "SBSJ BOBI3A DAGUB UZ6 ..."}  (GET with ?route= as well)
 func (s *Server) handleRouteResolve(w http.ResponseWriter, r *http.Request) {
 	var text string
+	var choices []route.Choice
 	if r.Method == http.MethodPost {
 		var body struct {
-			Route string `json:"route"`
+			Route   string         `json:"route"`
+			Choices []route.Choice `json:"choices"`
 		}
 		if err := readJSON(r, &body); err != nil {
 			writeErr(w, 400, err)
 			return
 		}
-		text = body.Route
+		text, choices = body.Route, body.Choices
 	} else {
 		text = r.URL.Query().Get("route")
 	}
@@ -115,7 +117,7 @@ func (s *Server) handleRouteResolve(w http.ResponseWriter, r *http.Request) {
 	}
 	s.nav.mu.Lock()
 	defer s.nav.mu.Unlock()
-	res, err := route.Resolve(text, routeProvider{s})
+	res, err := route.ResolveWith(text, routeProvider{s}, choices)
 	if err != nil {
 		writeErr(w, 502, err)
 		return

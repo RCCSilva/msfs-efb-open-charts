@@ -32,6 +32,7 @@
       search: 'Paste a route: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       noPins: 'No charts pinned to this group.',
       routePaste: 'Paste a route', routeTitle: 'Route', routePlaces: 'places', routeProblems: 'to check',
+      routeDoubt: 'More than one place has this name', routeClosest: 'The closest one', routeKm: 'km',
       savedRoutes: 'Saved routes', savedNone: 'No saved routes. Write them in the manager (Routes tab).',
       routeNone: 'No route yet', routePasteShort: 'Paste', routeFrom: 'from', routeTo: 'to',
       pinnedTitle: 'Pinned charts', searchTitle: 'Search charts', searchPlaceholder: 'SBSP, ILS, sao paulo...',
@@ -67,6 +68,7 @@
       search: 'Cole a rota: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
       noPins: 'Nenhuma carta fixada neste grupo.',
       routePaste: 'Colar a rota', routeTitle: 'Rota', routePlaces: 'pontos', routeProblems: 'a conferir',
+      routeDoubt: 'Mais de um lugar tem este nome', routeClosest: 'O mais proximo', routeKm: 'km',
       savedRoutes: 'Rotas salvas', savedNone: 'Nenhuma rota salva. Crie no gerenciador (aba Rotas).',
       routeNone: 'Nenhuma rota ainda', routePasteShort: 'Colar', routeFrom: 'origem', routeTo: 'destino',
       pinnedTitle: 'Cartas fixadas', searchTitle: 'Buscar cartas', searchPlaceholder: 'SBSP, ILS, sao paulo...',
@@ -1608,7 +1610,11 @@
     }
   }
 
+  // the user's picks between places that share a name (see route.Choice on the server)
+  var routeChoices = [];
+
   function saveRoute() {
+    store('routechoices', JSON.stringify(routeChoices));
     store('routepts', JSON.stringify(routePoints));
     store('routetext', routeText);
     store('routeprob', JSON.stringify(routeProblems));
@@ -1620,6 +1626,7 @@
       if (pts && pts.length && pts[0].lat !== undefined) routePoints = pts;
       routeText = store('routetext') || '';
       routeProblems = JSON.parse(store('routeprob') || '[]') || [];
+      routeChoices = JSON.parse(store('routechoices') || '[]') || [];
     } catch (e) { routePoints = []; routeProblems = []; }
   }
 
@@ -1636,6 +1643,41 @@
     saveRoute();
     drawRoute(false);
     renderRoute();
+  }
+
+  // The other places that share the name of a point: tap one to use it, or go back to the closest.
+  function showDoubtMenu(p, anchor) {
+    hideRouteMenu();
+    var m = document.createElement('div');
+    m.className = 'rtmenu';
+    p.candidates.forEach(function (c) {
+      var inUse = c.region === p.region && c.kind === p.kind;
+      var label = (inUse ? '> ' : '') + (c.region || '-') + ' ' + String(c.kind).toUpperCase() + (c.name ? ' ' + c.name : '') +
+        (c.distKm ? '  ' + c.distKm + ' ' + t('routeKm') : '');
+      m.appendChild(button('', label, function () {
+        hideRouteMenu();
+        applyChoice(p, c);
+      }));
+    });
+    if (p.chosen) {
+      m.appendChild(button('', t('routeClosest'), function () {
+        hideRouteMenu();
+        applyChoice(p, null);
+      }));
+    }
+    document.body.appendChild(m);
+    var r = anchor.getBoundingClientRect();
+    var w = document.documentElement.clientWidth;
+    m.style.top = Math.round(r.bottom + 2) + 'px';
+    m.style.left = Math.max(4, Math.min(Math.round(r.left), w - 240)) + 'px';
+    routeMenuEl = m;
+  }
+
+  function applyChoice(p, c) {
+    routeChoices = routeChoices.filter(function (x) { return !(x.token === p.token && x.nth === p.nth); });
+    if (c) routeChoices.push({ token: p.token, nth: p.nth, region: c.region, kind: c.kind });
+    qEl.value = routeText;
+    resolveRoute();
   }
 
   function showRouteMenu(i, anchor) {
@@ -1695,6 +1737,18 @@
         via.className = 'rtvia';
         via.textContent = p.via;
         chip.appendChild(via);
+      }
+      if (p.candidates && p.candidates.length > 1) {
+        var bang = document.createElement('button');
+        bang.type = 'button';
+        bang.className = 'rtbang' + (p.chosen ? ' done' : '');
+        bang.textContent = '!';
+        bang.setAttribute('aria-label', t('routeDoubt'));
+        bang.addEventListener('click', function (ev) {
+          if (ev.stopPropagation) ev.stopPropagation();
+          showDoubtMenu(p, bang);
+        });
+        chip.appendChild(bang);
       }
       var more = document.createElement('button');
       more.type = 'button';
@@ -1781,12 +1835,14 @@
   // one tap: the route is resolved and drawn like a pasted one, and the drawer gets out of the way
   function useSavedRoute(r) {
     qEl.value = r.text;
+    routeChoices = r.choices || [];
     closeDrawers();
     resolveRoute();
   }
 
   function clearWholeRoute() {
     routeSeq += 1;
+    routeChoices = [];
     routePoints = [];
     routeProblems = [];
     routeText = '';
@@ -1802,7 +1858,7 @@
     if (!text) { clearWholeRoute(); closeRouteBox(); return; }
     var seq = ++routeSeq;
     routeGoBtn.textContent = t('routeWorking');
-    request('POST', '/api/route/resolve', { route: text }, function (res) {
+    request('POST', '/api/route/resolve', { route: text, choices: routeChoices }, function (res) {
       if (seq !== routeSeq) return;
       routeGoBtn.textContent = t('routeResolve');
       if (!res || !res.points) {
