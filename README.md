@@ -1,4 +1,4 @@
-# Open Charts — 0.2.0 Open Beta
+# Open Charts — 0.3.0 Open Beta
 
 A local aeronautical chart manager and in-sim moving map for **Microsoft Flight Simulator 2024**.
 
@@ -20,6 +20,14 @@ shows them inside the simulator's EFB, with your aircraft's live position on the
   choice of aircraft symbol (plane or helicopter, in your colour).
 - **FAA (United States).** Terminal procedures (d-TPP, named through the cycle metadata) and VFR/IFR
   GeoTIFF rasters (sectionals, TAC, helicopter, enroute).
+- **Routes.** Write or paste a route the way pilots do (`SBSJ BOBI3A DAGUB UZ6 SBGR`); airports, fixes, airways,
+  SIDs and STARs are resolved with the navigation data of your own simulator and drawn over the map or the chart.
+  Routes can be saved in the manager (checked on an overview map) and loaded with one tap in the viewer.
+- **Navigation data.** Read from your simulator through SimConnect and kept in a local SQLite file; a bulk load
+  reads the identifiers from the simulator's own files and asks the simulator for the rest. Nothing is shipped.
+  You can add your own points, or import the CSV that Little Navmap exports for user points.
+- **Several charts on the map**, big pyramids of tiles for large GeoTIFFs and PDFs, view-only charts (no
+  georeference), a guide in the manager with a legend of every button of the in-simulator screen.
 - **Live position** from the simulator through SimConnect.
 - **Chart sources.** *My PDFs* (built in) and *DECEA / AISWEB* (Brazil). The app never downloads
   from a provider by itself: it guides you to the official pages and recognises what you download.
@@ -39,7 +47,7 @@ The installer is not code-signed yet, so Windows SmartScreen may warn on first r
 Requirements: Go 1.26+ (no cgo), the MSFS 2024 SDK (for `SimConnect.dll`), Inno Setup 6.
 
 ```powershell
-powershell -File installer\build.ps1 -Version 0.2.0
+powershell -File installer\build.ps1 -Version 0.3.0
 ```
 
 This runs the tests, builds `build\opencharts.exe`, and produces

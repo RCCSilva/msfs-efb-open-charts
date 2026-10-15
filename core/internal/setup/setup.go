@@ -28,7 +28,7 @@ const EFBPackageName = "open-charts-efb"
 const legacyPackageName = "local-moving-map-efb"
 
 // EFBVersion is written to the package manifest; bump it when the embedded app changes.
-const EFBVersion = "0.2.0"
+const EFBVersion = "0.3.0"
 
 const efbAppDir = "html_ui/efb_ui/efb_apps/OpenCharts"
 
