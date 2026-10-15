@@ -218,3 +218,7 @@ body.fullmap .planpanel { position: static; max-height: none; height: 100%; over
 .plansec[open] > summary::before { transform: rotate(45deg); }
 .plansecbody { padding: 0 2px 12px; }
 .plansecbody .searchres { max-height: 200px; }
+
+.srctable td { padding: 12px 14px; vertical-align: top; }
+.srctable th { padding: 10px 14px; }
+.srctable .badge { margin: 2px 4px 2px 0; }

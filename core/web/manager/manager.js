@@ -36,6 +36,8 @@
       inbox: 'Inbox folder', inboxHelp: 'What you add here stays in this folder, on this computer. PDFs are imported when you click the button; for a .zip, read it and choose the aerodromes.',
       importInbox: 'Import the PDFs of the inbox', noInbox: 'The inbox is empty.',
       imported: 'imported', skipped: 'skipped', failed: 'failed', done: 'Done', error: 'Error',
+      srcFilter: 'Filter by name...', srcAllCountries: 'All countries', srcCountry: 'Country', srcSource: 'Source', srcWhat: 'What it gives',
+      srcNone: 'No source matches.', srcAnyCountry: 'Any country', srcOpen: 'Open',
       builtin: 'Built in', noAuto: 'No automatic download', policyLink: 'Usage policy', official: 'Official page',
       howTo: 'How to get charts from this source', locate: 'Where to get the package',
       locateHelp: 'Addresses derived from the file naming; they open in your browser and you download the file yourself.',
@@ -136,6 +138,8 @@
       inbox: 'Pasta de entrada', inboxHelp: 'O que você adiciona aqui fica nesta pasta, no seu computador. Os PDFs são importados quando você clicar no botão; de um .zip, leia o pacote e escolha os aeródromos.',
       importInbox: 'Importar os PDFs da pasta de entrada', noInbox: 'A pasta de entrada está vazia.',
       imported: 'importadas', skipped: 'ignoradas', failed: 'com erro', done: 'Concluído', error: 'Erro',
+      srcFilter: 'Filtrar pelo nome...', srcAllCountries: 'Todos os países', srcCountry: 'País', srcSource: 'Fonte', srcWhat: 'O que oferece',
+      srcNone: 'Nenhuma fonte encontrada.', srcAnyCountry: 'Qualquer país', srcOpen: 'Abrir',
       builtin: 'Embutida', noAuto: 'Sem download automático', policyLink: 'Política de uso', official: 'Página oficial',
       howTo: 'Como obter cartas desta fonte', locate: 'Onde obter o pacote',
       locateHelp: 'Endereços derivados do padrão de nome; abrem no seu navegador e você baixa o arquivo.',
@@ -649,18 +653,49 @@
   }
 
   // ---- Sources: list, then one page per source
+  const sourcesView = { q: '', country: '' };
+
   async function renderSources() {
     const list = await api('GET', '/api/sources');
     const capName = { catalog: 'capCatalog', package: 'capPackage', locate: 'capLocate' };
+    // the countries that have a source, by name in the language of the page
+    const countries = {};
+    list.forEach((x) => { if (x.country) countries[x.country] = tx(x.countryName) || x.country; });
+    const codes = Object.keys(countries).sort((p, q) => countries[p].localeCompare(countries[q], lang));
+    if (sourcesView.country && !countries[sourcesView.country]) sourcesView.country = '';
+
+    const q = h('input', { type: 'text', placeholder: t('srcFilter'), value: sourcesView.q, class: 'grow' });
+    const sel = h('select', null, h('option', { value: '' }, t('srcAllCountries')), codes.map((c) => h('option', { value: c }, countries[c])));
+    sel.value = sourcesView.country;
+    const body = h('div');
+
+    const draw = () => {
+      const text = sourcesView.q.trim().toLowerCase();
+      const shown = list.filter((x) => {
+        if (sourcesView.country && x.country !== sourcesView.country && !(x.builtin && !x.country)) return false;
+        if (!text) return true;
+        return (tx(x.name) + ' ' + tx(x.description) + ' ' + (countries[x.country] || '')).toLowerCase().includes(text);
+      });
+      body.replaceChildren(shown.length === 0 ? h('p', { class: 'muted' }, t('srcNone')) : h('div', { class: 'card', style: 'padding:0' },
+        h('table', { class: 'srctable' },
+          h('thead', null, h('tr', null, h('th', null, t('srcSource')), h('th', null, t('srcCountry')), h('th', null, t('srcWhat')), h('th'))),
+          h('tbody', null, shown.map((x) => h('tr', { class: 'clickable', onclick: () => go('#source/' + encodeURIComponent(x.id)) },
+            h('td', null, h('a', { href: '#source/' + encodeURIComponent(x.id), onclick: (e) => e.stopPropagation() }, h('strong', null, tx(x.name))),
+              h('div', { class: 'muted', style: 'font-size:12px;max-width:520px' }, tx(x.description))),
+            h('td', null, x.country ? countries[x.country] : h('span', { class: 'muted' }, t('srcAnyCountry'))),
+            h('td', null,
+              x.builtin ? h('span', { class: 'badge' }, t('builtin')) : null,
+              (x.capabilities || []).map((c) => h('span', { class: 'badge' }, t(capName[c] || c))),
+              !x.policy.automatedFetch && !x.builtin ? h('span', { class: 'badge warn' }, t('noAuto')) : null),
+            h('td', { class: 'actions' }, h('a', { class: 'btn sm', href: '#source/' + encodeURIComponent(x.id), onclick: (e) => e.stopPropagation() }, t('srcOpen')))))))));
+    };
+    q.addEventListener('input', () => { sourcesView.q = q.value; draw(); });
+    sel.addEventListener('change', () => { sourcesView.country = sel.value; draw(); });
+
     view.replaceChildren(h('h2', null, t('sources')),
       h('div', { class: 'warnbox', style: 'margin-bottom:16px' }, h('strong', null, t('whyManualTitle')), h('div', null, t('whyManual'))),
-      h('div', { class: 'cols' }, ...list.map((s) => h('button', { class: 'card src', onclick: () => go('#source/' + encodeURIComponent(s.id)) },
-        h('h3', null, tx(s.name)),
-        h('div', { class: 'muted' }, tx(s.description)),
-        h('div', { style: 'margin-top:8px' },
-          s.builtin ? h('span', { class: 'badge' }, t('builtin')) : null,
-          (s.capabilities || []).map((c) => h('span', { class: 'badge' }, t(capName[c] || c))),
-          !s.policy.automatedFetch && !s.builtin ? h('span', { class: 'badge warn' }, t('noAuto')) : null)))));
+      h('div', { class: 'row', style: 'margin-bottom:12px' }, q, sel), body);
+    draw();
   }
 
   async function renderSource(id) {

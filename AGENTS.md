@@ -186,6 +186,12 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   **Saved routes** (`saved_route` table, `/api/routes`, `server/routes_saved.go`): written, validated (`/api/route/resolve`) and
   shown on a high overview map in the manager's **Routes** tab; the viewer lists them under the route in the left drawer
   and one tap resolves and draws one. The server only keeps name + text; places are resolved each time.
+  **Sources**: `sources.Info` has `Country` (ISO alpha-2) and `CountryName`; the manager lists them in a table with a text
+  filter and a country filter (a source without a country, "My PDFs", is shown in every country). A source whose files
+  cannot be told apart by name implements `ContentRecognizer` (`RecognizeContent(text)`): the server reads the text of
+  the first page (`importer.PageText`, PDFium) only when the name recognised nothing (`identifyContent`). The UK AIP
+  (`sources/uk.go`, id `nats-uk`) reads the footer reference `AD 2-<ICAO>-<section>-<n>`; its SID/STAR/approach charts
+  are GeoPDFs, aerodrome and ground charts are view-only.
   The manager has a **Navigation** tab (`renderNav`; API in `server/nav_admin.go`, queries in `navdb/admin.go`): counts, lists
   with delete/refresh for airports, fixes and airways, the user's own points (`user_point`, region `USR`, they are found by
   the route resolver like any waypoint and are never dropped by a schema change) and the **bulk load**: (1) `navseed` reads

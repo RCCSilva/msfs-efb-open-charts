@@ -206,6 +206,8 @@ type faa struct{}
 func (faa) Info() Info {
 	return Info{
 		ID:            "faa-us",
+		Country:       "US",
+		CountryName:   Text{PT: "Estados Unidos", EN: "United States"},
 		Homepage:      faaPage,
 		HomepageLabel: Text{PT: "FAA: página dos procedimentos (d-TPP)", EN: "FAA: terminal procedures page (d-TPP)"},
 		HomepageNote:  Text{PT: "os pacotes do ciclo (A a D) e os metadados (E) estão nesta página", EN: "the packages of the cycle (A to D) and the metadata (E) are on this page"},

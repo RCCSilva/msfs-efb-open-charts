@@ -43,8 +43,12 @@ type Policy struct {
 
 // Info describes a source.
 type Info struct {
-	ID           string   `json:"id"`
-	Builtin      bool     `json:"builtin"` // part of the app itself, not a provider
+	ID      string `json:"id"`
+	Builtin bool   `json:"builtin"` // part of the app itself, not a provider
+	// Country is the ISO 3166 alpha-2 code of the country whose charts the source publishes ("" for
+	// a source that is not tied to one: the built-in "My PDFs").
+	Country      string   `json:"country,omitempty"`
+	CountryName  Text     `json:"countryName,omitempty"`
 	Name         Text     `json:"name"`
 	Description  Text     `json:"description"`
 	Policy       Policy   `json:"policy"`
@@ -63,6 +67,12 @@ type Source interface {
 	Info() Info
 	// Recognize derives chart metadata from a file name (without extension).
 	Recognize(stem string) (naming.Info, bool)
+}
+
+// ContentRecognizer is implemented by sources whose files cannot be told apart by name: it reads
+// the text of the first page of a chart (the chart's own reference, printed on it).
+type ContentRecognizer interface {
+	RecognizeContent(text string) (naming.Info, bool)
 }
 
 // CatalogItem is one downloadable chart listed by a source.
@@ -116,7 +126,7 @@ type Packager interface {
 
 // ---------------------------------------------------------------- registry
 
-var registry = []Source{decea{}, faa{}, manual{}}
+var registry = []Source{decea{}, faa{}, uk{}, manual{}}
 
 // All returns the registered sources, with abilities filled in.
 func All() []Info {
@@ -217,6 +227,40 @@ func Recognize(sourceID, stem string) (naming.Info, string) {
 		}
 	}
 	return naming.Info{Title: naming.Tidy(stem)}, ""
+}
+
+// RecognizeContent derives metadata from the text of the first page of a chart. The named source
+// goes first, then the others, like Recognize. ok is false when no source could read it.
+func RecognizeContent(sourceID, text string) (info naming.Info, by string, ok bool) {
+	try := func(s Source) bool {
+		if r, is := s.(ContentRecognizer); is {
+			if in, found := r.RecognizeContent(text); found {
+				info, by = in, s.Info().ID
+				return true
+			}
+		}
+		return false
+	}
+	if s, found := Lookup(sourceID); found && try(s) {
+		return info, by, true
+	}
+	for _, s := range registry {
+		if s.Info().ID != sourceID && try(s) {
+			return info, by, true
+		}
+	}
+	return naming.Info{}, "", false
+}
+
+// NeedsContent tells whether any source reads the content of its files (so that the server only
+// opens a PDF's text when a name alone could not be recognised).
+func NeedsContent() bool {
+	for _, s := range registry {
+		if _, ok := s.(ContentRecognizer); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------- shared helpers

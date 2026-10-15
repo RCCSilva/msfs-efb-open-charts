@@ -31,6 +31,8 @@ type decea struct{}
 func (decea) Info() Info {
 	return Info{
 		ID:            "decea-br",
+		Country:       "BR",
+		CountryName:   Text{PT: "Brasil", EN: "Brazil"},
 		Homepage:      deceaCharts,
 		HomepageLabel: Text{PT: "AISWEB: página de cartas", EN: "AISWEB: charts page"},
 		HomepageNote:  Text{PT: "clique em \"Pacote completo\" para baixar o pacote (.zip)", EN: "click \"Pacote completo\" for the full package (.zip)"},

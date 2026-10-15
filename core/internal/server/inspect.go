@@ -126,6 +126,9 @@ func (s *Server) handleInspect(w http.ResponseWriter, r *http.Request) {
 	out["georeferenced"], out["viewport"] = geo, viewport
 
 	id := s.identify(source, stem, base, viewport)
+	if !isTIFF {
+		id = s.identifyContent(id, source, data)
+	}
 	out["recognizedBy"] = id.Recognizer
 	out["matched"] = id.Matched
 	out["confident"] = geo && id.Confident

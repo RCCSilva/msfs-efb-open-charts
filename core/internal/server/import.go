@@ -63,6 +63,9 @@ func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.C
 		viewport = pdfViewportName(data)
 	}
 	id := s.identify(source, stem, base, viewport)
+	if !isTIFF {
+		id = s.identifyContent(id, source, data)
+	}
 	opt := importer.Options{
 		Source:   source,
 		Name:     strings.TrimSpace(f.Name),

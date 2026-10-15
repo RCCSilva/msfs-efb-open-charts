@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sources"
@@ -33,6 +34,31 @@ func (s *Server) identify(source, stem, file, viewport string) sources.Identity 
 		}
 	}
 	return sources.Identify(source, stem, file, viewport)
+}
+
+// identifyContent completes an identity from the text of the first page of the PDF, when the name
+// of the file recognised nothing (the charts of the UK AIP are called 475382.pdf, but each carries
+// its reference "AD 2-EGLL-6-1" in the footer). It only opens the PDF's text then.
+func (s *Server) identifyContent(id sources.Identity, source string, data []byte) sources.Identity {
+	if id.Recognizer != "" || id.ICAO != "" || !sources.NeedsContent() || !s.canImport() {
+		return id
+	}
+	var text string
+	err := s.withRenderer(nil, func(r *importer.Renderer) error {
+		t, err := r.PageText(data)
+		text = t
+		return err
+	})
+	if err != nil || text == "" {
+		return id
+	}
+	info, by, ok := sources.RecognizeContent(source, text)
+	if !ok {
+		return id
+	}
+	id.ICAO, id.Type, id.Title, id.Recognizer = info.ICAO, info.Type, info.Title, by
+	id.Confident = info.ICAO != "" && info.Type != ""
+	return id
 }
 
 func (s *Server) registerNamingRoutes(mux *http.ServeMux) {
