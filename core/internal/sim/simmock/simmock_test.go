@@ -18,6 +18,7 @@ var (
 	_ sim.SeedSource       = (*simmock.Seed)(nil)
 	_ sim.FlightPlanLoader = (*simmock.Plans)(nil)
 	_ sim.PositionSource   = (*simmock.Position)(nil)
+	_ sim.AppInstaller     = (*simmock.App)(nil)
 )
 
 func TestNavReturnsWhatTheTestSaid(t *testing.T) {

@@ -1,7 +1,7 @@
-// Package setup finds the user's Microsoft Flight Simulator installation and, only when the user
-// asks, installs the EFB app into its Community folder and registers Open Charts to start with
+// Package efbapp finds the user's Microsoft Flight Simulator 2024 installation and, only when the
+// user asks, installs the EFB app into its Community folder and registers Open Charts to start with
 // the simulator. Nothing here runs by itself.
-package setup
+package efbapp
 
 import (
 	"embed"
@@ -28,7 +28,7 @@ const EFBPackageName = "open-charts-efb"
 const legacyPackageName = "local-moving-map-efb"
 
 // EFBVersion is written to the package manifest; bump it when the embedded app changes.
-const EFBVersion = "0.5.0"
+const EFBVersion = buildinfo.Version
 
 const efbAppDir = "html_ui/efb_ui/efb_apps/OpenCharts"
 

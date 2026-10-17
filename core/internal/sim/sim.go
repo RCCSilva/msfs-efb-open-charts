@@ -90,14 +90,61 @@ type FlightPlanLoader interface {
 	Load(file string) error
 }
 
+// AppState is the state of the program's app inside one installation of the simulator.
+type AppState struct {
+	Installed bool `json:"installed"`
+	Legacy    bool `json:"legacy"` // an older package of the app is present
+	// ServerURL is the address written into the installed app. If it differs from where the
+	// server really is (the port changed), the app cannot reach it until it is updated.
+	ServerURL   string `json:"serverURL,omitempty"`
+	URLMismatch bool   `json:"urlMismatch"`
+	Version     string `json:"version,omitempty"`
+	Build       string `json:"build,omitempty"` // what the installed app says it is: "0.1.1" or "0.1.1-8fa9b5b"
+	UpToDate    bool   `json:"upToDate"`
+	Path        string `json:"path"`
+}
+
+// AppInstallation is one place where the simulator is installed and the app can be put.
+type AppInstallation struct {
+	Edition       string   `json:"edition"` // "steam" | "store"
+	PackagesPath  string   `json:"packagesPath"`
+	Target        string   `json:"target"`        // where the app goes (for MSFS 2024, the Community folder)
+	AutoStartFile string   `json:"autoStartFile"` // the file that starts the program with the simulator
+	App           AppState `json:"app"`
+	AutoStart     bool     `json:"autoStart"`
+}
+
+// AppInstaller puts the program's app inside the simulator (for MSFS 2024, the EFB app) and has the
+// program start with the simulator. Nothing runs unless the user asks.
+type AppInstaller interface {
+	// Detect lists the installations of the simulator that can be found on this computer.
+	Detect(exePath string) []AppInstallation
+	// ValidTarget checks that a folder is one the app can be put in.
+	ValidTarget(target string) error
+	// Install puts the app in target, told to reach the program at serverURL.
+	Install(target, serverURL string) error
+	// Remove takes the app out of target.
+	Remove(target string) error
+	// State says whether the app is in target and whether it is current.
+	State(target string) AppState
+	// InstalledServerURL is the address written into the app installed in target ("" when none).
+	InstalledServerURL(target string) string
+	// AutoStart says whether the program starts with the simulator, by the given file.
+	AutoStart(file string) bool
+	// SetAutoStart makes the program start (or not) with the simulator. args go after the program.
+	SetAutoStart(file, exePath string, args []string, enable bool) error
+}
+
 // Provider is what a simulator gives the program.
 type Provider struct {
 	ID       string // "msfs2024"
 	Name     string // "Microsoft Flight Simulator 2024"
+	Short    string // "MSFS": for the little places, such as the tray
 	Position PositionSource
 	Nav      NavSource
 	Seed     SeedSource
 	Plans    FlightPlanLoader
+	App      AppInstaller
 }
 
 // Capabilities says what the program can do with a simulator.
@@ -106,6 +153,7 @@ type Capabilities struct {
 	AskNav       bool `json:"askNav"`
 	SeedFiles    bool `json:"seedFiles"`
 	LoadPlans    bool `json:"loadPlans"`
+	InSimApp     bool `json:"inSimApp"`
 }
 
 // Capabilities derives what the provider can do from the fields it filled in.
@@ -115,5 +163,6 @@ func (p Provider) Capabilities() Capabilities {
 		AskNav:       p.Nav != nil,
 		SeedFiles:    p.Seed != nil,
 		LoadPlans:    p.Plans != nil,
+		InSimApp:     p.App != nil,
 	}
 }

@@ -76,7 +76,7 @@ computer's settings, and they need the key carried by the QR code.
 | `core/` | Go code: server, importer, sources, SimConnect, tray, web UI |
 | `core/web/sim` | The viewer that runs in the simulator's EFB (ES5, Coherent GT) |
 | `core/web/manager` | The manager UI (library, sources, groups, setup) |
-| `core/internal/setup/efbpkg` | The EFB app, embedded in the executable |
+| `core/internal/sim/msfs2024/efbapp/efbpkg` | The EFB app, embedded in the executable |
 | `installer/` | Installer script and build |
 | `AGENTS.md` | Guide for contributors and coding agents |
 

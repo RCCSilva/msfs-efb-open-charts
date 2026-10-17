@@ -32,8 +32,7 @@ One Go program (no cgo) that runs in the Windows tray:
 | `core/internal/naming` | Name display, accent folding, type words (generic parts only) |
 | `core/internal/server` | HTTP handlers, import/inspect flow, lazy renderer, setup API |
 | `core/internal/sim` | What the program needs from a simulator: small interfaces (position, navigation data, seed files, flight plans), the `Provider` that gathers them and its `Capabilities`; `simmock` has the testify mocks |
-| `core/internal/sim/msfs2024` | Everything specific to Microsoft Flight Simulator 2024: builds its `Provider`; `simconnect` (SimConnect through `LazyDLL`, Windows only), `navseed` + `fsarchive` + `bgl` (the streamed navigation packages) |
-| `core/internal/setup` | MSFS detection, EFB app install, `EXE.xml` autostart; embeds `efbpkg/` |
+| `core/internal/sim/msfs2024` | Everything specific to Microsoft Flight Simulator 2024: builds its `Provider`; `simconnect` (SimConnect through `LazyDLL`, Windows only), `navseed` + `fsarchive` + `bgl` (the streamed navigation packages), `efbapp` (detection of the installation, EFB app install, `EXE.xml` autostart; embeds `efbpkg/`) |
 | `core/internal/tray` | Notification-area icon |
 | `core/web/sim` | In-sim viewer (ES5 for the simulator's Coherent GT browser) |
 | `core/web/manager` | Manager UI (plain JS, pt-BR and en) |
@@ -65,7 +64,7 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   permissive license (add it to `NOTICE.md`). Run `gofmt` and `go vet`. Prefer small packages and
   table-free, readable code that matches the surrounding style.
 - **Simulators (`core/internal/sim`):** the rest of the program never reaches a simulator directly. `sim` declares what it
-  needs as small interfaces ("ports": `PositionSource`, `NavSource`, `SeedSource`, `FlightPlanLoader`) and a `Provider`
+  needs as small interfaces ("ports": `PositionSource`, `NavSource`, `SeedSource`, `FlightPlanLoader`, `AppInstaller`) and a `Provider`
   struct that gathers the ones a simulator can fulfil; a nil field is something that simulator cannot do (`Capabilities`
   derives what the program offers from them). Each simulator has a package that builds its `Provider`
   (`sim/msfs2024` now; MSFS 2020 and X-Plane 12 may come): what is specific to it lives there and nowhere else.
@@ -127,12 +126,12 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
 - **Manager UI (`core/web/manager`):** modern plain JS, no build step, no framework. Never use
   `innerHTML` with data; build nodes with the `h()` helper and `textContent`. Every user-visible
   string goes through the pt/en table.
-- **EFB app (`core/internal/setup/efbpkg/OpenCharts.js`):** the folder, the JS file name and
+- **EFB app (`core/internal/sim/msfs2024/efbapp/efbpkg/OpenCharts.js`):** the folder, the JS file name and
   `INTERNAL_NAME` must match (`OpenCharts`). Never use the name `TemplateApp`. The sim loads the JS
   only at start, so changes need a simulator restart.
 - **Build identity:** a plain `go build` shows `0.2.0-<commit>` (and `-dirty` with uncommitted
   changes), taken from the build info Go stamps into the executable (`internal/buildinfo`); only
-  `installeruild.ps1` links `buildinfo.Release=1` and shows the bare version. The manager (footer, About,
+  `installer\build.ps1` links `buildinfo.Release=1` and shows the bare version. The manager (footer, About,
   Setup) and `/api/version` show it, the EFB app is stamped with it at install time, and Setup tells
   whether the installed EFB app is the same build as the running program.
 - **Names and text:** repository files (docs, issue templates, commit messages, code comments) are

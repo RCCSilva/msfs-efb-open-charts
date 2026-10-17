@@ -1207,6 +1207,9 @@
   async function renderSetup() {
     clearTimeout(setupTimer);
     const st = await api('GET', '/api/setup');
+    // what the simulator in use can do: without an app of its own there is nothing to install
+    let simInfo = { capabilities: { inSimApp: true } };
+    try { simInfo = await api('GET', '/api/sim'); } catch (e) { /* an older program: assume it can */ }
     const row = (label, value, extra) => h('div', { class: 'row setuprow' },
       h('div', { class: 'setuplbl' }, label), h('div', { class: 'grow' }, value), extra || null);
     const ok = (txt) => h('span', null, h('span', { class: 'badge ok' }, '\u2713'), ' ', txt);
@@ -1416,7 +1419,7 @@
             inst.autoStart ? t('btnDisable') : t('btnEnable')))));
     }
 
-    if (!st.installs.length) {
+    if (!st.installs.length && simInfo.capabilities.inSimApp) {
       const path = h('input', { type: 'text', placeholder: 'C:\\...\\Packages\\Community' });
       cards.push(h('div', { class: 'card' }, h('h3', null, t('stInstall')), h('div', { class: 'muted' }, t('stNoInstall')),
         h('div', { class: 'row', style: 'margin-top:8px' }, h('div', { class: 'grow' }, path),

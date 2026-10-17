@@ -7,8 +7,8 @@
   The version lives in the file VERSION at the repository root; this script writes it and syncs:
     core/cmd/opencharts/winres/winres.json  (+ regenerates rsrc_windows_amd64.syso)
     core/web/manager/manager.js             (VERSION shown in the footer and About)
-    core/internal/setup/setup.go            (EFBVersion, the EFB package version)
-    core/internal/setup/efbpkg/OpenCharts.js
+    core/internal/buildinfo/version.go      (Version, also the EFB package version)
+    core/internal/sim/msfs2024/efbapp/efbpkg/OpenCharts.js
     installer/OpenCharts.iss, installer/build.ps1 (defaults)
     README.md, AGENTS.md, issue template placeholder
 #>
@@ -47,8 +47,8 @@ Update-File 'core\cmd\opencharts\winres\winres.json' {
   $t
 }
 Update-File 'core\web\manager\manager.js' { param($t) $t -replace "((?:const|let) VERSION = ')[^']*(';)", "`${1}$full`${2}" }
-Update-File 'core\internal\setup\setup.go' { param($t) $t -replace '(const EFBVersion = ")[^"]*(")', "`${1}$Version`${2}" }
-Update-File 'core\internal\setup\efbpkg\OpenCharts.js' { param($t) $t -replace "(var VERSION = ')[^']*(';)", "`${1}$Version`${2}" }
+Update-File 'core\internal\buildinfo\version.go' { param($t) $t -replace '(const Version = ")[^"]*(")', "`${1}$Version`${2}" }
+Update-File 'core\internal\sim\msfs2024\efbapp\efbpkg\OpenCharts.js' { param($t) $t -replace "(var VERSION = ')[^']*(';)", "`${1}$Version`${2}" }
 Update-File 'installer\OpenCharts.iss' { param($t) $t -replace '(#define AppVersion ")[^"]*(")', "`${1}$Version`${2}" }
 Update-File 'installer\build.ps1' {
   param($t)

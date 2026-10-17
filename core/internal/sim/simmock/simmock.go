@@ -67,3 +67,42 @@ type Plans struct{ mock.Mock }
 func (m *Plans) Load(file string) error {
 	return m.Called(file).Error(0)
 }
+
+// App is a mock of sim.AppInstaller.
+type App struct{ mock.Mock }
+
+func (m *App) Detect(exePath string) []sim.AppInstallation {
+	args := m.Called(exePath)
+	l, _ := args.Get(0).([]sim.AppInstallation)
+	return l
+}
+
+func (m *App) ValidTarget(target string) error {
+	return m.Called(target).Error(0)
+}
+
+func (m *App) Install(target, serverURL string) error {
+	return m.Called(target, serverURL).Error(0)
+}
+
+func (m *App) Remove(target string) error {
+	return m.Called(target).Error(0)
+}
+
+func (m *App) State(target string) sim.AppState {
+	args := m.Called(target)
+	s, _ := args.Get(0).(sim.AppState)
+	return s
+}
+
+func (m *App) InstalledServerURL(target string) string {
+	return m.Called(target).String(0)
+}
+
+func (m *App) AutoStart(file string) bool {
+	return m.Called(file).Bool(0)
+}
+
+func (m *App) SetAutoStart(file, exePath string, args []string, enable bool) error {
+	return m.Called(file, exePath, args, enable).Error(0)
+}

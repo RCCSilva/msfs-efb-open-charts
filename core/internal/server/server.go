@@ -21,7 +21,6 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/jobs"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/web"
@@ -66,12 +65,12 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		p := s.currentPosition()
 		writeJSON(w, 200, map[string]any{"ok": true, "app": "open-charts", "local": isLocalRequest(r),
-			"version": buildinfo.Display(setup.EFBVersion),
+			"version": buildinfo.Display(buildinfo.Version),
 			"charts":  s.lib.Count(), "importer": s.canImport(),
 			"simConnected": p.Connected || p.Valid, "simulated": p.Source == "fixed"})
 	})
 	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, buildinfo.Get(setup.EFBVersion))
+		writeJSON(w, 200, buildinfo.Get(buildinfo.Version))
 	})
 	mux.HandleFunc("GET /api/position", s.handlePosition)
 	mux.HandleFunc("GET /api/nav/airport/{icao}", s.handleNavAirport)

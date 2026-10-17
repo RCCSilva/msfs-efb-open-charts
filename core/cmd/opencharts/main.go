@@ -28,7 +28,6 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/server"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024/simconnect"
@@ -45,13 +44,13 @@ func defaultDataDir() string {
 }
 
 // portOfInstalledEFB returns the port the installed EFB app is configured for, or 0.
-func portOfInstalledEFB() int {
+func portOfInstalledEFB(app sim.AppInstaller) int {
 	exe, err := os.Executable()
-	if err != nil {
+	if err != nil || app == nil {
 		return 0
 	}
-	for _, in := range setup.Detect(exe) {
-		raw := setup.InstalledServerURL(in.Community)
+	for _, in := range app.Detect(exe) {
+		raw := app.InstalledServerURL(in.Target)
 		if raw == "" {
 			continue
 		}
@@ -145,7 +144,7 @@ func main() {
 	if _, err := os.Stat(filepath.Join(*data, settings.FileName)); err != nil {
 		// First run with settings. Someone who installed an earlier version has the EFB app
 		// pointing at its port (8080): keep that port, so nothing breaks until they choose to move.
-		if p := portOfInstalledEFB(); p != 0 {
+		if p := portOfInstalledEFB(provider.App); p != 0 {
 			log.Printf("keeping port %d, the one the installed EFB app uses", p)
 			cfg.Port = p
 		}
@@ -255,11 +254,11 @@ func main() {
 		case p.Source == "fixed":
 			return "Fixed position (no simulator)"
 		case p.Valid:
-			return "MSFS: receiving position"
+			return provider.Short + ": receiving position"
 		case p.Connected:
-			return "MSFS: connected"
+			return provider.Short + ": connected"
 		}
-		return "MSFS: waiting for the simulator"
+		return provider.Short + ": waiting for the simulator"
 	}
 	tray.Run(tray.Config{
 		URL:    srv.LocalURL,

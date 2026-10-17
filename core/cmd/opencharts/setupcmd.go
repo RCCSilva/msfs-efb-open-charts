@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024"
 )
 
 // runSetupCommand handles "opencharts setup ...", used by the installer (and by hand):
@@ -23,7 +23,8 @@ func runSetupCommand(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	installs := setup.Detect(exe)
+	app := msfs2024.AppInstaller()
+	installs := app.Detect(exe)
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: opencharts setup install-efb [URL] | autostart on|off | uninstall")
 		return 2
@@ -36,8 +37,8 @@ func runSetupCommand(args []string) int {
 			url = args[1]
 		}
 		for _, in := range installs {
-			if err := setup.InstallEFB(in.Community, url); err != nil {
-				fmt.Fprintln(os.Stderr, in.Community+":", err)
+			if err := app.Install(in.Target, url); err != nil {
+				fmt.Fprintln(os.Stderr, in.Target+":", err)
 				fail = 1
 			}
 		}
@@ -47,20 +48,20 @@ func runSetupCommand(args []string) int {
 			return 2
 		}
 		for _, in := range installs {
-			if err := setup.SetAutoStart(in.ExeXML, exe, nil, args[1] == "on"); err != nil {
-				fmt.Fprintln(os.Stderr, in.ExeXML+":", err)
+			if err := app.SetAutoStart(in.AutoStartFile, exe, nil, args[1] == "on"); err != nil {
+				fmt.Fprintln(os.Stderr, in.AutoStartFile+":", err)
 				fail = 1
 			}
 		}
 	case "uninstall":
 		for _, in := range installs {
-			if err := setup.RemoveEFB(in.Community); err != nil {
-				fmt.Fprintln(os.Stderr, in.Community+":", err)
+			if err := app.Remove(in.Target); err != nil {
+				fmt.Fprintln(os.Stderr, in.Target+":", err)
 				fail = 1
 			}
 			if in.AutoStart {
-				if err := setup.SetAutoStart(in.ExeXML, exe, nil, false); err != nil {
-					fmt.Fprintln(os.Stderr, in.ExeXML+":", err)
+				if err := app.SetAutoStart(in.AutoStartFile, exe, nil, false); err != nil {
+					fmt.Fprintln(os.Stderr, in.AutoStartFile+":", err)
 					fail = 1
 				}
 			}

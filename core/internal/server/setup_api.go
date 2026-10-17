@@ -8,10 +8,11 @@ import (
 	"strings"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/buildinfo"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim"
 )
 
 func (s *Server) registerSetupRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/sim", s.handleSim)
 	mux.HandleFunc("GET /api/setup", s.handleSetup)
 	mux.HandleFunc("POST /api/setup/efb", s.handleInstallEFB)
 	mux.HandleFunc("DELETE /api/setup/efb", s.handleRemoveEFB)
@@ -29,31 +30,57 @@ func (s *Server) exePath() string {
 // serverURL is the address the EFB app must use: this computer, the current port.
 func (s *Server) serverURL() string { return s.LocalURL() }
 
-func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
-	installs := setup.Detect(s.exePath())
-	for i := range installs {
-		e := &installs[i].EFB
-		e.URLMismatch = e.Installed && e.ServerURL != "" && e.ServerURL != s.serverURL()
+// GET /api/sim: which simulator this is and what the program can do with it.
+func (s *Server) handleSim(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]any{"id": s.sim.ID, "name": s.sim.Name, "capabilities": s.sim.Capabilities()})
+}
+
+// installView is an installation of the simulator as the manager reads it.
+type installView struct {
+	Edition      string       `json:"edition"`
+	PackagesPath string       `json:"packagesPath"`
+	Community    string       `json:"community"` // where the app goes
+	ExeXML       string       `json:"exeXml"`    // what starts the program with the simulator
+	EFB          sim.AppState `json:"efb"`
+	AutoStart    bool         `json:"autoStart"`
+}
+
+// installations lists where the simulator is installed (none when it has no app to install).
+func (s *Server) installations() []sim.AppInstallation {
+	if s.sim.App == nil {
+		return nil
 	}
-	if installs == nil {
-		installs = []setup.Install{}
+	return s.sim.App.Detect(s.exePath())
+}
+
+func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
+	installs := []installView{}
+	for _, in := range s.installations() {
+		in.App.URLMismatch = in.App.Installed && in.App.ServerURL != "" && in.App.ServerURL != s.serverURL()
+		installs = append(installs, installView{Edition: in.Edition, PackagesPath: in.PackagesPath, Community: in.Target,
+			ExeXML: in.AutoStartFile, EFB: in.App, AutoStart: in.AutoStart})
 	}
 	p := s.currentPosition()
 	writeJSON(w, 200, map[string]any{
 		"exe": s.exePath(), "dataDir": s.lib.Dir(), "addr": s.listenAddr(), "serverURL": s.serverURL(),
-		"efbVersion": setup.EFBVersion, "program": buildinfo.Get(setup.EFBVersion), "installs": installs,
+		"efbVersion": buildinfo.Version, "program": buildinfo.Get(buildinfo.Version), "installs": installs,
 		"sim": map[string]any{"source": p.Source, "connected": p.Connected || p.Valid, "receiving": p.Valid, "detail": p.Detail},
 	})
 }
 
-// communityFor accepts a folder reported by Detect, or any existing folder named Community*.
-func communityFor(p string) (string, error) {
+var errNoApp = errors.New("this simulator has no app to install")
+
+// targetFor accepts a folder reported by Detect, or any folder the installer accepts.
+func (s *Server) targetFor(p string) (string, error) {
+	if s.sim.App == nil {
+		return "", errNoApp
+	}
 	p = strings.TrimSpace(p)
 	if p == "" {
 		return "", errors.New("community folder is required")
 	}
 	p = filepath.Clean(p)
-	return p, setup.ValidCommunity(p)
+	return p, s.sim.App.ValidTarget(p)
 }
 
 func (s *Server) handleInstallEFB(w http.ResponseWriter, r *http.Request) {
@@ -64,29 +91,29 @@ func (s *Server) handleInstallEFB(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err)
 		return
 	}
-	c, err := communityFor(body.Community)
+	c, err := s.targetFor(body.Community)
 	if err != nil {
 		writeErr(w, 400, err)
 		return
 	}
-	if err := setup.InstallEFB(c, s.serverURL()); err != nil {
+	if err := s.sim.App.Install(c, s.serverURL()); err != nil {
 		writeErr(w, 500, err)
 		return
 	}
-	writeJSON(w, 200, setup.EFBState(c))
+	writeJSON(w, 200, s.sim.App.State(c))
 }
 
 func (s *Server) handleRemoveEFB(w http.ResponseWriter, r *http.Request) {
-	c, err := communityFor(r.URL.Query().Get("community"))
+	c, err := s.targetFor(r.URL.Query().Get("community"))
 	if err != nil {
 		writeErr(w, 400, err)
 		return
 	}
-	if err := setup.RemoveEFB(c); err != nil {
+	if err := s.sim.App.Remove(c); err != nil {
 		writeErr(w, 500, err)
 		return
 	}
-	writeJSON(w, 200, setup.EFBState(c))
+	writeJSON(w, 200, s.sim.App.State(c))
 }
 
 func (s *Server) handleAutoStart(w http.ResponseWriter, r *http.Request) {
@@ -101,8 +128,8 @@ func (s *Server) handleAutoStart(w http.ResponseWriter, r *http.Request) {
 	// Only the EXE.xml of an installation that was detected: this endpoint must not write
 	// arbitrary files.
 	ok := false
-	for _, in := range setup.Detect(s.exePath()) {
-		if in.ExeXML == body.ExeXML {
+	for _, in := range s.installations() {
+		if in.AutoStartFile == body.ExeXML {
 			ok = true
 		}
 	}
@@ -122,9 +149,9 @@ func (s *Server) handleAutoStart(w http.ResponseWriter, r *http.Request) {
 		}
 		args = []string{"-data", dir}
 	}
-	if err := setup.SetAutoStart(body.ExeXML, s.exePath(), args, body.Enabled); err != nil {
+	if err := s.sim.App.SetAutoStart(body.ExeXML, s.exePath(), args, body.Enabled); err != nil {
 		writeErr(w, 400, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"autoStart": setup.AutoStartEnabled(body.ExeXML)})
+	writeJSON(w, 200, map[string]any{"autoStart": s.sim.App.AutoStart(body.ExeXML)})
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024/efbapp"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024/navseed"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024/simconnect"
 )
@@ -30,10 +31,12 @@ func New(ctx context.Context, dll string, logf func(string, ...any)) sim.Provide
 	return sim.Provider{
 		ID:       "msfs2024",
 		Name:     "Microsoft Flight Simulator 2024",
+		Short:    "MSFS",
 		Position: position{client: simconnect.New(ctx, dll, logf)},
 		Nav:      nav{dll: dll},
 		Seed:     seed{},
 		Plans:    plans{dll: dll},
+		App:      efbapp.Installer{},
 	}
 }
 
@@ -92,3 +95,7 @@ func (seed) Read(files []string, progress func(done, total int) bool) ([]navdb.S
 type plans struct{ dll string }
 
 func (p plans) Load(file string) error { return simconnect.LoadFlightPlan(p.dll, file, planWait) }
+
+// AppInstaller is the installer of the app inside the simulator, for when the rest of the provider
+// is not needed (the installer's own commands do not talk to a running simulator).
+func AppInstaller() sim.AppInstaller { return efbapp.Installer{} }
