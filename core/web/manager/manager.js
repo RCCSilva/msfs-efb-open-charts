@@ -1713,6 +1713,35 @@
   const fmtNum = (n) => Number(n || 0).toLocaleString(lang === 'pt' ? 'pt-BR' : 'en-US');
   const fmtPos = (lat, lon) => `${Number(lat).toFixed(4)}, ${Number(lon).toFixed(4)}`;
 
+  // The Navigation page is drawn once (with the counts, which take a moment to count); changing the
+  // tab, paging and searching only redraw the body, without asking for the counts again.
+  let navUI = null;
+  const NAV_TABS = [['airports', 'tabAirports'], ['fixes', 'tabFixes'], ['airways', 'tabAirways'], ['points', 'tabPoints']];
+  function navTabButtons() {
+    return NAV_TABS.map(([id, key]) =>
+      h('button', { class: 'btn' + (navState.tab === id ? ' primary' : ''), onclick: () => { navState.tab = id; navState.edit = null; navRefresh(); } }, nv(key)));
+  }
+  async function navTabBody(body) {
+    if (navState.tab === 'airports') await navAirports(body);
+    else if (navState.tab === 'fixes') await navFixes(body);
+    else if (navState.tab === 'airways') await navAirways(body);
+    else await navPoints(body);
+  }
+  // changed: something was deleted or saved, so the counts are asked again, in the background
+  async function navRefresh(changed) {
+    if (!navUI || !navUI.body.isConnected) { await renderNav(); return; }
+    navUI.tabs.replaceChildren(...navTabButtons());
+    await navTabBody(navUI.body);
+    if (changed) navStats();
+  }
+  async function navStats() {
+    try {
+      const sum = await api('GET', '/api/nav/summary');
+      if (!navUI) return;
+      for (const k of Object.keys(sum.counts)) if (navUI.live[k]) navUI.live[k].textContent = fmtNum(sum.counts[k]);
+    } catch (e) { /* the numbers stay as they were */ }
+  }
+
   async function renderNav() {
     clearTimeout(navTimer);
     const sum = await api('GET', '/api/nav/summary');
@@ -1724,9 +1753,7 @@
       return h('div', { class: 'stat' }, num, h('div', { class: 'muted' }, label));
     };
 
-    const tabs = h('div', { class: 'row', style: 'margin-bottom:12px' },
-      [['airports', 'tabAirports'], ['fixes', 'tabFixes'], ['airways', 'tabAirways'], ['points', 'tabPoints']].map(([id, key]) =>
-        h('button', { class: 'btn' + (navState.tab === id ? ' primary' : ''), onclick: () => { navState.tab = id; navState.edit = null; renderNav(); } }, nv(key))));
+    const tabs = h('div', { class: 'row', style: 'margin-bottom:12px' }, navTabButtons());
 
     const body = h('div', { class: 'card' });
     view.replaceChildren(h('h2', null, nv('title')), h('p', { class: 'muted' }, nv('intro')),
@@ -1737,10 +1764,8 @@
           stat(nv('idents'), c.identsChecked, 'identsChecked'), stat(nv('myPoints'), c.userPoints, 'userPoints'))),
       tabs, body);
 
-    if (navState.tab === 'airports') await navAirports(body);
-    else if (navState.tab === 'fixes') await navFixes(body);
-    else if (navState.tab === 'airways') await navAirways(body);
-    else await navPoints(body);
+    navUI = { body, tabs, live };
+    await navTabBody(body);
   }
 
   function navPhaseText(job, pct) {
@@ -1759,7 +1784,7 @@
     const r = await api('GET', `/api/nav/airports?q=${encodeURIComponent(navState.airportQ)}&limit=${limit}&offset=${navState.airportOffset}`);
     const last = navState.airportOffset + r.airports.length;
     body.replaceChildren(
-      h('div', { class: 'row' }, ...navSearch(navState.airportQ, nv('search'), (v) => { navState.airportQ = v.trim(); navState.airportOffset = 0; renderNav(); })),
+      h('div', { class: 'row' }, ...navSearch(navState.airportQ, nv('search'), (v) => { navState.airportQ = v.trim(); navState.airportOffset = 0; navRefresh(); })),
       h('div', { style: 'height:10px' }),
       r.airports.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) :
         h('table', null,
@@ -1769,24 +1794,24 @@
             h('td', { class: 'actions' },
               h('button', { class: 'btn sm danger', onclick: async () => {
                 if (!confirm(nv('confirmDel'))) return;
-                await api('DELETE', '/api/nav/airport/' + encodeURIComponent(a.icao)); renderNav();
+                await api('DELETE', '/api/nav/airport/' + encodeURIComponent(a.icao)); navRefresh(true);
               } }, nv('del'))))))),
       h('div', { class: 'row', style: 'margin-top:10px' },
-        h('button', { class: 'btn sm', disabled: navState.airportOffset === 0, onclick: () => { navState.airportOffset = Math.max(0, navState.airportOffset - limit); renderNav(); } }, nv('prev')),
+        h('button', { class: 'btn sm', disabled: navState.airportOffset === 0, onclick: () => { navState.airportOffset = Math.max(0, navState.airportOffset - limit); navRefresh(); } }, nv('prev')),
         h('span', { class: 'muted' }, r.total ? `${fmtNum(navState.airportOffset + 1)}-${fmtNum(last)} / ${fmtNum(r.total)}` : ''),
-        h('button', { class: 'btn sm', disabled: last >= r.total, onclick: () => { navState.airportOffset += limit; renderNav(); } }, nv('next'))));
+        h('button', { class: 'btn sm', disabled: last >= r.total, onclick: () => { navState.airportOffset += limit; navRefresh(); } }, nv('next'))));
   }
 
   async function navFixes(body) {
     const limit = 100;
     const r = await api('GET', `/api/nav/fixes?q=${encodeURIComponent(navState.fixQ)}&kind=${navState.fixKind}&limit=${limit}&offset=${navState.fixOffset}`);
-    const kindSel = h('select', { onchange: (e) => { navState.fixKind = e.target.value; navState.fixOffset = 0; renderNav(); } },
+    const kindSel = h('select', { onchange: (e) => { navState.fixKind = e.target.value; navState.fixOffset = 0; navRefresh(); } },
       h('option', { value: '' }, nv('all')), h('option', { value: 'W' }, nv('kindW')), h('option', { value: 'V' }, nv('kindV')), h('option', { value: 'N' }, nv('kindN')));
     kindSel.value = navState.fixKind;
     const kindName = { W: nv('kindW'), V: nv('kindV'), N: nv('kindN') };
     const last = navState.fixOffset + r.fixes.length;
     body.replaceChildren(
-      h('div', { class: 'row' }, ...navSearch(navState.fixQ, nv('search'), (v) => { navState.fixQ = v.trim(); navState.fixOffset = 0; renderNav(); }), kindSel),
+      h('div', { class: 'row' }, ...navSearch(navState.fixQ, nv('search'), (v) => { navState.fixQ = v.trim(); navState.fixOffset = 0; navRefresh(); }), kindSel),
       r.fixes.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) : h('table', { style: 'margin-top:10px' },
         h('thead', null, h('tr', null, h('th', null, nv('ident')), h('th', null, nv('kind')), h('th', null, nv('region')), h('th', null, nv('name')),
           h('th', null, nv('pos')), h('th', null, nv('airways')), h('th'))),
@@ -1796,12 +1821,12 @@
           h('td', { class: 'actions' }, h('button', { class: 'btn sm danger', onclick: async () => {
             if (!confirm(nv('confirmDel'))) return;
             await api('DELETE', `/api/nav/fixes?ident=${encodeURIComponent(f.ident)}&region=${encodeURIComponent(f.region)}&kind=${f.kind}`);
-            renderNav();
+            navRefresh(true);
           } }, nv('del'))))))),
       h('div', { class: 'row', style: 'margin-top:10px' },
-        h('button', { class: 'btn sm', disabled: navState.fixOffset === 0, onclick: () => { navState.fixOffset = Math.max(0, navState.fixOffset - limit); renderNav(); } }, nv('prev')),
+        h('button', { class: 'btn sm', disabled: navState.fixOffset === 0, onclick: () => { navState.fixOffset = Math.max(0, navState.fixOffset - limit); navRefresh(); } }, nv('prev')),
         h('span', { class: 'muted' }, r.total ? `${fmtNum(navState.fixOffset + 1)}-${fmtNum(last)} / ${fmtNum(r.total)}` : ''),
-        h('button', { class: 'btn sm', disabled: last >= r.total, onclick: () => { navState.fixOffset += limit; renderNav(); } }, nv('next'))));
+        h('button', { class: 'btn sm', disabled: last >= r.total, onclick: () => { navState.fixOffset += limit; navRefresh(); } }, nv('next'))));
   }
 
   async function navAirways(body) {
@@ -1809,10 +1834,10 @@
     let segs = null;
     if (navState.open) segs = await api('GET', '/api/nav/airway/' + encodeURIComponent(navState.open));
     body.replaceChildren(
-      h('div', { class: 'row' }, ...navSearch(navState.airwayQ, nv('search'), (v) => { navState.airwayQ = v.trim(); navState.open = ''; renderNav(); })),
+      h('div', { class: 'row' }, ...navSearch(navState.airwayQ, nv('search'), (v) => { navState.airwayQ = v.trim(); navState.open = ''; navRefresh(); })),
       r.airways.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) : h('table', { style: 'margin-top:10px' },
         h('tbody', null, r.airways.map((a) => [
-          h('tr', { class: 'clickable', onclick: () => { navState.open = navState.open === a.name ? '' : a.name; renderNav(); } },
+          h('tr', { class: 'clickable', onclick: () => { navState.open = navState.open === a.name ? '' : a.name; navRefresh(); } },
             h('td', null, h('strong', null, a.name)), h('td', { class: 'muted' }, `${a.segments} ${nv('airwaySegs')}`),
             h('td', { class: 'actions' }, navState.open === a.name ? nv('hideSegs') : nv('showSegs'))),
           navState.open === a.name && segs ? h('tr', null, h('td', { colspan: 3, class: 'muted' },
@@ -1837,20 +1862,20 @@
           try {
             if (e.id) await api('PUT', '/api/nav/points/' + e.id, payload); else await api('POST', '/api/nav/points', payload);
             navState.edit = null;
-            renderNav();
+            navRefresh(true);
           } catch (err) { toast(nv('failed') + ': ' + err.message); }
         } }, e.id ? nv('save') : nv('add')),
-        e.id ? h('button', { class: 'btn', onclick: () => { navState.edit = null; renderNav(); } }, nv('cancel')) : null));
+        e.id ? h('button', { class: 'btn', onclick: () => { navState.edit = null; navRefresh(); } }, nv('cancel')) : null));
     body.replaceChildren(h('p', { class: 'muted' }, nv('pointsIntro')), form,
       r.points.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) : h('table', null,
         h('thead', null, h('tr', null, h('th', null, nv('ident')), h('th', null, nv('name')), h('th', null, nv('kind')), h('th', null, nv('pos')), h('th', null, nv('note')), h('th'))),
         h('tbody', null, r.points.map((p) => h('tr', null,
           h('td', null, h('strong', null, p.ident)), h('td', null, p.name), h('td', { class: 'muted' }, p.type), h('td', { class: 'muted' }, fmtPos(p.lat, p.lon)), h('td', { class: 'muted' }, p.note),
           h('td', { class: 'actions' },
-            h('button', { class: 'btn sm', onclick: () => { navState.edit = p; renderNav(); } }, nv('edit')), ' ',
+            h('button', { class: 'btn sm', onclick: () => { navState.edit = p; navRefresh(); } }, nv('edit')), ' ',
             h('button', { class: 'btn sm danger', onclick: async () => {
               if (!confirm(nv('confirmDel'))) return;
-              await api('DELETE', '/api/nav/points/' + p.id); renderNav();
+              await api('DELETE', '/api/nav/points/' + p.id); navRefresh(true);
             } }, nv('del'))))))));
   }
 
