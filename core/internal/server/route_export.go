@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -24,31 +25,43 @@ func (s *Server) SetPlanLoader(l PlanLoader) {
 type exportRequest struct {
 	Route   string         `json:"route"`
 	Choices []route.Choice `json:"choices"`
+	ID      int64          `json:"id"` // a saved route: its places are used as they were kept
 }
 
-// exported resolves the route of the request for an export: it needs both ends to be airports and
-// every name to be found, because a part that was not found would be missing from the file.
+// exported gives the places of the route of the request for an export. A saved route (id) is used
+// as it was kept; a written one is resolved here, and it needs every name to be found, because a
+// part that was not found would be missing from the file. Both ends must be airports.
 func (s *Server) exported(w http.ResponseWriter, r *http.Request) ([]route.Point, bool) {
 	var body exportRequest
-	if err := readJSON(r, &body); err != nil || strings.TrimSpace(body.Route) == "" {
-		writeErr(w, 400, errors.New("send the route as {route, choices}"))
+	if err := readJSON(r, &body); err != nil || (body.ID == 0 && strings.TrimSpace(body.Route) == "") {
+		writeErr(w, 400, errors.New("send the route as {route, choices} or {id}"))
 		return nil, false
 	}
-	s.nav.mu.Lock()
-	res, err := route.ResolveWith(body.Route, routeProvider{s}, body.Choices)
-	s.nav.mu.Unlock()
-	if err != nil {
-		writeErr(w, 502, err)
-		return nil, false
-	}
-	var missing []string
-	for _, p := range res.Problems {
-		if len(p.Candidates) == 0 {
-			missing = append(missing, p.Token)
+	var raw json.RawMessage
+	if body.ID != 0 {
+		if db := s.navDB(); db != nil {
+			if sr, err := db.SavedRoute(body.ID); err == nil {
+				raw = sr.Result
+				if len(raw) == 0 {
+					body.Route = sr.Text
+					body.Choices = nil
+					_ = json.Unmarshal(sr.Choices, &body.Choices)
+				}
+			}
 		}
 	}
-	if len(missing) > 0 {
-		writeErr(w, 422, errors.New("these names were not found: "+strings.Join(missing, ", ")))
+	if len(raw) == 0 {
+		choices, _ := json.Marshal(body.Choices)
+		var code int
+		var err error
+		if raw, code, err = s.validRoute(body.Route, choices); err != nil {
+			writeErr(w, code, err)
+			return nil, false
+		}
+	}
+	var res route.Result
+	if err := json.Unmarshal(raw, &res); err != nil {
+		writeErr(w, 500, err)
 		return nil, false
 	}
 	return res.Points, true

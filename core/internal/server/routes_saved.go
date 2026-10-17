@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -10,8 +11,9 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/route"
 )
 
-// The saved routes: written in the manager, one tap in the viewer. The server only keeps the name
-// and the text; turning the text into places is what /api/route/resolve does, each time.
+// The saved routes: written in the manager, one tap in the viewer. A route is checked when it is
+// saved (every name must be found) and is kept with the places it was resolved to, so that loading
+// it, drawing it or sending it somewhere does not resolve the text again.
 
 type savedRouteView struct {
 	navdb.SavedRoute
@@ -54,6 +56,14 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]savedRouteView, 0, len(list))
 	for _, x := range list {
+		if len(x.Result) == 0 {
+			// saved by an earlier version: it is resolved once and kept
+			if raw, _, err := s.validRoute(x.Text, x.Choices); err == nil {
+				if db.SetSavedRouteResult(x.ID, raw) == nil {
+					x.Result = raw
+				}
+			}
+		}
 		out = append(out, summarize(x))
 	}
 	writeJSON(w, 200, map[string]any{"routes": out})
@@ -74,8 +84,14 @@ func (s *Server) handleRouteSave(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(body.Name) == "" {
 		body.Name = routeName(body.Text) // a route without a name is called after where it goes
 	}
+	// a saved route is a valid one: every name found, the places kept with it
+	raw, code, err := s.validRoute(body.Text, body.Choices)
+	if err != nil {
+		writeErr(w, code, err)
+		return
+	}
+	body.Result = raw
 	var saved navdb.SavedRoute
-	var err error
 	if idText := r.PathValue("id"); idText != "" {
 		body.ID, err = strconv.ParseInt(idText, 10, 64)
 		if err == nil {
@@ -116,4 +132,41 @@ func (s *Server) handleRouteDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// validRoute resolves the text of a route and refuses it when a name was not found (a part that was
+// not found would be missing). It returns the resolved route as JSON, ready to be kept.
+// The second value is the HTTP status of the refusal.
+func (s *Server) validRoute(text string, rawChoices json.RawMessage) (json.RawMessage, int, error) {
+	var choices []route.Choice
+	if len(rawChoices) > 0 {
+		_ = json.Unmarshal(rawChoices, &choices)
+	}
+	text = strings.Join(strings.Fields(text), " ")
+	if text == "" {
+		return nil, 400, errors.New("the route is empty")
+	}
+	s.nav.mu.Lock()
+	res, err := route.ResolveWith(text, routeProvider{s}, choices)
+	s.nav.mu.Unlock()
+	if err != nil {
+		return nil, 502, err
+	}
+	var missing []string
+	for _, p := range res.Problems {
+		if len(p.Candidates) == 0 {
+			missing = append(missing, p.Token)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, 422, errors.New("these names were not found: " + strings.Join(missing, ", "))
+	}
+	if len(res.Points) == 0 {
+		return nil, 422, errors.New("no place of this route was found")
+	}
+	raw, err := json.Marshal(res)
+	if err != nil {
+		return nil, 500, err
+	}
+	return raw, 0, nil
 }

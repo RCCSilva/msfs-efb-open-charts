@@ -1874,13 +1874,15 @@
         routesState.id = r.id;
         routesState.name = r.name;
         routesState.text = r.text;
+        routesState.result = r.result || null;
         toast(rt('saved'));
         renderRoutes();
       } catch (e) { toast(rt('failed') + ': ' + e.message); }
     };
 
     // Sending the plan: the program builds the files and the link (the route is read again there)
-    const sendBody = () => ({ route: textIn.value, choices: routesState.choices });
+    const sendBody = () => (routesState.id && textIn.value === routesState.text
+      ? { id: routesState.id } : { route: textIn.value, choices: routesState.choices });
     const sendIvao = async () => {
       if (!textIn.value.trim()) { toast(rt('needText')); return; }
       try {
@@ -1919,7 +1921,7 @@
         h('button', { class: 'btn sm primary', onclick: () => { Object.assign(routesState, { id: 0, name: '', text: '', choices: [], result: null, lastAuto: '' }); renderRoutes(); } }, '+ ' + rt('newRoute'))),
       list.length === 0 ? h('p', { class: 'muted' }, rt('none')) : list.map((r) => h('div', {
         class: 'routeitem' + (r.id === routesState.id ? ' on' : ''),
-        onclick: () => { Object.assign(routesState, { id: r.id, name: r.name, text: r.text, choices: r.choices || [], result: null }); renderRoutes(); }
+        onclick: () => { Object.assign(routesState, { id: r.id, name: r.name, text: r.text, choices: r.choices || [], result: r.result || null }); renderRoutes(); }
       }, h('strong', null, r.name), h('div', { class: 'muted' }, r.summary || r.text))));
 
     const editor = h('div', { class: 'card' },
@@ -2358,7 +2360,7 @@
       if (!r) return;
       status.textContent = '...';
       try {
-        const res = await api('POST', '/api/route/resolve', { route: r.text, choices: r.choices || [] });
+        const res = r.result || await api('POST', '/api/route/resolve', { route: r.text, choices: r.choices || [] });
         plan.id = r.id; plan.name = r.name; plan.auto = false; nameIn.value = r.name;
         plan.points = res.points.map(toPlanPoint);
         plan.result = null;
@@ -2623,7 +2625,7 @@
       } catch (e) { /* no position */ }
       if (!placed && saved.length) {
         try {
-          const res = await api('POST', '/api/route/resolve', { route: saved[0].text, choices: saved[0].choices || [] });
+          const res = saved[0].result || await api('POST', '/api/route/resolve', { route: saved[0].text, choices: saved[0].choices || [] });
           if (res.points.length) {
             map.fitBounds(L.latLngBounds(res.points.map((p) => [p.lat, p.lon])), { padding: [40, 40] });
             placed = true;

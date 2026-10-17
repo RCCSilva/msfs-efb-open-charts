@@ -1837,6 +1837,8 @@
     qEl.value = r.text;
     routeChoices = r.choices || [];
     closeDrawers();
+    // a saved route was resolved when it was saved: its places are used as they are
+    if (r.result && r.result.points) { routeSeq += 1; applyRoute(r.result, r.text); return; }
     resolveRoute();
   }
 
@@ -1860,23 +1862,28 @@
     routeGoBtn.textContent = t('routeWorking');
     request('POST', '/api/route/resolve', { route: text, choices: routeChoices }, function (res) {
       if (seq !== routeSeq) return;
-      routeGoBtn.textContent = t('routeResolve');
-      if (!res || !res.points) {
-        routeProblems = [{ token: '', message: t('routeFailed') }];
-        renderRouteProblems();
-        return;
-      }
-      routePoints = res.points;
-      routeProblems = res.problems || [];
-      routeText = text;
-      routeOpen = true;
-      saveRoute();
-      drawRoute(true);
-      routeFitUntil = new Date().getTime() + 10000;
-      renderRoute();
-      renderRouteProblems();
-      if (!routeProblems.length) closeRouteBox();   // with something to look at, the box stays open
+      applyRoute(res, text);
     }, 90000);
+  }
+
+  // the places of a route (from the server's resolve, or kept with a saved route) become the route
+  function applyRoute(res, text) {
+    routeGoBtn.textContent = t('routeResolve');
+    if (!res || !res.points) {
+      routeProblems = [{ token: '', message: t('routeFailed') }];
+      renderRouteProblems();
+      return;
+    }
+    routePoints = res.points;
+    routeProblems = res.problems || [];
+    routeText = text;
+    routeOpen = true;
+    saveRoute();
+    drawRoute(true);
+    routeFitUntil = new Date().getTime() + 10000;
+    renderRoute();
+    renderRouteProblems();
+    if (!routeProblems.length) closeRouteBox();   // with something to look at, the box stays open
   }
 
   // ---- on-screen keyboard (typing may not reach the iframe inside the EFB) ----

@@ -559,7 +559,11 @@ type SavedRoute struct {
 	Text string `json:"text"`
 	// Choices holds the user's picks between places that share a name (a JSON array, see
 	// route.Choice); the store does not look inside.
-	Choices   json.RawMessage `json:"choices"`
+	Choices json.RawMessage `json:"choices"`
+	// Result is the route as it was resolved when it was saved (route.Result as JSON): the places
+	// with their positions. The store does not look inside. Whoever loads the route uses it as it
+	// is, instead of resolving the text again.
+	Result    json.RawMessage `json:"result,omitempty"`
 	CreatedAt string          `json:"createdAt"`
 	UpdatedAt string          `json:"updatedAt"`
 }
@@ -595,7 +599,7 @@ func cleanRoute(r *SavedRoute) error {
 
 // SavedRoutes lists the saved routes, the most recently changed first.
 func (d *DB) SavedRoutes() ([]SavedRoute, error) {
-	rows, err := d.db.Query(`SELECT id, name, text, choices, created_at, updated_at FROM saved_route ORDER BY updated_at DESC, id DESC`)
+	rows, err := d.db.Query(`SELECT id, name, text, choices, result, created_at, updated_at FROM saved_route ORDER BY updated_at DESC, id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -603,9 +607,12 @@ func (d *DB) SavedRoutes() ([]SavedRoute, error) {
 	out := []SavedRoute{}
 	for rows.Next() {
 		var r SavedRoute
-		var c, u, ch sql.NullString
-		if err := rows.Scan(&r.ID, &r.Name, &r.Text, &ch, &c, &u); err != nil {
+		var c, u, ch, rs sql.NullString
+		if err := rows.Scan(&r.ID, &r.Name, &r.Text, &ch, &rs, &c, &u); err != nil {
 			return nil, err
+		}
+		if rs.Valid && rs.String != "" {
+			r.Result = json.RawMessage(rs.String)
 		}
 		r.Choices = json.RawMessage("[]")
 		if ch.Valid && ch.String != "" {
@@ -624,7 +631,7 @@ func (d *DB) CreateSavedRoute(r SavedRoute) (SavedRoute, error) {
 	}
 	r.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	r.UpdatedAt = r.CreatedAt
-	res, err := d.db.Exec(`INSERT INTO saved_route (name, text, choices, created_at, updated_at) VALUES (?,?,?,?,?)`, r.Name, r.Text, string(r.Choices), r.CreatedAt, r.UpdatedAt)
+	res, err := d.db.Exec(`INSERT INTO saved_route (name, text, choices, result, created_at, updated_at) VALUES (?,?,?,?,?,?)`, r.Name, r.Text, string(r.Choices), string(r.Result), r.CreatedAt, r.UpdatedAt)
 	if err != nil {
 		return r, err
 	}
@@ -638,7 +645,7 @@ func (d *DB) UpdateSavedRoute(r SavedRoute) (SavedRoute, error) {
 		return r, err
 	}
 	r.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	res, err := d.db.Exec(`UPDATE saved_route SET name = ?, text = ?, choices = ?, updated_at = ? WHERE id = ?`, r.Name, r.Text, string(r.Choices), r.UpdatedAt, r.ID)
+	res, err := d.db.Exec(`UPDATE saved_route SET name = ?, text = ?, choices = ?, result = ?, updated_at = ? WHERE id = ?`, r.Name, r.Text, string(r.Choices), string(r.Result), r.UpdatedAt, r.ID)
 	if err != nil {
 		return r, err
 	}
@@ -654,7 +661,7 @@ func (d *DB) migrateSavedRoutes() error {
 	if err != nil {
 		return err
 	}
-	has := false
+	has := map[string]bool{}
 	for rows.Next() {
 		var cid, notnull, pk int
 		var name, typ string
@@ -663,14 +670,37 @@ func (d *DB) migrateSavedRoutes() error {
 			rows.Close()
 			return err
 		}
-		if name == "choices" {
-			has = true
-		}
+		has[name] = true
 	}
 	rows.Close()
-	if !has {
-		_, err = d.db.Exec(`ALTER TABLE saved_route ADD COLUMN choices TEXT`)
+	for _, col := range []string{"choices", "result"} {
+		if !has[col] {
+			if _, err := d.db.Exec(`ALTER TABLE saved_route ADD COLUMN ` + col + ` TEXT`); err != nil {
+				return err
+			}
+		}
 	}
+	return nil
+}
+
+// SavedRoute returns one saved route.
+func (d *DB) SavedRoute(id int64) (SavedRoute, error) {
+	list, err := d.SavedRoutes()
+	if err != nil {
+		return SavedRoute{}, err
+	}
+	for _, r := range list {
+		if r.ID == id {
+			return r, nil
+		}
+	}
+	return SavedRoute{}, ErrNotFound
+}
+
+// SetSavedRouteResult keeps the resolved route of a saved route that did not have one (the ones
+// saved by an earlier version).
+func (d *DB) SetSavedRouteResult(id int64, result json.RawMessage) error {
+	_, err := d.db.Exec(`UPDATE saved_route SET result = ? WHERE id = ?`, string(result), id)
 	return err
 }
 
