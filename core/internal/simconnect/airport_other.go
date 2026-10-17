@@ -35,3 +35,14 @@ type AirportRef struct {
 func ListAirports(dllPath string, wait time.Duration) ([]AirportRef, error) {
 	return nil, errUnsupported
 }
+
+// AirportResult is the answer for one airport of FetchAirports.
+type AirportResult struct {
+	Airport *navdata.Airport
+	Err     error
+}
+
+// FetchAirports needs the simulator's SimConnect library, which exists on Windows only.
+func FetchAirports(dllPath string, icaos []string, wait time.Duration) ([]AirportResult, error) {
+	return nil, errUnsupported
+}

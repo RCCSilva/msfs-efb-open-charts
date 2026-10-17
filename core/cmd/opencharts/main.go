@@ -225,6 +225,14 @@ func main() {
 		}
 		srv.SetNav(nav, fetch, fixes, lookup)
 		if simDLL != "" {
+			srv.SetAirportBatcher(func(icaos []string) ([]server.AirportAnswer, error) {
+				res, err := simconnect.FetchAirports(simDLL, icaos, 120*time.Second)
+				out := make([]server.AirportAnswer, len(res))
+				for i, r := range res {
+					out[i] = server.AirportAnswer{Airport: r.Airport, Err: r.Err}
+				}
+				return out, err
+			})
 			srv.SetAirportLister(func() ([]server.AirportRef, error) {
 				list, err := simconnect.ListAirports(simDLL, 90*time.Second)
 				out := make([]server.AirportRef, 0, len(list))

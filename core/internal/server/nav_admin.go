@@ -505,7 +505,7 @@ func (s *Server) loadFixes(db *navdb.DB, mode string, finish func(phase, msg str
 func (s *Server) loadAirports(db *navdb.DB, prefix string, finish func(phase, msg string), stopped func() bool) bool {
 	j := &s.nav.job
 	s.nav.ptrMu.RLock()
-	list, fetch := s.nav.list, s.nav.fetch
+	list, fetch, batch := s.nav.list, s.nav.fetch, s.nav.batch
 	s.nav.ptrMu.RUnlock()
 	if list == nil || fetch == nil {
 		finish("error", "there is no link to the simulator to list its airports")
@@ -536,34 +536,55 @@ func (s *Server) loadAirports(db *navdb.DB, prefix string, finish func(phase, ms
 	sort.Strings(todo)
 	j.set(func(j *navJob) { j.Phase, j.Total, j.Done = "airports", len(todo), 0 })
 	s.saveJob()
+	// the simulator answers each request after a fixed delay, so many are asked at once
+	chunk := 1
+	if batch != nil {
+		chunk = 200
+	}
 	failures := 0
-	for i, icao := range todo {
+	for from := 0; from < len(todo); from += chunk {
 		if stopped() {
 			finish("stopped", "")
 			return false
 		}
+		codes := todo[from:min(len(todo), from+chunk)]
 		s.nav.mu.Lock()
-		a, err := fetch(icao)
+		var answers []AirportAnswer
+		var err error
+		if batch != nil {
+			answers, err = batch(codes)
+			if err == nil && len(answers) != len(codes) {
+				err = errors.New("the simulator answered a different number of airports than asked")
+			}
+		} else {
+			a, e := fetch(codes[0])
+			answers, err = []AirportAnswer{{Airport: a, Err: e}}, nil
+		}
 		if err == nil {
-			err = db.SaveAirport(a)
+			for _, ans := range answers {
+				if ans.Err == nil {
+					ans.Err = db.SaveAirport(ans.Airport)
+				}
+				switch {
+				case ans.Err == nil:
+					failures = 0
+				case errors.Is(ans.Err, navdata.ErrUnknown):
+					// the simulator listed it and then did not know it: skip
+				default:
+					failures++
+					err = ans.Err
+				}
+			}
+		} else {
+			failures++
 		}
 		s.nav.mu.Unlock()
-		switch {
-		case err == nil:
-			failures = 0
-		case errors.Is(err, navdata.ErrUnknown):
-			// the simulator listed it and then did not know it: skip
-		default:
-			failures++
-			if failures >= 5 {
-				finish("error", err.Error())
-				return false
-			}
+		if failures >= 5 {
+			finish("error", err.Error())
+			return false
 		}
-		j.set(func(j *navJob) { j.Done = i + 1 })
-		if i%10 == 9 {
-			s.saveJob()
-		}
+		j.set(func(j *navJob) { j.Done = from + len(codes) })
+		s.saveJob()
 	}
 	return true
 }

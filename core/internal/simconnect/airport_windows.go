@@ -152,23 +152,8 @@ type procBuild struct {
 	trans []*navdata.Transition
 }
 
-// FetchAirport asks the running simulator for one airport: position, runways, frequencies and all
-// procedures (departures, arrivals, approaches) with their legs. It does not need the aircraft to
-// be anywhere near the airport.
-func FetchAirport(dllPath, icao string, wait time.Duration) (*navdata.Airport, error) {
-	facilityMu.Lock()
-	defer facilityMu.Unlock()
-
-	f, err := loadFacilities(dllPath)
-	if err != nil {
-		return nil, err
-	}
-	h, err := f.connectOnly("Open Charts navdata")
-	if err != nil {
-		return nil, fmt.Errorf("the simulator is not reachable: %w", err)
-	}
-	defer f.close.Call(h)
-
+// defineAirport declares, once per connection, everything FetchAirports reads of an airport.
+func defineAirport(f *facAPI, h uintptr) error {
 	add := func(names ...string) error {
 		for _, n := range names {
 			r, _, _ := f.addFac.Call(h, facilityDefID, cstr(n))
@@ -206,7 +191,7 @@ func FetchAirport(dllPath, icao string, wait time.Duration) (*navdata.Airport, e
 			return level("ENROUTE_TRANSITION", "ENROUTE_TRANSITION", enrouteTransFld, func() error { return leg("APPROACH_LEG") })
 		})
 	}
-	err = level("AIRPORT", "AIRPORT", airportFields, func() error {
+	err := level("AIRPORT", "AIRPORT", airportFields, func() error {
 		if err := level("RUNWAY", "RUNWAY", runwayFields, nil); err != nil {
 			return err
 		}
@@ -229,140 +214,218 @@ func FetchAirport(dllPath, icao string, wait time.Duration) (*navdata.Airport, e
 		}
 		return proc("ARRIVAL")
 	})
+	return err
+}
+
+// airportBuild gathers the messages of one airport request.
+type airportBuild struct {
+	a       *navdata.Airport
+	procs   []*procBuild
+	procOf  map[uint32]*procBuild          // unique id of an approach/departure/arrival
+	transOf map[uint32]*navdata.Transition // unique id of a transition level
+	special map[uint32]map[string]*navdata.Transition
+	got     bool
+}
+
+func newAirportBuild() *airportBuild {
+	return &airportBuild{
+		a:       &navdata.Airport{Source: "msfs-simconnect", FetchedAt: time.Now()},
+		procOf:  map[uint32]*procBuild{},
+		transOf: map[uint32]*navdata.Transition{},
+		special: map[uint32]map[string]*navdata.Transition{},
+	}
+}
+
+// add takes one facility data message (a level of the airport).
+func (b *airportBuild) add(uid, parent, typ uint32, rd *fieldReader) {
+	switch typ {
+	case ftAirport:
+		b.got = true
+		b.a.Lat, b.a.Lon, b.a.AltitudeM = rd.f64(), rd.f64(), rd.f64()
+		b.a.Name = rd.str(32)
+		b.a.ICAO = rd.str(8)
+		b.a.Region = rd.str(8)
+		b.a.TransAltM, b.a.TransLevel = rd.f32(), rd.f32()
+	case ftRunway:
+		var r navdata.Runway
+		r.Lat, r.Lon, r.AltitudeM = rd.f64(), rd.f64(), rd.f64()
+		r.HeadingTrue, r.LengthM, r.WidthM = rd.f32(), rd.f32(), rd.f32()
+		r.Surface = rd.i32()
+		pn, pd, sn, sd := rd.i32(), rd.i32(), rd.i32(), rd.i32()
+		r.PrimaryName, r.SecondaryNam = runwayName(pn, pd), runwayName(sn, sd)
+		b.a.Runways = append(b.a.Runways, r)
+	case ftFrequency:
+		var fr navdata.Frequency
+		fr.Type = rd.i32()
+		fr.Hz = int64(rd.i32())
+		fr.Name = rd.str(64)
+		b.a.Frequencies = append(b.a.Frequencies, fr)
+	case ftApproach:
+		pb := &procBuild{p: navdata.Procedure{Kind: navdata.KindApproach}}
+		pb.p.ApproachType = rd.i32()
+		pb.p.Suffix = rd.i32()
+		pn, pd := rd.i32(), rd.i32()
+		pb.p.Runway = runwayName(pn, pd)
+		pb.p.FAF = rd.str(8)
+		b.procs = append(b.procs, pb)
+		b.procOf[uid] = pb
+	case ftDeparture, ftArrival:
+		kind := navdata.KindSID
+		if typ == ftArrival {
+			kind = navdata.KindSTAR
+		}
+		pb := &procBuild{p: navdata.Procedure{Kind: kind, Name: rd.str(8)}}
+		b.procs = append(b.procs, pb)
+		b.procOf[uid] = pb
+	case ftRunwayTran:
+		if pb := b.procOf[parent]; pb != nil {
+			num, des := rd.i32(), rd.i32()
+			t := &navdata.Transition{Kind: navdata.TransRunway, Runway: runwayName(num, des)}
+			pb.trans = append(pb.trans, t)
+			b.transOf[uid] = t
+		}
+	case ftEnrouteTrn, ftApprTrans:
+		if pb := b.procOf[parent]; pb != nil {
+			t := &navdata.Transition{Kind: navdata.TransEnroute, Name: rd.str(8)}
+			pb.trans = append(pb.trans, t)
+			b.transOf[uid] = t
+		}
+	case ftLeg, ftFinalLeg, ftMissedLeg:
+		var t *navdata.Transition
+		switch {
+		case b.transOf[parent] != nil: // under a runway/enroute/approach transition
+			t = b.transOf[parent]
+		case b.procOf[parent] != nil: // directly under the procedure
+			pb := b.procOf[parent]
+			kind := navdata.TransCommon
+			if typ == ftFinalLeg {
+				kind = navdata.TransFinal
+			} else if typ == ftMissedLeg {
+				kind = navdata.TransMissed
+			}
+			if b.special[parent] == nil {
+				b.special[parent] = map[string]*navdata.Transition{}
+			}
+			if t = b.special[parent][kind]; t == nil {
+				t = &navdata.Transition{Kind: kind}
+				b.special[parent][kind] = t
+				pb.trans = append(pb.trans, t)
+			}
+		}
+		if t != nil {
+			t.Legs = append(t.Legs, readLeg(rd))
+		}
+	}
+}
+
+func (b *airportBuild) result() *navdata.Airport {
+	for _, pb := range b.procs {
+		for _, t := range pb.trans {
+			pb.p.Transitions = append(pb.p.Transitions, *t)
+		}
+		b.a.Procedures = append(b.a.Procedures, pb.p)
+	}
+	return b.a
+}
+
+// AirportResult is the answer for one airport of FetchAirports.
+type AirportResult struct {
+	Airport *navdata.Airport
+	Err     error // navdata.ErrUnknown when the simulator does not know it
+}
+
+// FetchAirport asks the running simulator for one airport: position, runways, frequencies and all
+// procedures (departures, arrivals, approaches) with their legs. It does not need the aircraft to
+// be anywhere near the airport.
+func FetchAirport(dllPath, icao string, wait time.Duration) (*navdata.Airport, error) {
+	res, err := FetchAirports(dllPath, []string{icao}, wait)
 	if err != nil {
 		return nil, err
 	}
+	return res[0].Airport, res[0].Err
+}
 
-	r, _, _ := f.reqFac.Call(h, facilityDefID, facilityReqID, cstr(strings.ToUpper(icao)), 0)
-	if e := hr(r); e != nil {
-		return nil, fmt.Errorf("request %s: %w", icao, e)
+// FetchAirports asks for several airports at once, on one connection and with one definition: the
+// simulator answers each request after a fixed delay (about 0.3 s), so asking one by one is slow.
+// The result has one entry per code, in the same order.
+func FetchAirports(dllPath string, icaos []string, wait time.Duration) ([]AirportResult, error) {
+	facilityMu.Lock()
+	defer facilityMu.Unlock()
+
+	f, err := loadFacilities(dllPath)
+	if err != nil {
+		return nil, err
+	}
+	h, err := f.connectOnly("Open Charts navdata")
+	if err != nil {
+		return nil, fmt.Errorf("the simulator is not reachable: %w", err)
+	}
+	defer f.close.Call(h)
+	if err := defineAirport(f, h); err != nil {
+		return nil, err
 	}
 
-	a := &navdata.Airport{Source: "msfs-simconnect", FetchedAt: time.Now()}
-	var procs []*procBuild
-	procOf := map[uint32]*procBuild{}           // unique id of an approach/departure/arrival
-	transOf := map[uint32]*navdata.Transition{} // unique id of a transition level
-	special := map[uint32]map[string]*navdata.Transition{}
-	gotAirport := false
-	var failure string
+	res := make([]AirportResult, len(icaos))
+	builds := make([]*airportBuild, len(icaos))
+	byReq := map[uint32]int{}
+	pending := 0
+	for i, icao := range icaos {
+		rid := uint32(facilityReqID + i)
+		r, _, _ := f.reqFac.Call(h, facilityDefID, uintptr(rid), cstr(strings.ToUpper(icao)), 0)
+		if e := hr(r); e != nil {
+			res[i].Err = fmt.Errorf("request %s: %w", icao, e)
+			continue
+		}
+		builds[i] = newAirportBuild()
+		byReq[rid] = i
+		pending++
+	}
 
+	ended := map[uint32]bool{}
+	exceptions := 0 // an unknown airport answers with an exception and no end message
+	lastException := uint32(0)
 	deadline := time.Now().Add(wait)
 	quiet := time.Now()
-	finished := false
-	for !finished && time.Now().Before(deadline) {
+	for len(ended)+exceptions < pending && time.Now().Before(deadline) {
 		msg := f.next(h)
 		if msg == nil {
 			if time.Since(quiet) > 8*time.Second {
 				break
 			}
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(2 * time.Millisecond)
 			continue
 		}
 		quiet = time.Now()
 		switch binary.LittleEndian.Uint32(msg[8:12]) {
 		case recvException:
-			failure = fmt.Sprintf("simulator exception %d (request %d)", binary.LittleEndian.Uint32(msg[12:16]), binary.LittleEndian.Uint32(msg[16:20]))
+			exceptions++
+			lastException = binary.LittleEndian.Uint32(msg[12:16])
 		case recvFacilityDataEnd:
-			finished = true
+			if len(msg) >= 16 {
+				ended[binary.LittleEndian.Uint32(msg[12:16])] = true
+			}
 		case recvFacilityData:
 			if len(msg) < facilityDataOffset {
 				continue
 			}
-			uid := binary.LittleEndian.Uint32(msg[16:20])
-			parent := binary.LittleEndian.Uint32(msg[20:24])
-			typ := binary.LittleEndian.Uint32(msg[24:28])
-			rd := &fieldReader{data: msg[facilityDataOffset:]}
-			switch typ {
-			case ftAirport:
-				gotAirport = true
-				a.Lat, a.Lon, a.AltitudeM = rd.f64(), rd.f64(), rd.f64()
-				a.Name = rd.str(32)
-				a.ICAO = rd.str(8)
-				a.Region = rd.str(8)
-				a.TransAltM, a.TransLevel = rd.f32(), rd.f32()
-			case ftRunway:
-				var r navdata.Runway
-				r.Lat, r.Lon, r.AltitudeM = rd.f64(), rd.f64(), rd.f64()
-				r.HeadingTrue, r.LengthM, r.WidthM = rd.f32(), rd.f32(), rd.f32()
-				r.Surface = rd.i32()
-				pn, pd, sn, sd := rd.i32(), rd.i32(), rd.i32(), rd.i32()
-				r.PrimaryName, r.SecondaryNam = runwayName(pn, pd), runwayName(sn, sd)
-				a.Runways = append(a.Runways, r)
-			case ftFrequency:
-				var fr navdata.Frequency
-				fr.Type = rd.i32()
-				fr.Hz = int64(rd.i32())
-				fr.Name = rd.str(64)
-				a.Frequencies = append(a.Frequencies, fr)
-			case ftApproach:
-				pb := &procBuild{p: navdata.Procedure{Kind: navdata.KindApproach}}
-				pb.p.ApproachType = rd.i32()
-				pb.p.Suffix = rd.i32()
-				pn, pd := rd.i32(), rd.i32()
-				pb.p.Runway = runwayName(pn, pd)
-				pb.p.FAF = rd.str(8)
-				procs = append(procs, pb)
-				procOf[uid] = pb
-			case ftDeparture, ftArrival:
-				kind := navdata.KindSID
-				if typ == ftArrival {
-					kind = navdata.KindSTAR
-				}
-				pb := &procBuild{p: navdata.Procedure{Kind: kind, Name: rd.str(8)}}
-				procs = append(procs, pb)
-				procOf[uid] = pb
-			case ftRunwayTran:
-				if pb := procOf[parent]; pb != nil {
-					num, des := rd.i32(), rd.i32()
-					t := &navdata.Transition{Kind: navdata.TransRunway, Runway: runwayName(num, des)}
-					pb.trans = append(pb.trans, t)
-					transOf[uid] = t
-				}
-			case ftEnrouteTrn, ftApprTrans:
-				if pb := procOf[parent]; pb != nil {
-					t := &navdata.Transition{Kind: navdata.TransEnroute, Name: rd.str(8)}
-					pb.trans = append(pb.trans, t)
-					transOf[uid] = t
-				}
-			case ftLeg, ftFinalLeg, ftMissedLeg:
-				var t *navdata.Transition
-				switch {
-				case transOf[parent] != nil: // under a runway/enroute/approach transition
-					t = transOf[parent]
-				case procOf[parent] != nil: // directly under the procedure
-					pb := procOf[parent]
-					kind := navdata.TransCommon
-					if typ == ftFinalLeg {
-						kind = navdata.TransFinal
-					} else if typ == ftMissedLeg {
-						kind = navdata.TransMissed
-					}
-					if special[parent] == nil {
-						special[parent] = map[string]*navdata.Transition{}
-					}
-					if t = special[parent][kind]; t == nil {
-						t = &navdata.Transition{Kind: kind}
-						special[parent][kind] = t
-						pb.trans = append(pb.trans, t)
-					}
-				}
-				if t != nil {
-					t.Legs = append(t.Legs, readLeg(rd))
-				}
+			i, ok := byReq[binary.LittleEndian.Uint32(msg[12:16])]
+			if !ok {
+				continue
 			}
+			builds[i].add(binary.LittleEndian.Uint32(msg[16:20]), binary.LittleEndian.Uint32(msg[20:24]),
+				binary.LittleEndian.Uint32(msg[24:28]), &fieldReader{data: msg[facilityDataOffset:]})
 		}
 	}
-	if !gotAirport {
-		if failure != "" {
-			return nil, fmt.Errorf("airport %s: %s", icao, failure)
+	for i, b := range builds {
+		switch {
+		case b == nil:
+		case b.got:
+			res[i].Airport = b.result()
+		case len(icaos) == 1 && lastException != 0:
+			res[i].Err = fmt.Errorf("airport %s: simulator exception %d", icaos[i], lastException)
+		default:
+			res[i].Err = fmt.Errorf("airport %s: %w", strings.ToUpper(icaos[i]), navdata.ErrUnknown)
 		}
-		return nil, fmt.Errorf("airport %s: %w", strings.ToUpper(icao), navdata.ErrUnknown)
 	}
-	for _, pb := range procs {
-		for _, t := range pb.trans {
-			pb.p.Transitions = append(pb.p.Transitions, *t)
-		}
-		a.Procedures = append(a.Procedures, pb.p)
-	}
-	return a, nil
+	return res, nil
 }
