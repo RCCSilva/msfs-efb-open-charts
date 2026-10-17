@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const faaSampleXML = "\xef\xbb\xbf" + `<?xml version="1.0" encoding="utf-8" standalone="yes"?>
@@ -31,99 +34,200 @@ const faaSampleXML = "\xef\xbb\xbf" + `<?xml version="1.0" encoding="utf-8" stan
   </state_code>
 </digital_tpp>`
 
-func TestFAAMetafileIsParsedAndNamesAreRecognised(t *testing.T) {
+// withFAAMetadata loads the sample metafile for the test and takes it away after.
+func withFAAMetadata(t *testing.T) {
+	t.Helper()
 	m, err := ParseFAAMetafile(strings.NewReader(faaSampleXML))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m.Cycle != "2610" || m.From != "2026-10-01" || m.To != "2026-10-29" || len(m.Charts) != 5 || m.Airports() != 3 {
-		t.Fatalf("metadata = cycle %q %s..%s, %d charts, %d airports", m.Cycle, m.From, m.To, len(m.Charts), m.Airports())
-	}
+	require.NoError(t, err)
 	SetFAAMetadata(m)
-	defer SetFAAMetadata(nil)
+	t.Cleanup(func() { SetFAAMetadata(nil) })
+}
 
-	in, ok := faa{}.Recognize("00610il22l") // case does not matter, extension is optional
-	if !ok || in.ICAO != "KJFK" || in.Type != "IAC" || in.Title != "ILS OR LOC RWY 22L" || in.Validity != "2026-10-01" {
-		t.Fatalf("approach = %+v (%v)", in, ok)
-	}
-	if in, _ := (faa{}).Recognize("00610AD.PDF"); in.Type != "ADC" || in.Title != "AIRPORT DIAGRAM" {
-		t.Fatalf("diagram = %+v", in)
-	}
-	if in, _ := (faa{}).Recognize("00610CAMRN"); in.Type != "STAR" {
-		t.Fatalf("star = %+v", in)
-	}
-	if in, _ := (faa{}).Recognize("01244ADAK1"); in.ICAO != "PADK" || in.Type != "SID" {
-		t.Fatalf("alaska = %+v", in)
-	}
-	// an airport with no ICAO identifier keeps the FAA one
-	if in, _ := (faa{}).Recognize("00009R5"); in.ICAO != "0B1" {
-		t.Fatalf("no-ICAO airport = %+v", in)
-	}
-	// through the registry: a file handed over in "My PDFs" is still understood
-	id := Identify("manual", "00610IL22L", "00610IL22L.PDF", "")
-	if id.ICAO != "KJFK" || id.Title != "ILS OR LOC RWY 22L" || !id.Confident {
-		t.Fatalf("identify = %+v", id)
-	}
-	if _, ok := (faa{}).Recognize("not-in-the-cycle"); ok {
-		t.Fatal("a name that is not in the metadata must not be claimed")
-	}
-	SetFAAMetadata(nil)
-	if _, ok := (faa{}).Recognize("00610IL22L"); ok {
-		t.Fatal("without metadata nothing can be recognised")
-	}
+func TestFAAMetafileIsParsed(t *testing.T) {
+	// Arrange
+	r := strings.NewReader(faaSampleXML)
+
+	// Act
+	m, err := ParseFAAMetafile(r)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "2610", m.Cycle)
+	assert.Equal(t, "2026-10-01", m.From)
+	assert.Equal(t, "2026-10-29", m.To)
+	assert.Len(t, m.Charts, 5)
+	assert.Equal(t, 3, m.Airports())
 }
 
 func TestFAAMetafileRefusesOtherXML(t *testing.T) {
-	if _, err := ParseFAAMetafile(strings.NewReader(`<?xml version="1.0"?><other/>`)); err == nil {
-		t.Fatal("an XML that is not a d-TPP metafile must be refused")
+	// Arrange
+	r := strings.NewReader(`<?xml version="1.0"?><other/>`)
+
+	// Act
+	_, err := ParseFAAMetafile(r)
+
+	// Assert
+	assert.Error(t, err, "an XML that is not a d-TPP metafile must be refused")
+}
+
+func TestFAARecognisesAnApproachWhateverTheCase(t *testing.T) {
+	// Arrange
+	withFAAMetadata(t)
+
+	// Act
+	in, ok := faa{}.Recognize("00610il22l") // the extension is optional
+
+	// Assert
+	require.True(t, ok)
+	assert.Equal(t, "KJFK", in.ICAO)
+	assert.Equal(t, "IAC", in.Type)
+	assert.Equal(t, "ILS OR LOC RWY 22L", in.Title)
+	assert.Equal(t, "2026-10-01", in.Validity)
+}
+
+func TestFAARecognisesTheTypeOfEachChart(t *testing.T) {
+	cases := map[string]struct{ icao, typ string }{
+		"00610AD.PDF": {"KJFK", "ADC"},
+		"00610CAMRN":  {"KJFK", "STAR"},
+		"01244ADAK1":  {"PADK", "SID"},
+	}
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			withFAAMetadata(t)
+
+			// Act
+			in, ok := faa{}.Recognize(name)
+
+			// Assert
+			require.True(t, ok)
+			assert.Equal(t, want.icao, in.ICAO)
+			assert.Equal(t, want.typ, in.Type)
+		})
 	}
 }
 
-func TestFAAPackageGroupsByAirportAndNeedsTheMetadata(t *testing.T) {
-	dir := t.TempDir()
-	zipPath := filepath.Join(dir, "DDTPPA_261001.zip")
-	f, _ := os.Create(zipPath)
-	zw := zip.NewWriter(f)
-	for _, n := range []string{"00610IL22L.PDF", "00610AD.PDF", "01244ADAK1.PDF", "99999UNKNOWN.PDF", "readme.txt"} {
-		w, _ := zw.Create(n)
-		_, _ = w.Write([]byte("x"))
-	}
-	_ = zw.Close()
-	_ = f.Close()
+func TestFAAAnAirportWithNoICAOKeepsTheFAAIdentifier(t *testing.T) {
+	// Arrange
+	withFAAMetadata(t)
 
+	// Act
+	in, _ := faa{}.Recognize("00009R5")
+
+	// Assert
+	assert.Equal(t, "0B1", in.ICAO)
+}
+
+func TestFAAIsUsedThroughTheRegistryForMyPDFs(t *testing.T) {
+	// Arrange
+	withFAAMetadata(t)
+
+	// Act
+	id := Identify("manual", "00610IL22L", "00610IL22L.PDF", "")
+
+	// Assert
+	assert.Equal(t, "KJFK", id.ICAO)
+	assert.Equal(t, "ILS OR LOC RWY 22L", id.Title)
+	assert.True(t, id.Confident)
+}
+
+func TestFAADoesNotClaimANameThatIsNotInTheMetadata(t *testing.T) {
+	// Arrange
+	withFAAMetadata(t)
+
+	// Act
+	_, ok := faa{}.Recognize("not-in-the-cycle")
+
+	// Assert
+	assert.False(t, ok)
+}
+
+func TestFAARecognisesNothingWithoutMetadata(t *testing.T) {
+	// Arrange
 	SetFAAMetadata(nil)
-	if _, err := (faa{}).OpenPackage(zipPath); err != ErrNeedsFAAMetadata {
-		t.Fatalf("without metadata: %v", err)
+
+	// Act
+	_, ok := faa{}.Recognize("00610IL22L")
+
+	// Assert
+	assert.False(t, ok)
+}
+
+// faaZip makes a zip file with the named members.
+func faaZip(t *testing.T, name string, members map[string]string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	f, err := os.Create(path)
+	require.NoError(t, err)
+	zw := zip.NewWriter(f)
+	for n, body := range members {
+		w, err := zw.Create(n)
+		require.NoError(t, err)
+		_, _ = w.Write([]byte(body))
 	}
-	m, _ := ParseFAAMetafile(strings.NewReader(faaSampleXML))
-	SetFAAMetadata(m)
-	defer SetFAAMetadata(nil)
-	p, err := (faa{}).OpenPackage(zipPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p.Charts != 3 || len(p.Airports) != 2 || p.Date != "2026-10-01" {
-		t.Fatalf("package = %d charts, %+v, date %q", p.Charts, p.Airports, p.Date)
-	}
-	if got := p.Select("KJFK", []string{"IAC"}); len(got) != 1 || got[0].File != "00610IL22L.PDF" {
-		t.Fatalf("select = %+v", got)
-	}
+	require.NoError(t, zw.Close())
+	require.NoError(t, f.Close())
+	return path
+}
+
+func faaChartsZip(t *testing.T) string {
+	t.Helper()
+	return faaZip(t, "DDTPPA_261001.zip", map[string]string{
+		"00610IL22L.PDF": "x", "00610AD.PDF": "x", "01244ADAK1.PDF": "x", "99999UNKNOWN.PDF": "x", "readme.txt": "x",
+	})
+}
+
+func TestFAAPackageNeedsTheMetadata(t *testing.T) {
+	// Arrange
+	SetFAAMetadata(nil)
+	zipPath := faaChartsZip(t)
+
+	// Act
+	_, err := faa{}.OpenPackage(zipPath)
+
+	// Assert
+	assert.Equal(t, ErrNeedsFAAMetadata, err)
+}
+
+func TestFAAPackageGroupsTheKnownChartsByAirport(t *testing.T) {
+	// Arrange
+	withFAAMetadata(t)
+	zipPath := faaChartsZip(t)
+
+	// Act
+	p, err := faa{}.OpenPackage(zipPath)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 3, p.Charts)
+	assert.Len(t, p.Airports, 2)
+	assert.Equal(t, "2026-10-01", p.Date)
+}
+
+func TestFAAPackageSelectsByAirportAndType(t *testing.T) {
+	// Arrange
+	withFAAMetadata(t)
+	p, err := faa{}.OpenPackage(faaChartsZip(t))
+	require.NoError(t, err)
+
+	// Act
+	got := p.Select("KJFK", []string{"IAC"})
+
+	// Assert
+	require.Len(t, got, 1)
+	assert.Equal(t, "00610IL22L.PDF", got[0].File)
 }
 
 func TestFAAMetadataZipIsRecognisedAsSuch(t *testing.T) {
-	dir := t.TempDir()
-	zipPath := filepath.Join(dir, "DDTPPE_261001.zip")
-	f, _ := os.Create(zipPath)
-	zw := zip.NewWriter(f)
-	w, _ := zw.Create("d-TPP_Metafile.xml")
-	_, _ = w.Write([]byte(faaSampleXML))
-	_ = zw.Close()
-	_ = f.Close()
-	if _, err := (faa{}).OpenPackage(zipPath); err != ErrFAAMetadataArchive {
-		t.Fatalf("err = %v", err)
-	}
-	m, err := ReadFAAMetafileFromZip(zipPath)
-	if err != nil || m.Cycle != "2610" {
-		t.Fatalf("read from zip: %v %+v", err, m)
-	}
+	// Arrange
+	zipPath := faaZip(t, "DDTPPE_261001.zip", map[string]string{"d-TPP_Metafile.xml": faaSampleXML})
+
+	// Act
+	_, openErr := faa{}.OpenPackage(zipPath)
+	m, readErr := ReadFAAMetafileFromZip(zipPath)
+
+	// Assert
+	assert.Equal(t, ErrFAAMetadataArchive, openErr)
+	require.NoError(t, readErr)
+	assert.Equal(t, "2610", m.Cycle)
 }

@@ -1,6 +1,10 @@
 package sources
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestIdentifyTitle(t *testing.T) {
 	cases := []struct {
@@ -22,11 +26,18 @@ func TestIdentifyTitle(t *testing.T) {
 		{"unknown chart, no PDF title", "manual", "my-chart_v2.pdf", "", "MY CHART V2", "", "", false},
 	}
 	for _, c := range cases {
-		stem := c.file[:len(c.file)-len(".pdf")]
-		id := Identify(c.source, stem, c.file, c.viewport)
-		if id.Title != c.wantTitle || id.Type != c.wantType || id.Matched != c.matched || id.Confident != c.confident {
-			t.Errorf("%s:\n   got  title=%q type=%q matched=%q confident=%v\n   want title=%q type=%q matched=%q confident=%v",
-				c.name, id.Title, id.Type, id.Matched, id.Confident, c.wantTitle, c.wantType, c.matched, c.confident)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			// Arrange
+			stem := c.file[:len(c.file)-len(".pdf")]
+
+			// Act
+			id := Identify(c.source, stem, c.file, c.viewport)
+
+			// Assert
+			assert.Equal(t, c.wantTitle, id.Title)
+			assert.Equal(t, c.wantType, id.Type)
+			assert.Equal(t, c.matched, id.Matched)
+			assert.Equal(t, c.confident, id.Confident)
+		})
 	}
 }

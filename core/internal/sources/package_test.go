@@ -5,62 +5,73 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func writeZip(t *testing.T, members map[string]string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "pacote-full-20261001.zip")
 	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	zw := zip.NewWriter(f)
 	for name, body := range members {
 		w, err := zw.Create(name)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		_, _ = w.Write([]byte(body))
 	}
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, zw.Close())
+	require.NoError(t, f.Close())
 	return path
 }
 
-func TestPackageListsAirportsWhateverTheSeparator(t *testing.T) {
-	path := writeZip(t, map[string]string{
+func deceaZip(t *testing.T) string {
+	t.Helper()
+	return writeZip(t, map[string]string{
 		"SBSP/IAC/sbsp_ils-x-rwy-17r_iac_20261001.pdf": "%PDF a",
 		"SBSP/ADC/sbsp_sbsp-adc_adc_20261001.pdf":      "%PDF b",
 		`SBGR\IAC\sbgr_vor-rwy-09l_iac_20261001.pdf`:   "%PDF c", // written by a Windows tool
 		"README.txt": "not a chart",
 	})
+}
+
+func TestPackageListsAirportsWhateverTheSeparator(t *testing.T) {
+	// Arrange
+	path := deceaZip(t)
+
+	// Act
 	p, err := openDeceaPackage(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p.Charts != 3 || len(p.Airports) != 2 {
-		t.Fatalf("charts=%d airports=%+v", p.Charts, p.Airports)
-	}
-	if p.Date != "2026-10-01" {
-		t.Errorf("date = %q", p.Date)
-	}
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 3, p.Charts)
+	assert.Len(t, p.Airports, 2)
+	assert.Equal(t, "2026-10-01", p.Date)
+}
+
+func TestPackageReadsTheChartsOfAnAirport(t *testing.T) {
+	// Arrange
+	p, err := openDeceaPackage(deceaZip(t))
+	require.NoError(t, err)
+
+	// Act
 	sel := p.Select("SBGR", nil)
-	if len(sel) != 1 {
-		t.Fatalf("select SBGR = %+v", sel)
-	}
+
+	// Assert
+	require.Len(t, sel, 1)
 	b, err := p.Read(sel[0])
-	if err != nil || string(b) != "%PDF c" {
-		t.Fatalf("read = %q, %v", b, err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "%PDF c", string(b))
 }
 
 func TestNotAPackageIsRefused(t *testing.T) {
+	// Arrange
 	path := writeZip(t, map[string]string{"photo.png": "x"})
-	if _, err := openDeceaPackage(path); err != ErrNotPackage {
-		t.Fatalf("err = %v, want ErrNotPackage", err)
-	}
+
+	// Act
+	_, err := openDeceaPackage(path)
+
+	// Assert
+	assert.Equal(t, ErrNotPackage, err)
 }
