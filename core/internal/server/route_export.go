@@ -27,31 +27,29 @@ func (s *Server) exported(w http.ResponseWriter, r *http.Request) ([]route.Point
 		writeErr(w, 400, errors.New("send the route as {route, choices} or {id}"))
 		return nil, false
 	}
-	var raw json.RawMessage
+	svc, err := s.savedRoutes()
+	if err != nil {
+		writeErr(w, 502, err)
+		return nil, false
+	}
+	text := body.Route
+	choices, _ := json.Marshal(body.Choices)
 	if body.ID != 0 {
-		if db := s.navDB(); db != nil {
-			if sr, err := db.SavedRoute(body.ID); err == nil {
-				raw = sr.Result
-				if len(raw) == 0 {
-					body.Route = sr.Text
-					body.Choices = nil
-					_ = json.Unmarshal(sr.Choices, &body.Choices)
+		if saved, err := svc.Get(body.ID); err == nil {
+			if len(saved.Result) > 0 {
+				var res route.Result
+				if err := json.Unmarshal(saved.Result, &res); err != nil {
+					writeErr(w, 500, err)
+					return nil, false
 				}
+				return res.Points, true
 			}
+			text, choices = saved.Text, saved.Choices // saved before the places were kept
 		}
 	}
-	if len(raw) == 0 {
-		choices, _ := json.Marshal(body.Choices)
-		var code int
-		var err error
-		if raw, code, err = s.validRoute(body.Route, choices); err != nil {
-			writeErr(w, code, err)
-			return nil, false
-		}
-	}
-	var res route.Result
-	if err := json.Unmarshal(raw, &res); err != nil {
-		writeErr(w, 500, err)
+	res, err := svc.Check(text, choices)
+	if err != nil {
+		writeErr(w, routeErrStatus(err), err)
 		return nil, false
 	}
 	return res.Points, true

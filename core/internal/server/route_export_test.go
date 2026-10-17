@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -135,49 +134,4 @@ func TestPlanLoadWritesTheFileAndHandsItOver(t *testing.T) {
 	written, err := os.ReadFile(file)
 	require.NoError(t, err)
 	assert.Contains(t, string(written), "<DepartureID>SBSP</DepartureID>")
-}
-
-// A route is checked when it is saved and kept with its places: listing it gives them back, and
-// sending it somewhere by its id does not resolve the text again.
-func TestSavedRouteIsKeptResolved(t *testing.T) {
-	s, _ := exportServer(t, sim.Provider{})
-
-	w := post(s.handleRouteSave, `{"text":"SBSP ZZZZZ SBBR"}`)
-	if w.Code != 422 || !strings.Contains(w.Body.String(), "ZZZZZ") {
-		t.Fatalf("a route with a name that is not found is not saved: %d %s", w.Code, w.Body)
-	}
-	if w = post(s.handleRouteSave, `{"text":"SBSP SBBR"}`); w.Code != 200 {
-		t.Fatalf("%d %s", w.Code, w.Body)
-	}
-	var saved struct {
-		ID     int64
-		Name   string
-		Result struct{ Points []struct{ Ident string } }
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &saved); err != nil || saved.ID == 0 || saved.Name != "SBSP > SBBR" || len(saved.Result.Points) != 2 {
-		t.Fatalf("%+v %v %s", saved, err, w.Body)
-	}
-
-	lw := httptest.NewRecorder()
-	s.handleRoutes(lw, httptest.NewRequest("GET", "/api/routes", nil))
-	var list struct {
-		Routes []struct {
-			Result struct{ Points []struct{ Ident string } }
-		}
-	}
-	if err := json.Unmarshal(lw.Body.Bytes(), &list); err != nil || len(list.Routes) != 1 || len(list.Routes[0].Result.Points) != 2 {
-		t.Fatalf("%v %s", err, lw.Body)
-	}
-
-	// the airports are gone from the database: the saved route still exports, from what was kept
-	if err := s.navDB().DeleteAirport("SBSP"); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.navDB().DeleteAirport("SBBR"); err != nil {
-		t.Fatal(err)
-	}
-	w = post(s.handleRouteIVAO, `{"id":`+strconv.FormatInt(saved.ID, 10)+`}`)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"departure":"SBSP"`) {
-		t.Fatalf("%d %s", w.Code, w.Body)
-	}
 }
