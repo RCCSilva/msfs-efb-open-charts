@@ -689,13 +689,16 @@
 
   // Frame the aircraft with REGIONAL_RADIUS_KM around it. False when that is not possible (no position
   // yet, or the aircraft is not on this chart): the caller falls back to the whole chart.
-  function showRegional() {
+  // With anywhere set (the button), the map view frames the aircraft even when the chart is far from
+  // it: the map is there to show it. Opening a chart does not: a far chart is shown as a whole.
+  function showRegional(anywhere) {
     if (!map || !active || !lastFix || !hasSize()) return false;
     var meta = active.meta;
     if (meta.unreferenced) return false;
     var pt = LMMGeo.toPixel(meta, lastFix.lat, lastFix.lon);
     var f = meta.mapFramePx;
-    if (pt.px < f.left || pt.px > f.right || pt.py < f.top || pt.py > f.bottom) return false;
+    var onChart = pt.px >= f.left && pt.px <= f.right && pt.py >= f.top && pt.py <= f.bottom;
+    if (!onChart && !(anywhere && mode !== 'chart')) return false;
     var half = REGIONAL_RADIUS_KM * 1000;
     if (mode === 'chart') {
       var hp = half / chartMetersPerPixel(meta);
@@ -2041,7 +2044,7 @@
   el('btn-regional').title = t('regionalTitle');
   el('btn-regional').addEventListener('click', function () {
     pendingRegional = false;
-    if (showRegional()) setFollow(true); else fitChart();
+    if (showRegional(true)) setFollow(true); else fitChart();
   });
   // The simulator keeps the EFB app open, so the page cannot be closed and reopened: this reloads it.
   el('btn-reload').title = lang === 'pt' ? 'Recarregar' : 'Reload';
