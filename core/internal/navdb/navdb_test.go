@@ -3,9 +3,11 @@ package navdb
 import (
 	"errors"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 )
@@ -31,105 +33,143 @@ func sample() *navdata.Airport {
 	}
 }
 
-func TestSaveAndLoad(t *testing.T) {
+// openTemp opens a new database in a temporary folder and closes it with the test.
+func openTemp(t *testing.T) *DB {
+	t.Helper()
 	d, err := Open(filepath.Join(t.TempDir(), "nav.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
+	require.NoError(t, err)
+	t.Cleanup(func() { d.Close() })
+	return d
+}
+
+func TestSaveAndLoadKeepTheAirportAsItWas(t *testing.T) {
+	// Arrange
+	d := openTemp(t)
 	in := sample()
-	if err := d.SaveAirport(in); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, d.SaveAirport(in))
+
+	// Act
 	out, err := d.Airport("sbsj")
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	// Assert
+	require.NoError(t, err)
 	// the runway leg gets its position from the runway itself; the rest of the data is unchanged
 	first := &out.Procedures[0].Transitions[0].Legs[0]
-	if first.Lat == nil || first.Lon == nil {
-		t.Fatal("RW34 was not placed from the runway")
-	}
+	require.NotNil(t, first.Lat, "RW34 was not placed from the runway")
+	require.NotNil(t, first.Lon)
 	first.Lat, first.Lon = nil, nil
-	if !reflect.DeepEqual(in, out) {
-		t.Fatalf("round trip differs:\n in  %+v\n out %+v", in, out)
-	}
-	if _, err := d.Airport("SBXX"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("missing airport: %v", err)
-	}
+	assert.Equal(t, in, out)
 }
 
-func TestSaveReplaces(t *testing.T) {
-	d, err := Open(filepath.Join(t.TempDir(), "nav.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
+func TestAMissingAirportIsNotFound(t *testing.T) {
+	// Arrange
+	d := openTemp(t)
+
+	// Act
+	_, err := d.Airport("SBXX")
+
+	// Assert
+	assert.True(t, errors.Is(err, ErrNotFound), "%v", err)
+}
+
+func TestSavingAgainReplacesTheRows(t *testing.T) {
+	// Arrange
+	d := openTemp(t)
 	a := sample()
-	if err := d.SaveAirport(a); err != nil {
-		t.Fatal(err)
-	}
-	a.Procedures = nil
-	a.Runways = nil
-	if err := d.SaveAirport(a); err != nil {
-		t.Fatal(err)
-	}
-	out, _ := d.Airport("SBSJ")
-	if len(out.Procedures) != 0 || len(out.Runways) != 0 {
-		t.Fatalf("old rows survived: %+v", out)
-	}
-	list, _ := d.Airports("SB")
-	if len(list) != 1 || list[0].ICAO != "SBSJ" {
-		t.Fatalf("list: %+v", list)
-	}
+	require.NoError(t, d.SaveAirport(a))
+	a.Procedures, a.Runways = nil, nil
+
+	// Act
+	require.NoError(t, d.SaveAirport(a))
+
+	// Assert
+	out, err := d.Airport("SBSJ")
+	require.NoError(t, err)
+	assert.Empty(t, out.Procedures, "old rows survived")
+	assert.Empty(t, out.Runways, "old rows survived")
+	list, err := d.Airports("SB")
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	assert.Equal(t, "SBSJ", list[0].ICAO)
 }
 
-func TestReopenKeepsData(t *testing.T) {
+func TestReopeningKeepsTheData(t *testing.T) {
+	// Arrange
 	path := filepath.Join(t.TempDir(), "nav.db")
 	d, err := Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := d.SaveAirport(sample()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, d.SaveAirport(sample()))
 	d.Close()
+
+	// Act
 	d, err = Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	// Assert
+	require.NoError(t, err)
 	defer d.Close()
-	if _, err := d.Airport("SBSJ"); err != nil {
-		t.Fatalf("data lost on reopen: %v", err)
-	}
+	_, err = d.Airport("SBSJ")
+	assert.NoError(t, err, "data lost on reopen")
 }
 
 // With every airport of the simulator stored, the list is read a page at a time.
-func TestAirportsPage(t *testing.T) {
-	d, err := Open(filepath.Join(t.TempDir(), "n.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
+func airportsForPaging(t *testing.T) *DB {
+	t.Helper()
+	d := openTemp(t)
 	for _, a := range []struct{ icao, name string }{
 		{"SBAA", "Alpha Field"}, {"SBBB", "Bravo Intl"}, {"SBCC", "Charlie"}, {"SBDD", "Delta"}, {"KJFK", "John F Kennedy Alpha"},
 	} {
-		if err := d.SaveAirport(&navdata.Airport{ICAO: a.icao, Name: a.name}); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.SaveAirport(&navdata.Airport{ICAO: a.icao, Name: a.name}))
 	}
+	return d
+}
+
+func TestAirportsPageGivesTheFirstPageAndTheTotal(t *testing.T) {
+	// Arrange
+	d := airportsForPaging(t)
+
+	// Act
 	page, total, err := d.AirportsPage("", 2, 0)
-	if err != nil || total != 5 || len(page) != 2 || page[0].ICAO != "KJFK" {
-		t.Fatalf("%+v %d %v", page, total, err)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 5, total)
+	require.Len(t, page, 2)
+	assert.Equal(t, "KJFK", page[0].ICAO)
+}
+
+func TestAirportsPageGivesTheLastPageShort(t *testing.T) {
+	// Arrange
+	d := airportsForPaging(t)
+
+	// Act
+	page, _, err := d.AirportsPage("", 2, 4)
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, page, 1)
+	assert.Equal(t, "SBDD", page[0].ICAO)
+}
+
+func TestAirportsPageFiltersByTheStartOfTheCodeOrByTheName(t *testing.T) {
+	cases := map[string]struct {
+		q    string
+		want int
+	}{
+		"the start of the code": {"sb", 4},
+		"the name":              {"alpha", 2},
 	}
-	page, _, _ = d.AirportsPage("", 2, 4)
-	if len(page) != 1 || page[0].ICAO != "SBDD" {
-		t.Fatalf("the last page: %+v", page)
-	}
-	if page, total, _ = d.AirportsPage("sb", 10, 0); total != 4 || len(page) != 4 {
-		t.Fatalf("by the start of the code: %d %+v", total, page)
-	}
-	if page, total, _ = d.AirportsPage("alpha", 10, 0); total != 2 {
-		t.Fatalf("by the name: %d %+v", total, page)
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			d := airportsForPaging(t)
+
+			// Act
+			page, total, err := d.AirportsPage(c.q, 10, 0)
+
+			// Assert
+			require.NoError(t, err)
+			assert.Equal(t, c.want, total)
+			assert.Len(t, page, c.want)
+		})
 	}
 }

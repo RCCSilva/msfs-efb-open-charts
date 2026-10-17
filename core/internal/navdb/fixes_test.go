@@ -2,83 +2,133 @@ package navdb
 
 import (
 	"math"
-	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 )
 
-func TestFixesPlaceLegs(t *testing.T) {
-	d, err := Open(filepath.Join(t.TempDir(), "nav.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer d.Close()
-	if err := d.SaveAirport(sample()); err != nil {
-		t.Fatal(err)
-	}
-	missing, err := d.UncheckedIdents("SBSJ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// BOBIC and VUPSA are waypoints; RW34 is a runway and is placed from the airport, not asked for
-	if len(missing) != 2 {
-		t.Fatalf("missing: %+v", missing)
-	}
-	if err := d.SaveFixes([]navdata.Fix{
+// withFixes is a database with the sample airport and the two waypoints of its departure.
+func withFixes(t *testing.T) *DB {
+	t.Helper()
+	d := openTemp(t)
+	require.NoError(t, d.SaveAirport(sample()))
+	require.NoError(t, d.SaveFixes([]navdata.Fix{
 		{Ident: "BOBIC", Region: "SB", Kind: 'W', Lat: -23.1, Lon: -45.9, Routes: []navdata.Route{
 			{Airway: "UZ6", Type: 1, NextIdent: "VUPSA", NextRegion: "SB", NextKind: 'W', NextLat: -22.9, NextLon: -45.5},
 		}},
 		{Ident: "VUPSA", Region: "SB", Kind: 'W', Lat: -22.9, Lon: -45.5},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	// the simulator was asked for the names as a whole: they are marked, and no longer pending
+	}))
+	return d
+}
+
+func TestUncheckedIdentsAreTheWaypointsNotTheRunways(t *testing.T) {
+	// Arrange
+	d := openTemp(t)
+	require.NoError(t, d.SaveAirport(sample()))
+
+	// Act
+	missing, err := d.UncheckedIdents("SBSJ")
+
+	// Assert
+	require.NoError(t, err)
+	// BOBIC and VUPSA are waypoints; RW34 is a runway and is placed from the airport, not asked for
+	assert.ElementsMatch(t, []string{"BOBIC", "VUPSA"}, missing)
+}
+
+func TestACheckedIdentIsNoLongerPending(t *testing.T) {
+	// Arrange
+	d := withFixes(t)
+
+	// Act
 	for _, id := range []string{"BOBIC", "VUPSA"} {
-		if err := d.MarkIdentChecked(id, 1); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, d.MarkIdentChecked(id, 1))
 	}
-	if missing, _ = d.UncheckedIdents("SBSJ"); len(missing) != 0 {
-		t.Fatalf("still pending: %+v", missing)
-	}
-	if ok, _ := d.IdentChecked("bobic"); !ok {
-		t.Fatal("a checked identifier must be remembered, in any case")
-	}
-	if got, _ := d.FixesByIdent("BOBIC"); len(got) != 1 || got[0].Region != "SB" {
-		t.Fatalf("FixesByIdent: %+v", got)
-	}
+
+	// Assert
+	missing, err := d.UncheckedIdents("SBSJ")
+	require.NoError(t, err)
+	assert.Empty(t, missing)
+	ok, _ := d.IdentChecked("bobic")
+	assert.True(t, ok, "a checked identifier must be remembered, in any case")
+}
+
+func TestFixesByIdentGivesTheRegion(t *testing.T) {
+	// Arrange
+	d := withFixes(t)
+
+	// Act
+	got, err := d.FixesByIdent("BOBIC")
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "SB", got[0].Region)
+}
+
+func TestEveryLegOfTheProcedureGetsAPosition(t *testing.T) {
+	// Arrange
+	d := withFixes(t)
+
+	// Act
 	a, err := d.Airport("SBSJ")
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	// Assert
+	require.NoError(t, err)
 	for _, tr := range a.Procedures[0].Transitions {
 		for _, l := range tr.Legs {
-			if l.Lat == nil || l.Lon == nil {
-				t.Fatalf("leg %s without a position", l.FixICAO)
-			}
+			assert.NotNil(t, l.Lat, "leg %s without a position", l.FixICAO)
+			assert.NotNil(t, l.Lon, "leg %s without a position", l.FixICAO)
 		}
 	}
+}
+
+func TestAWaypointLegIsPlacedAtTheStoredFix(t *testing.T) {
+	// Arrange
+	d := withFixes(t)
+
+	// Act
+	a, err := d.Airport("SBSJ")
+
+	// Assert
+	require.NoError(t, err)
 	bobic := a.Procedures[0].Transitions[0].Legs[1]
-	if *bobic.Lat != -23.1 || *bobic.Lon != -45.9 {
-		t.Fatalf("BOBIC at %v,%v", *bobic.Lat, *bobic.Lon)
-	}
+	require.NotNil(t, bobic.Lat)
+	assert.Equal(t, -23.1, *bobic.Lat)
+	assert.Equal(t, -45.9, *bobic.Lon)
+}
 
-	// RW34 is the primary end: half a runway length (1335 m) behind the middle, against the heading
+func TestARunwayLegIsPlacedHalfARunwayBehindTheMiddle(t *testing.T) {
+	// Arrange
+	d := withFixes(t)
+
+	// Act
+	a, err := d.Airport("SBSJ")
+
+	// Assert
+	require.NoError(t, err)
 	rw := a.Procedures[0].Transitions[0].Legs[0]
-	dLat := (*rw.Lat - a.Runways[0].Lat) * 111320
-	dLon := (*rw.Lon - a.Runways[0].Lon) * 111320 * math.Cos(a.Runways[0].Lat*math.Pi/180)
-	dist := math.Hypot(dLat, dLon)
-	if math.Abs(dist-a.Runways[0].LengthM/2) > 5 {
-		t.Fatalf("RW34 is %.0f m from the middle, want %.0f", dist, a.Runways[0].LengthM/2)
-	}
+	mid := a.Runways[0]
+	dLat := (*rw.Lat - mid.Lat) * 111320
+	dLon := (*rw.Lon - mid.Lon) * 111320 * math.Cos(mid.Lat*math.Pi/180)
+	assert.InDelta(t, mid.LengthM/2, math.Hypot(dLat, dLon), 5, "RW34 is the primary end")
 	// heading 315: the primary threshold is to the south-east of the middle
-	if !(dLat < 0 && dLon > 0) {
-		t.Fatalf("RW34 on the wrong side: dLat %.0f dLon %.0f", dLat, dLon)
-	}
+	assert.Less(t, dLat, 0.0)
+	assert.Greater(t, dLon, 0.0)
+}
 
+func TestAFixCarriesItsAirways(t *testing.T) {
+	// Arrange
+	d := withFixes(t)
+
+	// Act
 	f, err := d.Fix("bobic", "sb")
-	if err != nil || len(f.Routes) != 1 || f.Routes[0].Airway != "UZ6" || f.Routes[0].NextIdent != "VUPSA" {
-		t.Fatalf("fix with airways: %+v %v", f, err)
-	}
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, f.Routes, 1)
+	assert.Equal(t, "UZ6", f.Routes[0].Airway)
+	assert.Equal(t, "VUPSA", f.Routes[0].NextIdent)
 }
