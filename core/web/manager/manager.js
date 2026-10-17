@@ -1706,6 +1706,9 @@
       textHint: 'SBSJ BOBI3A DAGUB UZ6 ... SBGR', validate: 'Validate', save: 'Save', del: 'Delete', confirmDel: 'Delete this route?',
       working: 'Reading the route (the simulator may be asked for names it does not know yet)...', places: 'places', problems: 'to check',
       ok: 'All names were found.', saved: 'Saved', failed: 'Could not do that', needName: 'Give the route a name.',
+      sendTo: 'Send the plan', ivao: 'Open in IVAO', savePln: 'Save the plan (.pln)', loadSim: 'Load in the simulator',
+      sendHint: 'Only the origin, the destination and the route are sent. IVAO opens its form with them filled in: check it and file it there. The .pln is the simulator\'s flight plan file.',
+      sentSim: 'Sent to the simulator', needText: 'Write the route first.',
       nameCol: 'Name', kind: 'Type', pos: 'Position', via: 'Via', empty: 'Write a route and press Validate.',
       kinds: { airport: 'Airport', waypoint: 'Waypoint', vor: 'VOR', ndb: 'NDB', coordinate: 'Coordinate', procedure: 'Procedure' },
       mapFail: 'The map could not be loaded.',
@@ -1719,6 +1722,9 @@
       textHint: 'SBSJ BOBI3A DAGUB UZ6 ... SBGR', validate: 'Validar', save: 'Salvar', del: 'Excluir', confirmDel: 'Excluir esta rota?',
       working: 'Lendo a rota (o simulador pode ser consultado por nomes que ainda não conhece)...', places: 'pontos', problems: 'a conferir',
       ok: 'Todos os nomes foram encontrados.', saved: 'Salva', failed: 'Não foi possível', needName: 'Dê um nome para a rota.',
+      sendTo: 'Enviar o plano', ivao: 'Abrir na IVAO', savePln: 'Salvar o plano (.pln)', loadSim: 'Carregar no simulador',
+      sendHint: 'Só a origem, o destino e a rota são enviados. A IVAO abre o formulário com eles preenchidos: confira e registre lá. O .pln é o arquivo de plano de voo do simulador.',
+      sentSim: 'Enviado ao simulador', needText: 'Escreva a rota primeiro.',
       nameCol: 'Nome', kind: 'Tipo', pos: 'Posição', via: 'Via', empty: 'Escreva uma rota e aperte Validar.',
       kinds: { airport: 'Aeroporto', waypoint: 'Waypoint', vor: 'VOR', ndb: 'NDB', coordinate: 'Coordenada', procedure: 'Procedimento' },
       mapFail: 'Não foi possível carregar o mapa.',
@@ -1873,6 +1879,36 @@
       } catch (e) { toast(rt('failed') + ': ' + e.message); }
     };
 
+    // Sending the plan: the program builds the files and the link (the route is read again there)
+    const sendBody = () => ({ route: textIn.value, choices: routesState.choices });
+    const sendIvao = async () => {
+      if (!textIn.value.trim()) { toast(rt('needText')); return; }
+      try {
+        const r = await api('POST', '/api/route/ivao', sendBody());
+        window.open(r.url, '_blank', 'noopener');
+      } catch (e) { toast(rt('failed') + ': ' + e.message); }
+    };
+    const savePln = async () => {
+      if (!textIn.value.trim()) { toast(rt('needText')); return; }
+      try {
+        const res = await fetch('/api/route/pln', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sendBody()) });
+        if (!res.ok) { throw new Error(((await res.json().catch(() => ({}))).error) || res.statusText); }
+        const m = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '');
+        const a = h('a', { href: URL.createObjectURL(await res.blob()), download: m ? m[1] : 'route.pln' });
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      } catch (e) { toast(rt('failed') + ': ' + e.message); }
+    };
+    const loadSim = async () => {
+      if (!textIn.value.trim()) { toast(rt('needText')); return; }
+      try {
+        await api('POST', '/api/route/pln/load', sendBody());
+        toast(rt('sentSim'));
+      } catch (e) { toast(rt('failed') + ': ' + e.message); }
+    };
+
     const listCard = h('div', { class: 'card' },
       h('div', { class: 'row', style: 'margin-bottom:8px' },
         h('h3', { style: 'margin:0', class: 'grow' }, rt('mine')),
@@ -1894,6 +1930,12 @@
           Object.assign(routesState, { id: 0, name: '', text: '', choices: [], result: null });
           renderRoutes();
         } }, rt('del')) : null),
+      h('div', { class: 'row sendrow', style: 'margin-top:10px' },
+        h('span', { class: 'muted' }, rt('sendTo') + ':'),
+        h('button', { class: 'btn', onclick: sendIvao }, rt('ivao')),
+        h('button', { class: 'btn', onclick: savePln }, rt('savePln')),
+        h('button', { class: 'btn', onclick: loadSim }, rt('loadSim'))),
+      h('p', { class: 'muted', style: 'margin:6px 0 0; font-size:12px' }, rt('sendHint')),
       status, mapHost, resultHost);
 
     view.replaceChildren(h('h2', null, rt('title')), h('p', { class: 'muted' }, rt('intro')),
@@ -2147,7 +2189,7 @@
         if (cb.checked) lg.addTo(map); else map.removeLayer(lg);
         later();
       });
-      return h('label', { class: 'row', style: 'gap:6px; margin:4px 0; font-size:13px' }, cb, label);
+      return h('label', { class: 'layerrow' }, cb, label);
     };
     const mapDiv = h('div', { class: 'planmap' });
     const panel = h('div', { class: 'planpanel' },

@@ -46,3 +46,6 @@ type AirportResult struct {
 func FetchAirports(dllPath string, icaos []string, wait time.Duration) ([]AirportResult, error) {
 	return nil, errUnsupported
 }
+
+// LoadFlightPlan needs the simulator's SimConnect library, which exists on Windows only.
+func LoadFlightPlan(dllPath, file string, wait time.Duration) error { return errUnsupported }

@@ -233,3 +233,9 @@ body.fullmap .planpanel { position: static; max-height: none; height: 100%; over
 
 .nearlist { max-height: 260px; overflow: auto; }
 .nearpop .leaflet-popup-content { margin: 10px 12px; }
+
+/* the layer switches of the map: the whole row is the target */
+.layerrow { display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; margin: 6px 0; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 15px; cursor: pointer; user-select: none; }
+.layerrow:hover { border-color: #94a3b8; }
+.layerrow input { width: 20px; height: 20px; margin: 0; flex: 0 0 auto; cursor: pointer; }

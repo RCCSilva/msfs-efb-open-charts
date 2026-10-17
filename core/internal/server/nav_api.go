@@ -53,15 +53,16 @@ func (s *Server) SetAirportBatcher(b AirportBatchFetcher) {
 type FixFetcher func(refs []navdata.FixRef) ([]navdata.Fix, error)
 
 type navState struct {
-	mu     sync.Mutex   // one fetch at a time: the simulator answers one conversation, and a repeat is wasted work
-	ptrMu  sync.RWMutex // guards only the fields below that are set once (never held while the simulator is asked)
-	db     *navdb.DB
-	fetch  NavFetcher
-	fixes  FixFetcher
-	lookup IdentFetcher
-	job    navJob // the bulk load of the Navigation page
-	list   AirportLister
-	batch  AirportBatchFetcher
+	mu       sync.Mutex   // one fetch at a time: the simulator answers one conversation, and a repeat is wasted work
+	ptrMu    sync.RWMutex // guards only the fields below that are set once (never held while the simulator is asked)
+	db       *navdb.DB
+	fetch    NavFetcher
+	fixes    FixFetcher
+	lookup   IdentFetcher
+	job      navJob // the bulk load of the Navigation page
+	list     AirportLister
+	batch    AirportBatchFetcher
+	planLoad PlanLoader
 }
 
 // SetNav gives the server the navigation database and, when the simulator link exists, the way
