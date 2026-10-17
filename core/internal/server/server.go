@@ -31,7 +31,7 @@ type Position = sim.Position
 
 // Server wires everything together.
 type Server struct {
-	lib         *store.Library
+	lib         Library
 	newRenderer RendererFactory    // nil: importing disabled
 	rend        *importer.Renderer // created on demand, see renderer.go
 	rendIdle    *time.Timer
@@ -48,7 +48,7 @@ type Server struct {
 
 // New builds a server. newRenderer may be nil (import then returns 503). The provider is what the
 // simulator gives (see package sim); what it leaves nil the server does without.
-func New(lib *store.Library, newRenderer RendererFactory, provider sim.Provider, addr string) *Server {
+func New(lib Library, newRenderer RendererFactory, provider sim.Provider, addr string) *Server {
 	s := &Server{lib: lib, newRenderer: newRenderer, sim: provider, addr: addr,
 		tiles: newTileCache(filepath.Join(lib.Dir(), "tiles")), jobs: jobs.NewManager(50)}
 	s.loadFAAMetadata()
