@@ -29,7 +29,7 @@ go build -trimpath -ldflags "-s -w" -o ..\dist\opencharts.exe .\cmd\opencharts
 - `internal/geo` projections (TM, LCC) + affine fit; `internal/pdfgeo` GeoPDF `/VP` reader;
   `internal/importer` render + georeference; `internal/store` library, search, groups/pins
 - `internal/sources` provider modules (built-in `manual`, `decea-br`), `internal/jobs` progress
-- `internal/simconnect` live position via the official SimConnect.dll (no cgo)
+- `internal/sim` what the program needs from a simulator (interfaces + `Provider`); `internal/sim/msfs2024` what is specific to MSFS 2024, including `simconnect`: live position and navigation data via the official SimConnect.dll (no cgo)
 - `web/sim` in-sim viewer (ES5, Coherent GT safe), `web/manager` manager UI (pt/en)
 
 ## Sources and policy

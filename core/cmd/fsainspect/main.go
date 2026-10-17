@@ -11,8 +11,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/bgl"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/fsarchive"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024/bgl"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024/fsarchive"
 )
 
 var digits = regexp.MustCompile(`\d+`)

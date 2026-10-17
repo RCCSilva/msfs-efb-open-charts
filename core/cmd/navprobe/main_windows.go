@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/simconnect"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024/simconnect"
 )
 
 func main() {

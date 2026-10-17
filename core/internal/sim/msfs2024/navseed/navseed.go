@@ -13,9 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/bgl"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/fsarchive"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024/bgl"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024/fsarchive"
 )
 
 // recordFix is the BGL record that holds a waypoint, VOR or NDB of the navigation packages.

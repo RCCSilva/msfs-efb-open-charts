@@ -31,7 +31,8 @@ One Go program (no cgo) that runs in the Windows tray:
 | `core/internal/sources` | Chart sources: built-in `manual` and `decea-br` |
 | `core/internal/naming` | Name display, accent folding, type words (generic parts only) |
 | `core/internal/server` | HTTP handlers, import/inspect flow, lazy renderer, setup API |
-| `core/internal/simconnect` | SimConnect through `LazyDLL` (Windows only) |
+| `core/internal/sim` | What the program needs from a simulator: small interfaces (position, navigation data, seed files, flight plans), the `Provider` that gathers them and its `Capabilities`; `simmock` has the testify mocks |
+| `core/internal/sim/msfs2024` | Everything specific to Microsoft Flight Simulator 2024: builds its `Provider`; `simconnect` (SimConnect through `LazyDLL`, Windows only), `navseed` + `fsarchive` + `bgl` (the streamed navigation packages) |
 | `core/internal/setup` | MSFS detection, EFB app install, `EXE.xml` autostart; embeds `efbpkg/` |
 | `core/internal/tray` | Notification-area icon |
 | `core/web/sim` | In-sim viewer (ES5 for the simulator's Coherent GT browser) |
@@ -63,6 +64,13 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
 - **Go:** keep `CGO_ENABLED=0`. Standard library first; a new dependency needs a clear reason and a
   permissive license (add it to `NOTICE.md`). Run `gofmt` and `go vet`. Prefer small packages and
   table-free, readable code that matches the surrounding style.
+- **Simulators (`core/internal/sim`):** the rest of the program never reaches a simulator directly. `sim` declares what it
+  needs as small interfaces ("ports": `PositionSource`, `NavSource`, `SeedSource`, `FlightPlanLoader`) and a `Provider`
+  struct that gathers the ones a simulator can fulfil; a nil field is something that simulator cannot do (`Capabilities`
+  derives what the program offers from them). Each simulator has a package that builds its `Provider`
+  (`sim/msfs2024` now; MSFS 2020 and X-Plane 12 may come): what is specific to it lives there and nowhere else.
+  The server takes the `Provider` in `server.New` and asks it, never a package of a simulator. The navigation database is
+  shared by the simulators (`navdata.Airport.Source` says where a record came from).
 - **Go design:** package-oriented design (https://www.ardanlabs.com/blog/2017/02/package-oriented-design.html):
   packages are named for what they provide, are small and have one purpose, and do not reach into each other's
   details. **Accept interfaces, return structs**: a function takes the smallest interface it needs (declared where
@@ -189,7 +197,7 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   "View only" and offers no "On map". Charts keep `source.pdf`, which the chart page shows beside the
   edit form (`#chart/<id>`; manager pages are real `<a>` links so they open in new tabs).
 - **Navigation data (what the simulator knows):** airports, procedures and fixes are asked from the running
-  simulator through SimConnect's facility API (`internal/simconnect`, `FetchAirport`, `LookupFixes`) and kept in
+  simulator through SimConnect's facility API (`internal/sim/msfs2024/simconnect`, `FetchAirport`, `LookupFixes`) and kept in
   SQLite (`internal/navdb`, `navdata.db`, pure Go driver). Rule: a fix enters the database only by its identifier
   *as a whole* (no region: the simulator then answers with every place of that name) and the identifier is
   marked in `ident_check`. So "is in the database" means "all of them are"; an unchecked name is asked from the
@@ -220,7 +228,7 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   the database, then the simulator). It plans nothing: homonyms are reported with the closest one chosen, a name
   nobody knows is a problem. `POST /api/route/resolve`. The simulator's package file
   (`...\StreamedPackages\fs24-fs-base-nav\content\minimal.fsarchive`, plain, BGL inside) was studied
-  (`internal/fsarchive`, `internal/bgl`, `cmd/fsainspect`): identifiers there are base-38 numbers, it holds
+  (`internal/sim/msfs2024/fsarchive`, `.../bgl`, `cmd/fsainspect`): identifiers there are base-38 numbers, it holds
   about a third of the fixes only; it is not used yet.
 - **Viewer flow:** the top box of the in-sim viewer stands for the route ("SBSJ > SBGR"); the route button opens a box
   to paste a route in (resolved by `POST /api/route/resolve` on Resolve, Enter, paste, or when the EFB's text dialog ends).

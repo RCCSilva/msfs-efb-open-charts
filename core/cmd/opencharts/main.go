@@ -31,7 +31,7 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/simconnect"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024/simconnect"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/tray"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/web"

@@ -9,9 +9,9 @@ import (
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navseed"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/simconnect"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024/navseed"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024/simconnect"
 )
 
 // How long each question to the simulator may take.
