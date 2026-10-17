@@ -25,11 +25,12 @@ import (
 	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/server"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/simconnect"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/tray"
@@ -128,28 +129,14 @@ func main() {
 		}
 	}
 
-	fixedPos := func() server.Position {
-		return server.Position{Valid: true, Connected: true, Lat: *lat, Lon: *lon, HeadingTrue: *hdg,
-			Source: "fixed", UpdatedAt: time.Now()}
-	}
-	pos := fixedPos
-	var simDLL string // the SimConnect library, when there is a simulator link at all
+	// what the simulator gives the program: the position of the aircraft, navigation data...
+	provider := sim.Provider{ID: "fixed", Name: "Fixed position", Position: sim.Fixed(*lat, *lon, *hdg)}
 	if !*fixed {
 		dll, err := simconnect.FindDLL(*dllPath, *data)
 		if err != nil {
 			log.Printf("simconnect: %v; using the fixed position", err)
 		} else {
-			simDLL = dll
-			sc := simconnect.New(context.Background(), dll, log.Printf)
-			pos = func() server.Position {
-				st, detail := sc.Status()
-				p := server.Position{Source: "simconnect", Connected: st == simconnect.StateOpen || st == simconnect.StateData, Detail: detail}
-				if s, ok := sc.Latest(); ok && time.Since(s.At) < 5*time.Second {
-					p.Valid, p.Lat, p.Lon, p.HeadingTrue = true, s.Lat, s.Lon, s.HeadingTrue
-					p.GroundSpeed, p.AltitudeFt, p.UpdatedAt = s.GroundSpeed, s.AltitudeFt, s.At
-				}
-				return p
-			}
+			provider = msfs2024.New(context.Background(), dll, log.Printf)
 		}
 	}
 
@@ -202,42 +189,11 @@ func main() {
 		}
 	}
 
-	srv := server.New(lib, factory, pos, ln.Addr().String())
+	srv := server.New(lib, factory, provider, ln.Addr().String())
 	srv.UseSettings(*data, defaultDataDir(), cfg, fixedAddr)
 
 	// What the simulator knows about airports and procedures: asked on demand, kept in SQLite.
 	navPath := filepath.Join(*data, "navdata.db")
-	var fetch server.NavFetcher
-	var fixes server.FixFetcher
-	var lookup server.IdentFetcher
-	if simDLL != "" {
-		fetch = func(icao string) (*navdata.Airport, error) {
-			return simconnect.FetchAirport(simDLL, icao, 30*time.Second)
-		}
-		fixes = func(refs []navdata.FixRef) ([]navdata.Fix, error) {
-			return simconnect.FetchFixes(simDLL, refs, 60*time.Second)
-		}
-		lookup = func(idents []string) ([]navdata.Fix, error) {
-			return simconnect.LookupFixes(simDLL, idents, 30*time.Second)
-		}
-		srv.SetPlanLoader(func(file string) error { return simconnect.LoadFlightPlan(simDLL, file, 1500*time.Millisecond) })
-		srv.SetAirportBatcher(func(icaos []string) ([]server.AirportAnswer, error) {
-			res, err := simconnect.FetchAirports(simDLL, icaos, 120*time.Second)
-			out := make([]server.AirportAnswer, len(res))
-			for i, r := range res {
-				out[i] = server.AirportAnswer{Airport: r.Airport, Err: r.Err}
-			}
-			return out, err
-		})
-		srv.SetAirportLister(func() ([]server.AirportRef, error) {
-			list, err := simconnect.ListAirports(simDLL, 90*time.Second)
-			out := make([]server.AirportRef, 0, len(list))
-			for _, a := range list {
-				out = append(out, server.AirportRef{ICAO: a.ICAO, Region: a.Region, Lat: a.Lat, Lon: a.Lon})
-			}
-			return out, err
-		})
-	}
 	// The database is opened (its schema brought up to date, its structure checked) here, and again
 	// when the user starts over or restores a copy. A file that cannot be used is not fatal: the
 	// program runs without navigation data and the manager tells the user why.
@@ -260,13 +216,13 @@ func main() {
 		if m := nav.Migrated(); m.To != m.From {
 			log.Printf("navigation database: schema %d -> %d (copy before: %q)", m.From, m.To, m.Backup)
 		}
-		srv.SetNav(nav, fetch, fixes, lookup)
+		srv.SetNav(nav)
 		srv.SetNavProblem("", "")
 		return nil
 	}
 	_ = openNav()
 	srv.SetNavFile(server.NavFile{Path: navPath, Replace: func(change func() error) error {
-		srv.SetNav(nil, fetch, fixes, lookup) // nothing uses the file while it is changed
+		srv.SetNav(nil) // nothing uses the file while it is changed
 		if navCur != nil {
 			navCur.Close()
 			navCur = nil
@@ -294,7 +250,7 @@ func main() {
 		select {} // run until the process is stopped
 	}
 	status := func() string {
-		p := pos()
+		p := provider.Position.Position()
 		switch {
 		case p.Source == "fixed":
 			return "Fixed position (no simulator)"

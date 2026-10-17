@@ -10,10 +10,6 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/route"
 )
 
-// IdentFetcher asks the simulator what an identifier means, as a whole: every waypoint, VOR and
-// NDB of that name, in every region (see simconnect.LookupFixes).
-type IdentFetcher func(idents []string) ([]navdata.Fix, error)
-
 // routeProvider looks names up for the route package: the database first; the simulator for what
 // the database has never been asked about, and only once for each name.
 type routeProvider struct{ s *Server }
@@ -30,10 +26,10 @@ func (p routeProvider) Airport(icao string) (*navdata.Airport, error) {
 	if !errors.Is(err, navdb.ErrNotFound) {
 		return nil, err
 	}
-	if s.nav.fetch == nil {
+	if s.sim.Nav == nil {
 		return nil, nil // without a link to the simulator an unknown airport is just unknown
 	}
-	got, err := s.nav.fetch(icao)
+	got, err := s.sim.Nav.Airport(icao)
 	if errors.Is(err, navdata.ErrUnknown) {
 		return nil, nil
 	}

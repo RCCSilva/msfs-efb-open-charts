@@ -16,6 +16,7 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 )
 
@@ -39,7 +40,7 @@ func newDBServer(t *testing.T, before func(path string)) *dbServer {
 	if before != nil {
 		before(path)
 	}
-	s := New(lib, nil, func() Position { return Position{} }, "127.0.0.1:43214")
+	s := New(lib, nil, sim.Provider{}, "127.0.0.1:43214")
 	s.UseSettings(dir, dir, settings.Settings{}, true)
 	d := &dbServer{Server: s, path: path}
 	open := func() error {
@@ -56,13 +57,13 @@ func newDBServer(t *testing.T, before func(path string)) *dbServer {
 			return err
 		}
 		d.cur = nav
-		s.SetNav(nav, nil, nil, nil)
+		s.SetNav(nav)
 		s.SetNavProblem("", "")
 		return nil
 	}
 	_ = open()
 	s.SetNavFile(NavFile{Path: path, Replace: func(change func() error) error {
-		s.SetNav(nil, nil, nil, nil)
+		s.SetNav(nil)
 		if d.cur != nil {
 			d.cur.Close()
 			d.cur = nil

@@ -14,7 +14,6 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/lnmpoints"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navseed"
 )
 
 // The "Navigation" page of the manager: what is stored, small edits, the user's own points, and the
@@ -111,10 +110,18 @@ func (s *Server) navDB() *navdb.DB {
 	return s.nav.db
 }
 
-func (s *Server) canAskSim() bool {
-	s.nav.ptrMu.RLock()
-	defer s.nav.ptrMu.RUnlock()
-	return s.nav.lookup != nil
+func (s *Server) canAskSim() bool { return s.sim.Nav != nil }
+
+// seedFiles are the files of the simulator the identifiers can be read from (none when it has no
+// such files).
+func (s *Server) seedFiles() []string {
+	if s.sim.Seed == nil {
+		return []string{}
+	}
+	if files := s.sim.Seed.Locate(); files != nil {
+		return files
+	}
+	return []string{}
 }
 
 func navUnavailable(w http.ResponseWriter) {
@@ -134,10 +141,7 @@ func (s *Server) handleNavSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	canAsk := s.canAskSim()
-	files := navseed.Locate()
-	if files == nil {
-		files = []string{}
-	}
+	files := s.seedFiles()
 	writeJSON(w, 200, map[string]any{"counts": c, "simLink": canAsk, "files": files, "job": s.nav.job.snapshot()})
 }
 
@@ -416,9 +420,9 @@ func (s *Server) loadFixes(db *navdb.DB, mode string, finish func(phase, msg str
 	j := &s.nav.job
 
 	// 1. the identifiers, from the simulator's files
-	paths := navseed.Locate()
+	paths := s.seedFiles()
 	if len(paths) > 0 {
-		list, err := navseed.Read(paths, func(done, total int) bool {
+		list, err := s.sim.Seed.Read(paths, func(done, total int) bool {
 			j.set(func(j *navJob) { j.Total, j.Done = total, done })
 			return !stopped()
 		})
@@ -508,16 +512,13 @@ func (s *Server) loadFixes(db *navdb.DB, mode string, finish func(phase, msg str
 // (and starts with the prefix, when there is one) is asked in full, with its procedures.
 func (s *Server) loadAirports(db *navdb.DB, prefix string, finish func(phase, msg string), stopped func() bool) bool {
 	j := &s.nav.job
-	s.nav.ptrMu.RLock()
-	list, fetch, batch := s.nav.list, s.nav.fetch, s.nav.batch
-	s.nav.ptrMu.RUnlock()
-	if list == nil || fetch == nil {
+	if s.sim.Nav == nil {
 		finish("error", "there is no link to the simulator to list its airports")
 		return false
 	}
 	j.set(func(j *navJob) { j.Phase, j.Message, j.Total, j.Done = "listing", "", 0, 0 })
 	s.saveJob()
-	all, err := list()
+	all, err := s.sim.Nav.ListAirports()
 	if err != nil {
 		finish("error", err.Error())
 		return false
@@ -541,10 +542,7 @@ func (s *Server) loadAirports(db *navdb.DB, prefix string, finish func(phase, ms
 	j.set(func(j *navJob) { j.Phase, j.Total, j.Done = "airports", len(todo), 0 })
 	s.saveJob()
 	// the simulator answers each request after a fixed delay, so many are asked at once
-	chunk := 1
-	if batch != nil {
-		chunk = 200
-	}
+	const chunk = 200
 	failures := 0
 	for from := 0; from < len(todo); from += chunk {
 		if stopped() {
@@ -553,16 +551,9 @@ func (s *Server) loadAirports(db *navdb.DB, prefix string, finish func(phase, ms
 		}
 		codes := todo[from:min(len(todo), from+chunk)]
 		s.nav.mu.Lock()
-		var answers []AirportAnswer
-		var err error
-		if batch != nil {
-			answers, err = batch(codes)
-			if err == nil && len(answers) != len(codes) {
-				err = errors.New("the simulator answered a different number of airports than asked")
-			}
-		} else {
-			a, e := fetch(codes[0])
-			answers, err = []AirportAnswer{{Airport: a, Err: e}}, nil
+		answers, err := s.sim.Nav.Airports(codes)
+		if err == nil && len(answers) != len(codes) {
+			err = errors.New("the simulator answered a different number of airports than asked")
 		}
 		if err == nil {
 			for _, ans := range answers {

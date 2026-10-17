@@ -15,6 +15,7 @@ each under its own license.
 | [Leaflet](https://leafletjs.com/) | Map in the viewer | BSD-2-Clause |
 | [Noto Sans](https://github.com/notofonts/latin-greek-cyrillic) | Font of the in-sim viewer (`core/web/sim/fonts`) | SIL Open Font License 1.1 |
 | [go-winres](https://github.com/tc-hib/go-winres) | Executable icon and version (build only) | MIT |
+| [testify](https://github.com/stretchr/testify) | Assertions and mocks of the tests (not shipped) | MIT |
 | [Inno Setup](https://jrsoftware.org/isinfo.php) | Installer generation (build only) | Inno Setup license (free) |
 
 ## Data and SDK

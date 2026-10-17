@@ -22,25 +22,13 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/jobs"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/setup"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/web"
 )
 
 // Position is the aircraft state published to the viewers.
-type Position struct {
-	Valid       bool
-	Lat, Lon    float64
-	HeadingTrue float64
-	GroundSpeed float64
-	AltitudeFt  float64
-	Connected   bool   // the position source is reachable (always true for "fixed")
-	Detail      string // why it is not connected, for the viewer
-	Source      string // "fixed", "simconnect"
-	UpdatedAt   time.Time
-}
-
-// PositionSource provides the current aircraft position.
-type PositionSource func() Position
+type Position = sim.Position
 
 // Server wires everything together.
 type Server struct {
@@ -48,8 +36,8 @@ type Server struct {
 	newRenderer RendererFactory    // nil: importing disabled
 	rend        *importer.Renderer // created on demand, see renderer.go
 	rendIdle    *time.Timer
-	position    PositionSource
-	importMu    sync.Mutex // PDFium instance is single-threaded
+	sim         sim.Provider // what the simulator gives: position, navigation data...
+	importMu    sync.Mutex   // PDFium instance is single-threaded
 	impTime     importTiming
 	tiles       *tileCache
 	jobs        *jobs.Manager
@@ -59,9 +47,10 @@ type Server struct {
 	addr        string   // the address being listened on; guarded by net.mu
 }
 
-// New builds a server. newRenderer may be nil (import then returns 503).
-func New(lib *store.Library, newRenderer RendererFactory, pos PositionSource, addr string) *Server {
-	s := &Server{lib: lib, newRenderer: newRenderer, position: pos, addr: addr,
+// New builds a server. newRenderer may be nil (import then returns 503). The provider is what the
+// simulator gives (see package sim); what it leaves nil the server does without.
+func New(lib *store.Library, newRenderer RendererFactory, provider sim.Provider, addr string) *Server {
+	s := &Server{lib: lib, newRenderer: newRenderer, sim: provider, addr: addr,
 		tiles: newTileCache(filepath.Join(lib.Dir(), "tiles")), jobs: jobs.NewManager(50)}
 	s.loadFAAMetadata()
 	return s
@@ -75,7 +64,7 @@ func (s *Server) Handler() http.Handler {
 		// The EFB app (another origin) polls this to show its status bar; it carries no data
 		// worth protecting, so it is the only endpoint that allows cross-origin reads.
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		p := s.position()
+		p := s.currentPosition()
 		writeJSON(w, 200, map[string]any{"ok": true, "app": "open-charts", "local": isLocalRequest(r),
 			"version": buildinfo.Display(setup.EFBVersion),
 			"charts":  s.lib.Count(), "importer": s.canImport(),
@@ -197,10 +186,18 @@ func readJSON(r *http.Request, v any) error {
 	return json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(v)
 }
 
+// currentPosition is where the simulator says the aircraft is; without a position source, nowhere.
+func (s *Server) currentPosition() Position {
+	if s.sim.Position == nil {
+		return Position{}
+	}
+	return s.sim.Position.Position()
+}
+
 // ------------------------------------------------------------------ handlers
 
 func (s *Server) handlePosition(w http.ResponseWriter, r *http.Request) {
-	p := s.position()
+	p := s.currentPosition()
 	age := any(nil)
 	if !p.UpdatedAt.IsZero() {
 		age = time.Since(p.UpdatedAt).Milliseconds()

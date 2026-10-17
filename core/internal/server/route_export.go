@@ -12,16 +12,6 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/route"
 )
 
-// PlanLoader asks the simulator to load a flight plan file (see simconnect.LoadFlightPlan).
-type PlanLoader func(file string) error
-
-// SetPlanLoader gives the server the way to load a flight plan in the simulator.
-func (s *Server) SetPlanLoader(l PlanLoader) {
-	s.nav.ptrMu.Lock()
-	s.nav.planLoad = l
-	s.nav.ptrMu.Unlock()
-}
-
 type exportRequest struct {
 	Route   string         `json:"route"`
 	Choices []route.Choice `json:"choices"`
@@ -108,10 +98,7 @@ func (s *Server) handleRoutePLN(w http.ResponseWriter, r *http.Request) {
 // POST /api/route/pln/load  {"route": "...", "choices": [...]}
 // The same file is kept in the data folder and the simulator is asked to load it.
 func (s *Server) handleRoutePLNLoad(w http.ResponseWriter, r *http.Request) {
-	s.nav.ptrMu.RLock()
-	load := s.nav.planLoad
-	s.nav.ptrMu.RUnlock()
-	if load == nil {
+	if s.sim.Plans == nil {
 		writeErr(w, 503, errors.New("there is no link to the simulator (SimConnect.dll was not found)"))
 		return
 	}
@@ -141,7 +128,7 @@ func (s *Server) handleRoutePLNLoad(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
-	if err := load(file); err != nil {
+	if err := s.sim.Plans.Load(file); err != nil {
 		writeErr(w, 502, err)
 		return
 	}

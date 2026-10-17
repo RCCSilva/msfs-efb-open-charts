@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 )
 
@@ -21,7 +22,7 @@ func TestChartFilesAreRevalidatedAndShowEdits(t *testing.T) {
 	if _, err := lib.Add("c1", []byte("png"), []byte(meta), []byte("%PDF-1.4")); err != nil {
 		t.Fatal(err)
 	}
-	srv := New(lib, nil, func() Position { return Position{} }, "127.0.0.1:8080").Handler()
+	srv := New(lib, nil, sim.Provider{}, "127.0.0.1:8080").Handler()
 	do := func(method, path, body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		req.Host = "127.0.0.1:8080"

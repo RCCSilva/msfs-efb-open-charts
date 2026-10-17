@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/store"
 )
 
@@ -20,7 +21,7 @@ func newAccessServer(t *testing.T, lan bool) (*Server, http.Handler) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := New(lib, nil, func() Position { return Position{} }, "127.0.0.1:43210")
+	s := New(lib, nil, sim.Provider{}, "127.0.0.1:43210")
 	s.UseSettings(t.TempDir(), "", settings.Settings{Port: 43210, LAN: lan, Token: testToken}, false)
 	return s, s.Handler()
 }

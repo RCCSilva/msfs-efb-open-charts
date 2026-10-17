@@ -38,7 +38,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	if installs == nil {
 		installs = []setup.Install{}
 	}
-	p := s.position()
+	p := s.currentPosition()
 	writeJSON(w, 200, map[string]any{
 		"exe": s.exePath(), "dataDir": s.lib.Dir(), "addr": s.listenAddr(), "serverURL": s.serverURL(),
 		"efbVersion": setup.EFBVersion, "program": buildinfo.Get(setup.EFBVersion), "installs": installs,

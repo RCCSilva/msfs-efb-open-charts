@@ -12,68 +12,20 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
 )
 
-// NavFetcher asks the simulator for one airport (see simconnect.FetchAirport).
-type NavFetcher func(icao string) (*navdata.Airport, error)
-
-// AirportAnswer is the answer for one airport of an AirportBatchFetcher.
-type AirportAnswer struct {
-	Airport *navdata.Airport
-	Err     error // navdata.ErrUnknown when the simulator does not know it
-}
-
-// AirportBatchFetcher asks the simulator for many airports at once (see simconnect.FetchAirports):
-// the answers are in the order of the codes.
-type AirportBatchFetcher func(icaos []string) ([]AirportAnswer, error)
-
-// AirportRef is one line of the simulator's list of airports.
-type AirportRef struct {
-	ICAO   string
-	Region string
-	Lat    float64
-	Lon    float64
-}
-
-// AirportLister asks the simulator for the list of all its airports (see simconnect.ListAirports).
-type AirportLister func() ([]AirportRef, error)
-
-// SetAirportLister gives the server the way to list every airport of the simulator.
-func (s *Server) SetAirportLister(l AirportLister) {
-	s.nav.ptrMu.Lock()
-	s.nav.list = l
-	s.nav.ptrMu.Unlock()
-}
-
-// SetAirportBatcher gives the server the way to ask for many airports at once; the bulk load uses it.
-func (s *Server) SetAirportBatcher(b AirportBatchFetcher) {
-	s.nav.ptrMu.Lock()
-	s.nav.batch = b
-	s.nav.ptrMu.Unlock()
-}
-
-// FixFetcher asks the simulator for waypoints, VORs and NDBs (see simconnect.FetchFixes).
-type FixFetcher func(refs []navdata.FixRef) ([]navdata.Fix, error)
-
 type navState struct {
-	mu       sync.Mutex   // one fetch at a time: the simulator answers one conversation, and a repeat is wasted work
-	ptrMu    sync.RWMutex // guards only the fields below that are set once (never held while the simulator is asked)
-	db       *navdb.DB
-	fetch    NavFetcher
-	fixes    FixFetcher
-	lookup   IdentFetcher
-	job      navJob // the bulk load of the Navigation page
-	list     AirportLister
-	batch    AirportBatchFetcher
-	planLoad PlanLoader
-	file     NavFile
-	problem  *NavProblem
+	mu      sync.Mutex   // one fetch at a time: the simulator answers one conversation, and a repeat is wasted work
+	ptrMu   sync.RWMutex // guards only the fields below that are set once (never held while the simulator is asked)
+	db      *navdb.DB
+	job     navJob // the bulk load of the Navigation page
+	file    NavFile
+	problem *NavProblem
 }
 
-// SetNav gives the server the navigation database and, when the simulator link exists, the way
-// to fill it. Either may be nil.
-func (s *Server) SetNav(db *navdb.DB, fetch NavFetcher, fixes FixFetcher, lookup IdentFetcher) {
+// SetNav gives the server the navigation database (nil while it cannot be used).
+func (s *Server) SetNav(db *navdb.DB) {
 	s.nav.mu.Lock()
 	s.nav.ptrMu.Lock()
-	s.nav.db, s.nav.fetch, s.nav.fixes, s.nav.lookup = db, fetch, fixes, lookup
+	s.nav.db = db
 	s.nav.ptrMu.Unlock()
 	s.nav.mu.Unlock()
 	s.restoreJob()
@@ -107,10 +59,10 @@ func (s *Server) loadIdents(idents []string) error {
 // loadIdentsCount is loadIdents that also says how many places the simulator knew. With
 // markEmpty false, an answer with nothing in it is not recorded (the caller doubts the simulator).
 func (s *Server) loadIdentsCount(idents []string, markEmpty bool) (int, error) {
-	if s.nav.lookup == nil || len(idents) == 0 {
+	if s.sim.Nav == nil || len(idents) == 0 {
 		return 0, nil
 	}
-	found, err := s.nav.lookup(idents)
+	found, err := s.sim.Nav.LookupFixes(idents)
 	if err != nil {
 		return 0, err // not asked: nothing is marked, the next time asks again
 	}
@@ -158,11 +110,11 @@ func (s *Server) handleNavAirport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if s.nav.fetch == nil {
+	if s.sim.Nav == nil {
 		writeErr(w, 503, errors.New("not in the database, and there is no link to the simulator to ask it"))
 		return
 	}
-	a, err := s.nav.fetch(icao)
+	a, err := s.sim.Nav.Airport(icao)
 	if err != nil {
 		writeErr(w, 502, err)
 		return
