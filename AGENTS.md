@@ -63,6 +63,14 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
 - **Go:** keep `CGO_ENABLED=0`. Standard library first; a new dependency needs a clear reason and a
   permissive license (add it to `NOTICE.md`). Run `gofmt` and `go vet`. Prefer small packages and
   table-free, readable code that matches the surrounding style.
+- **Go design:** package-oriented design (https://www.ardanlabs.com/blog/2017/02/package-oriented-design.html):
+  packages are named for what they provide, are small and have one purpose, and do not reach into each other's
+  details. **Accept interfaces, return structs**: a function takes the smallest interface it needs (declared where
+  it is used, not where it is implemented) and returns a concrete type.
+- **Go tests:** use `github.com/stretchr/testify` (`require` for what the rest of the test depends on, `assert` for
+  the checks). Every test has the three parts marked with the comments `// Arrange`, `// Act` and `// Assert`
+  (a table test marks them inside the `t.Run`). Add testify to `go.mod` and `NOTICE.md` (MIT) with the first test that
+  uses it. New and changed tests follow this; older tests are converted when they are touched.
 - **In-sim viewer (`core/web/sim`):** the simulator's browser is old (Chromium ~49). Write ES5
   (`var`, no arrow functions, no `fetch`, no template literals), use XHR, SVG icons only, no CSS
   animations or 3D transforms. Leaflet runs with `L_DISABLE_3D = true`. Defer layout until the
