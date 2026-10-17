@@ -222,3 +222,14 @@ body.fullmap .planpanel { position: static; max-height: none; height: 100%; over
 .srctable td { padding: 12px 14px; vertical-align: top; }
 .srctable th { padding: 10px 14px; }
 .srctable .badge { margin: 2px 4px 2px 0; }
+
+/* the route as text, and the box of places that are close to a click */
+.routebox { border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 8px 10px; margin-top: 8px; cursor: text;
+  font-family: ui-monospace, Consolas, monospace; font-size: 13px; max-height: 6.5em; overflow: auto; overflow-wrap: anywhere; }
+.routebox.empty { color: #6b7280; font-family: inherit; }
+.routebox:hover, .routebox:focus { border-color: #94a3b8; outline: none; }
+.nearbox { min-width: 220px; }
+.nearrow { display: flex; align-items: center; gap: 8px; padding: 3px 0; border-top: 1px solid var(--line); }
+
+.nearlist { max-height: 260px; overflow: auto; }
+.nearpop .leaflet-popup-content { margin: 10px 12px; }

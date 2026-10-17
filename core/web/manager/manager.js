@@ -1908,7 +1908,7 @@
   // airways around. The EFB screen is for flying; planning is done here, before the flight.
   const MP = {
     en: {
-      title: 'Map', hint: 'Click an airport or a fix to add it to the route. Right-click an empty place to make a point of your own there.',
+      title: 'Map', hint: 'Click an airport or a fix to add it to the route. Click the origin, then the destination: what you add after that goes between them. Right-click an empty place to make a point of your own there.',
       route: 'Route', empty: 'The route is empty. Click airports and fixes on the map.', name: 'Name', save: 'Save', clear: 'Clear',
       validate: 'Validate', saved: 'Saved', failed: 'Could not do that', open: 'Open a saved route...', up: 'Move up', down: 'Move down',
       remove: 'Remove', zoomIn: 'Zoom in to see fixes and airways.', cut: 'Too many here: zoom in to see them all.',
@@ -1926,10 +1926,14 @@
       secSearch: 'Find a place', secRoute: 'Route', secCharts: 'Charts', secLayers: 'What the map shows', secMine: 'My points',
       noMine: 'You have no points of your own yet.', ident: 'Identifier', lat: 'Latitude', lon: 'Longitude', createPoint: 'Create the point',
       useCenter: 'Use the centre of the map', deletePoint: 'Delete this point', confirmDelPoint: 'Delete this point?', created: 'Point created',
-      chartsOnMapEmpty: 'No chart on the map yet.'
+      chartsOnMapEmpty: 'No chart on the map yet.',
+      textBox: 'Click to write or paste the route as text', textTitle: 'Route as text',
+      textHelp: 'Write the route the way pilots do, for example SBSJ BOBI3A DAGUB UZ6 SBGR. Airways, SIDs and STARs are expanded into their places.',
+      apply: 'Use this route', cancel: 'Cancel', textEmpty: 'Write a route first.', textNone: 'No place of this route was found.',
+      nearTitle: 'Several places here', nearHelp: 'Pick the one to add to the route.', airwaysHere: 'Airways here', nearMore: 'more here: zoom in to tell them apart'
     },
     pt: {
-      title: 'Mapa', hint: 'Clique num aeroporto ou fixo para acrescentar à rota. Clique com o botão direito num lugar vazio para criar um ponto seu ali.',
+      title: 'Mapa', hint: 'Clique num aeroporto ou fixo para acrescentar à rota. Clique na origem e depois no destino: o que você acrescentar depois entra entre os dois. Clique com o botão direito num lugar vazio para criar um ponto seu ali.',
       route: 'Rota', empty: 'A rota está vazia. Clique em aeroportos e fixos no mapa.', name: 'Nome', save: 'Salvar', clear: 'Limpar',
       validate: 'Validar', saved: 'Salva', failed: 'Não foi possível', open: 'Abrir uma rota salva...', up: 'Subir', down: 'Descer',
       remove: 'Remover', zoomIn: 'Aproxime para ver os fixos e as aerovias.', cut: 'Tem coisa demais aqui: aproxime para ver tudo.',
@@ -1947,26 +1951,56 @@
       secSearch: 'Procurar um lugar', secRoute: 'Rota', secCharts: 'Cartas', secLayers: 'O que o mapa mostra', secMine: 'Meus pontos',
       noMine: 'Você ainda não tem pontos seus.', ident: 'Identificador', lat: 'Latitude', lon: 'Longitude', createPoint: 'Criar o ponto',
       useCenter: 'Usar o centro do mapa', deletePoint: 'Excluir este ponto', confirmDelPoint: 'Excluir este ponto?', created: 'Ponto criado',
-      chartsOnMapEmpty: 'Nenhuma carta no mapa ainda.'
+      chartsOnMapEmpty: 'Nenhuma carta no mapa ainda.',
+      textBox: 'Clique para escrever ou colar a rota em texto', textTitle: 'Rota em texto',
+      textHelp: 'Escreva a rota como os pilotos, por exemplo SBSJ BOBI3A DAGUB UZ6 SBGR. Aerovias, SIDs e STARs são abertas nos seus pontos.',
+      apply: 'Usar esta rota', cancel: 'Cancelar', textEmpty: 'Escreva uma rota primeiro.', textNone: 'Nenhum ponto desta rota foi encontrado.',
+      nearTitle: 'Vários pontos aqui', nearHelp: 'Escolha o que entra na rota.', airwaysHere: 'Aerovias aqui', nearMore: 'a mais aqui: aproxime para separá-los'
     }
   };
   const mp = (k) => (MP[lang] && MP[lang][k]) || MP.en[k] || k;
   const KIND_WORD = { W: 'waypoint', V: 'vor', N: 'ndb' };
   const plan = { id: 0, name: '', auto: true, points: [], choices: [], map: null, result: null };
 
-  function planText() { return plan.points.map((p) => p.ident).join(' '); }
+  // The route as written: an airway or a procedure appears once, followed by the place it ends at
+  // (the planner keeps every place the airway passes, the text does not need them).
+  // Each token is { text, point }: point is the place a fix token stands for (null for a name).
+  function planTokens() {
+    const pts = plan.points;
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      if (p.kind === 'procedure') {
+        out.push({ text: p.ident, point: null });
+        let j = i;
+        while (j + 1 < pts.length && pts[j + 1].via === p.ident) j++;
+        if (j > i) out.push({ text: pts[j].ident, point: pts[j] });
+        i = j;
+      } else if (p.via && i > 0) {
+        let j = i;
+        while (j + 1 < pts.length && pts[j + 1].via === p.via) j++;
+        out.push({ text: p.via, point: null }, { text: pts[j].ident, point: pts[j] });
+        i = j;
+      } else out.push({ text: p.ident, point: p });
+    }
+    return out;
+  }
+  function planText() { return planTokens().map((t) => t.text).join(' '); }
 
   function planChoices() {
     // each fix is the place that was touched, even when the name exists elsewhere
     const seen = {};
     const out = [];
-    plan.points.forEach((p) => {
-      const n = seen[p.ident] || 0;
-      seen[p.ident] = n + 1;
-      if (p.kind !== 'airport' && p.kind !== 'coordinate' && p.region) out.push({ token: p.ident, nth: n, region: p.region, kind: p.kind });
+    planTokens().forEach((t) => {
+      if (!t.point) return;
+      const p = t.point;
+      const n = seen[t.text] || 0;
+      seen[t.text] = n + 1;
+      if (p.kind !== 'airport' && p.kind !== 'coordinate' && p.kind !== 'procedure' && p.region) out.push({ token: t.text, nth: n, region: p.region, kind: p.kind });
     });
     return out;
   }
+  const toPlanPoint = (p) => ({ ident: p.ident, region: p.region || '', kind: p.kind, lat: p.lat, lon: p.lon, via: p.via || '' });
 
   // A chart over the map: every tile is drawn by cutting the picture into small triangles and
   // placing each where the chart's own georeference says it belongs (same method as the viewer).
@@ -2086,6 +2120,9 @@
     const searchIn = h('input', { type: 'text', placeholder: mp('search'), autocomplete: 'off' });
     const searchHost = h('div', { class: 'searchres' });
     const listHost = h('div');
+    const textBox = h('div', { class: 'routebox', tabindex: '0', role: 'button', title: mp('textTitle') });
+    textBox.addEventListener('click', () => openTextDialog());
+    textBox.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTextDialog(); } });
     const resultHost = h('div');
     const hintHost = h('div', { class: 'muted planhint' });
     const openSel = h('select', { style: 'width:100%' }, h('option', { value: '' }, mp('open')),
@@ -2119,7 +2156,7 @@
       section('route', mp('secRoute'), true,
         openSel,
         h('label', { class: 'fld', style: 'margin-top:8px' }, h('span', { class: 'muted' }, mp('name')), nameIn),
-        listHost, distHost,
+        textBox, listHost, distHost,
         h('div', { class: 'row', style: 'margin-top:8px' },
           h('button', { class: 'btn', onclick: () => validatePlan() }, mp('validate')),
           h('button', { class: 'btn primary', onclick: () => savePlan() }, mp('save')),
@@ -2140,8 +2177,16 @@
       charts: L.layerGroup()   // off until the user turns it on
     };
     const overlays = {};   // id -> { layer, meta, name }
+    const known = { airports: [], fixes: [], segs: [], mine: [] };   // what the map shows now, for the clicks
 
-    const add = (p) => { plan.points.push(p); plan.result = null; autoName(); redrawPlan(); };
+    // With an airport at each end the route has its origin and destination: what is added after
+    // goes between them. Until then, each place is added at the end.
+    const add = (p) => {
+      const n = plan.points.length;
+      const ends = n >= 2 && plan.points[0].kind === 'airport' && plan.points[n - 1].kind === 'airport';
+      if (ends) plan.points.splice(n - 1, 0, p); else plan.points.push(p);
+      plan.result = null; autoName(); redrawPlan();
+    };
     const colorOf = { W: '#6b7280', V: '#15803d', N: '#92400e' };
 
     function autoName() {
@@ -2168,6 +2213,8 @@
           h('button', { class: 'btn sm', title: mp('down'), disabled: i === plan.points.length - 1, onclick: () => { swap(i, i + 1); } }, '↓'),
           h('button', { class: 'btn sm danger', title: mp('remove'), onclick: () => { plan.points.splice(i, 1); plan.result = null; autoName(); redrawPlan(); } }, '×'))))]));
       resultHost.replaceChildren();
+      textBox.textContent = planText() || mp('textBox');
+      textBox.classList.toggle('empty', plan.points.length === 0);
       showDistance();
     }
 
@@ -2192,18 +2239,62 @@
       plan.result = null; autoName(); redrawPlan();
     }
 
+    function showResult(res) {
+      resultHost.replaceChildren(
+        h('div', null, h('span', { class: 'badge' }, `${res.points.length} ${mp('places')}`),
+          h('span', { class: 'badge' }, `${fmtNum(res.totalNm)} ${mp('nm')}`),
+          res.problems.length ? h('span', { class: 'badge warn' }, `${res.problems.length} ${mp('problems')}`) : h('span', { class: 'badge ok' }, mp('ok'))),
+        res.problems.length ? h('div', { class: 'warnbox', style: 'margin-top:6px' }, res.problems.map((q) => h('div', null, h('strong', null, q.token), ' ', q.message))) : null);
+    }
+
     async function validatePlan() {
       if (!plan.points.length) return;
       status.textContent = '...';
       try {
         const res = await api('POST', '/api/route/resolve', { route: planText(), choices: planChoices() });
         status.textContent = '';
-        resultHost.replaceChildren(
-          h('div', null, h('span', { class: 'badge' }, `${res.points.length} ${mp('places')}`),
-            h('span', { class: 'badge' }, `${fmtNum(res.totalNm)} ${mp('nm')}`),
-            res.problems.length ? h('span', { class: 'badge warn' }, `${res.problems.length} ${mp('problems')}`) : h('span', { class: 'badge ok' }, mp('ok'))),
-          res.problems.length ? h('div', { class: 'warnbox', style: 'margin-top:6px' }, res.problems.map((q) => h('div', null, h('strong', null, q.token), ' ', q.message))) : null);
+        showResult(res);
       } catch (e) { status.textContent = mp('failed') + ': ' + e.message; }
+    }
+
+    // The route as text, in a bigger box: write it, paste it or change it.
+    function openTextDialog() {
+      const ta = h('textarea', { rows: 6, class: 'routetext', spellcheck: 'false', placeholder: 'SBSJ BOBI3A DAGUB UZ6 SBGR' });
+      ta.value = planText();
+      const msg = h('div', { class: 'muted', style: 'margin:8px 0; min-height:18px' });
+      const onKey = (e) => { if (e.key === 'Escape') close(); };
+      const close = () => { back.remove(); document.removeEventListener('keydown', onKey); };
+      const apply = async () => {
+        const text = ta.value.trim();
+        if (!text) { msg.textContent = mp('textEmpty'); return; }
+        msg.textContent = '...';
+        let res;
+        try { res = await api('POST', '/api/route/resolve', { route: text, choices: planChoices() }); } catch (e) { msg.textContent = mp('failed') + ': ' + e.message; return; }
+        if (!res.points.length) {
+          msg.replaceChildren(mp('textNone'), ...res.problems.map((q) => h('div', null, h('strong', null, q.token || ''), ' ', q.message)));
+          return;
+        }
+        plan.points = res.points.map(toPlanPoint);
+        plan.result = null;
+        autoName();
+        redrawPlan();
+        showResult(res);
+        map.fitBounds(L.latLngBounds(plan.points.map((q) => [q.lat, q.lon])), { padding: [40, 40] });
+        close();
+      };
+      ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); apply(); } });
+      const back = h('div', { class: 'modal' },
+        h('div', { class: 'card modalbox', style: 'max-width:640px' },
+          h('h3', null, mp('textTitle')),
+          h('p', { class: 'muted', style: 'margin:0 0 8px' }, mp('textHelp')),
+          ta, msg,
+          h('div', { class: 'row' },
+            h('button', { class: 'btn primary', onclick: apply }, mp('apply')),
+            h('button', { class: 'btn', onclick: close }, mp('cancel')))));
+      back.addEventListener('mousedown', (e) => { if (e.target === back) close(); });
+      document.addEventListener('keydown', onKey);
+      document.body.appendChild(back);
+      ta.focus();
     }
 
     async function savePlan() {
@@ -2223,7 +2314,7 @@
       try {
         const res = await api('POST', '/api/route/resolve', { route: r.text, choices: r.choices || [] });
         plan.id = r.id; plan.name = r.name; plan.auto = false; nameIn.value = r.name;
-        plan.points = res.points.map((p) => ({ ident: p.ident, region: p.region || '', kind: p.kind, lat: p.lat, lon: p.lon }));
+        plan.points = res.points.map(toPlanPoint);
         plan.result = null;
         redrawPlan();
         status.textContent = '';
@@ -2243,18 +2334,19 @@
       try { a = await api('GET', '/api/nav/area?' + q); } catch (e) { return; }
       if (my !== seq) return;
       layers.airports.clearLayers(); layers.fixes.clearLayers(); layers.segs.clearLayers();
+      known.airports = a.airports; known.fixes = a.fixes; known.segs = a.segments;
       a.airports.forEach((x) => {
         const m = L.marker([x.lat, x.lon], { icon: L.divIcon({ className: 'plan-ap', html: `<b>${x.icao}</b>`, iconSize: null, iconAnchor: [-6, 8] }) });
         m.bindTooltip(`${x.icao} ${x.name || ''}`);
-        m.on('click', () => add({ ident: x.icao, region: '', kind: 'airport', lat: x.lat, lon: x.lon }));
+        m.on('click', (ev) => pickPlace(ev, airportPlace(x)));
         m.addTo(layers.airports);
         L.circleMarker([x.lat, x.lon], { radius: 6, color: '#1d4ed8', weight: 2, fillColor: '#bfdbfe', fillOpacity: 1 })
-          .on('click', () => add({ ident: x.icao, region: '', kind: 'airport', lat: x.lat, lon: x.lon })).addTo(layers.airports);
+          .on('click', (ev) => pickPlace(ev, airportPlace(x))).addTo(layers.airports);
       });
       a.fixes.forEach((x) => {
         const m = L.circleMarker([x.lat, x.lon], { radius: x.kind === 'W' ? 3 : 5, color: colorOf[x.kind] || '#6b7280', weight: 1.5, fillOpacity: 0.7 });
         m.bindTooltip(`${x.ident} ${x.region} ${KIND_WORD[x.kind] || ''}${x.name ? ' ' + x.name : ''}`);
-        m.on('click', () => add({ ident: x.ident, region: x.region, kind: KIND_WORD[x.kind] || 'waypoint', lat: x.lat, lon: x.lon }));
+        m.on('click', (ev) => pickPlace(ev, fixPlace(x)));
         m.addTo(layers.fixes);
       });
       a.segments.forEach((s) => {
@@ -2368,6 +2460,56 @@
       }, 250);
     });
 
+    // ---- a click on a mark: when other places are close to it the click is ambiguous, so nothing is
+    // added; a box lists them (and the airways that pass there) and the user picks
+    const airportPlace = (x) => ({ point: { ident: x.icao, region: '', kind: 'airport', lat: x.lat, lon: x.lon }, label: mp('typeAirport'), name: x.name || '' });
+    const fixPlace = (x) => ({ point: { ident: x.ident, region: x.region, kind: KIND_WORD[x.kind] || 'waypoint', lat: x.lat, lon: x.lon }, label: MP[lang].kindsShort[x.kind] || '', name: x.name || '' });
+    const minePlace = (x) => ({ point: { ident: x.ident, region: 'USR', kind: 'waypoint', lat: x.lat, lon: x.lon }, label: mp('typePoint'), name: x.name || '' });
+    const NEAR_PX = 14;
+    const NEAR_MAX = 12;
+    function placesNear(center) {
+      const c = map.latLngToContainerPoint(center);
+      const out = [];
+      const consider = (pl) => {
+        const d = c.distanceTo(map.latLngToContainerPoint([pl.point.lat, pl.point.lon]));
+        if (d <= NEAR_PX) out.push({ pl, d });
+      };
+      if (map.hasLayer(layers.airports)) known.airports.forEach((x) => consider(airportPlace(x)));
+      if (map.hasLayer(layers.fixes)) known.fixes.forEach((x) => consider(fixPlace(x)));
+      if (map.hasLayer(layers.mine)) known.mine.forEach((x) => consider(minePlace(x)));
+      return out.sort((p, q) => p.d - q.d).map((o) => o.pl);
+    }
+    function airwaysNear(center) {
+      if (!map.hasLayer(layers.segs)) return [];
+      const c = map.latLngToContainerPoint(center);
+      const names = new Set();
+      known.segs.forEach((sg) => {
+        const a = map.latLngToContainerPoint([sg.lat, sg.lon]);
+        const b = map.latLngToContainerPoint([sg.toLat, sg.toLon]);
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const len2 = dx * dx + dy * dy;
+        const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((c.x - a.x) * dx + (c.y - a.y) * dy) / len2));
+        if (Math.hypot(c.x - (a.x + t * dx), c.y - (a.y + t * dy)) <= 8) names.add(sg.airway);
+      });
+      return Array.from(names).sort();
+    }
+    function pickPlace(ev, pl) {
+      L.DomEvent.stopPropagation(ev);
+      const center = ev.latlng || L.latLng(pl.point.lat, pl.point.lon);
+      const near = placesNear(center);
+      if (near.length <= 1) { add(pl.point); return; }
+      const ways = airwaysNear(center);
+      const box = h('div', { class: 'nearbox' },
+        h('strong', null, mp('nearTitle')),
+        h('div', { class: 'muted', style: 'margin:2px 0 6px' }, mp('nearHelp')),
+        h('div', { class: 'nearlist' }, near.slice(0, NEAR_MAX).map((q) => h('div', { class: 'nearrow' },
+          h('span', { class: 'grow' }, h('strong', null, q.point.ident), ' ', h('span', { class: 'muted' }, [q.point.region, q.label, q.name].filter(Boolean).join(' \u00b7 '))),
+          h('button', { class: 'btn sm', title: mp('addTo'), onclick: () => { map.closePopup(); add(q.point); } }, '+')))),
+        near.length > NEAR_MAX ? h('div', { class: 'muted', style: 'margin-top:4px' }, `+${near.length - NEAR_MAX} ` + mp('nearMore')) : null,
+        ways.length ? h('div', { class: 'muted', style: 'margin-top:6px' }, mp('airwaysHere') + ': ', h('strong', null, ways.join(', '))) : null);
+      L.popup({ maxWidth: 340, className: 'nearpop', autoPanPadding: [20, 30] }).setLatLng(center).setContent(box).openOn(map);
+    }
+
     // ---- search: when there are many small marks, ask for the one by name
     let searchSeq = 0;
     let searchTimer = null;
@@ -2405,10 +2547,11 @@
     const mineLayer = async () => {
       layers.mine.clearLayers();
       const pts = (await api('GET', '/api/nav/points')).points;
+      known.mine = pts;
       pts.forEach((p) => {
         const m = L.circleMarker([p.lat, p.lon], { radius: 5, color: '#7c3aed', weight: 2, fillColor: '#ddd6fe', fillOpacity: 1 });
         m.bindTooltip(`${p.ident}${p.name ? ' ' + p.name : ''}`);
-        m.on('click', () => add({ ident: p.ident, region: 'USR', kind: 'waypoint', lat: p.lat, lon: p.lon }));
+        m.on('click', (ev) => pickPlace(ev, minePlace(p)));
         m.addTo(layers.mine);
       });
     };
