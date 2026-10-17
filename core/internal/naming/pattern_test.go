@@ -1,6 +1,11 @@
 package naming
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestPatternReadsTheAttributesOfAName(t *testing.T) {
 	cases := []struct {
@@ -20,47 +25,67 @@ func TestPatternReadsTheAttributesOfAName(t *testing.T) {
 		{"{icao}_{type}_{title}", "SBSP_ADC_SBSP-ADC", Info{ICAO: "SBSP", Type: "ADC"}},
 	}
 	for _, c := range cases {
-		p, err := ParsePattern(c.pattern)
-		if err != nil {
-			t.Fatalf("%q: %v", c.pattern, err)
-		}
-		got, ok := p.Match(c.name)
-		if !ok || got != c.want {
-			t.Errorf("%q on %q = %+v (%v), want %+v", c.pattern, c.name, got, ok, c.want)
-		}
+		t.Run(c.pattern+" on "+c.name, func(t *testing.T) {
+			// Arrange
+			p, err := ParsePattern(c.pattern)
+			require.NoError(t, err)
+
+			// Act
+			got, ok := p.Match(c.name)
+
+			// Assert
+			assert.True(t, ok)
+			assert.Equal(t, c.want, got)
+		})
 	}
 }
 
 func TestPatternDoesNotMatchOtherNames(t *testing.T) {
-	p, err := ParsePattern("{icao}_{type}_{date:YYYYMMDD}")
-	if err != nil {
-		t.Fatal(err)
-	}
 	for _, name := range []string{"SBSP_IAC", "SBSPX_IAC_20260806", "chart.pdf", "SBSP_IAC_2026-08-06"} {
-		if _, ok := p.Match(name); ok {
-			t.Errorf("%q should not match", name)
-		}
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			p, err := ParsePattern("{icao}_{type}_{date:YYYYMMDD}")
+			require.NoError(t, err)
+
+			// Act
+			_, ok := p.Match(name)
+
+			// Assert
+			assert.False(t, ok)
+		})
 	}
 }
 
-func TestPatternMistakesAreExplained(t *testing.T) {
+func TestPatternMistakesAreRefused(t *testing.T) {
 	for _, bad := range []string{"", "{icao}_{icao}", "{airport}_{type}", "just text", "{date:YYYY}", "{icao:xx}"} {
-		if _, err := ParsePattern(bad); err == nil {
-			t.Errorf("%q should be refused", bad)
-		}
+		t.Run(bad, func(t *testing.T) {
+			// Act
+			_, err := ParsePattern(bad)
+
+			// Assert
+			assert.Error(t, err)
+		})
 	}
 }
 
 func TestPatternReadsAnAIRACCycle(t *testing.T) {
+	// Arrange
 	p, err := ParsePattern("{icao}_{type}_{title}_{cycle}")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
+	// Act
 	got, ok := p.Match("SBSP_IAC_ILS-X-RWY-17R_2608")
-	if !ok || got.Validity != "2026-08-06" || got.ICAO != "SBSP" {
-		t.Fatalf("got %+v (%v)", got, ok)
-	}
-	if _, err := ParsePattern("{cycle}_{date}"); err == nil {
-		t.Fatal("a chart has one validity: a cycle and a date together must be refused")
-	}
+
+	// Assert
+	assert.True(t, ok)
+	assert.Equal(t, "2026-08-06", got.Validity)
+	assert.Equal(t, "SBSP", got.ICAO)
+}
+
+func TestPatternRefusesACycleAndADateTogether(t *testing.T) {
+	// Act
+	_, err := ParsePattern("{cycle}_{date}")
+
+	// Assert
+	assert.Error(t, err, "a chart has one validity")
 }

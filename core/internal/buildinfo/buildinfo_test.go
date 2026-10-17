@@ -3,20 +3,29 @@ package buildinfo
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDevelopmentBuildShowsASuffix(t *testing.T) {
+	// Act
 	got := Get("0.1.1")
-	if got.Release || !strings.HasPrefix(got.Display, "0.1.1-") || got.Version != "0.1.1" {
-		t.Fatalf("development build = %+v", got)
-	}
+
+	// Assert
+	assert.False(t, got.Release)
+	assert.True(t, strings.HasPrefix(got.Display, "0.1.1-"), got.Display)
+	assert.Equal(t, "0.1.1", got.Version)
 }
 
 func TestReleaseBuildShowsTheBareVersion(t *testing.T) {
+	// Arrange
 	Release = "1"
-	defer func() { Release = "" }()
+	t.Cleanup(func() { Release = "" })
+
+	// Act
 	got := Get("0.1.1")
-	if !got.Release || got.Display != "0.1.1" {
-		t.Fatalf("release build = %+v", got)
-	}
+
+	// Assert
+	assert.True(t, got.Release)
+	assert.Equal(t, "0.1.1", got.Display)
 }

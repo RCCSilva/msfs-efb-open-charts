@@ -3,134 +3,183 @@ package settings
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestDefaults(t *testing.T) {
+// writeSettings puts a settings file with this content in a new folder.
+func writeSettings(t *testing.T, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, FileName), []byte(content), 0o644))
+	return dir
+}
+
+func TestDefaultsAreThePrivatePortAndNoNetworkAccess(t *testing.T) {
+	// Act
 	s := Load(t.TempDir())
-	if s.Port != DefaultPort || s.LAN || len(s.Token) < 20 {
-		t.Fatalf("bad defaults: %+v", s)
-	}
-	if s.ListenAddr() != "127.0.0.1:43210" {
-		t.Fatalf("listen addr = %q", s.ListenAddr())
-	}
-	// the default must not be one of the busy development ports
+
+	// Assert
+	assert.Equal(t, DefaultPort, s.Port)
+	assert.False(t, s.LAN)
+	assert.GreaterOrEqual(t, len(s.Token), 20)
+	assert.Equal(t, "127.0.0.1:43210", s.ListenAddr())
+}
+
+func TestTheDefaultPortIsNotACommonDevelopmentPort(t *testing.T) {
 	for _, busy := range []int{80, 3000, 5000, 8000, 8080, 8888, 9000} {
-		if DefaultPort == busy {
-			t.Fatalf("default port %d is a commonly used one", busy)
-		}
+		assert.NotEqual(t, busy, DefaultPort)
 	}
 }
 
-func TestRoundTripAndLAN(t *testing.T) {
+func TestSettingsSurviveASaveAndALoad(t *testing.T) {
+	// Arrange
 	dir := t.TempDir()
 	in := Settings{Port: 45000, LAN: true, Token: "abc123", Detail: DetailHigh, Basemap: BasemapDark, Aircraft: AircraftHelicopter, AircraftColor: "blue",
 		NamePatterns: []string{"{icao}_{type}_{title}"}}
-	if err := in.Save(dir); err != nil {
-		t.Fatal(err)
-	}
+
+	// Act
+	require.NoError(t, in.Save(dir))
 	out := Load(dir)
-	if !reflect.DeepEqual(out, in) {
-		t.Fatalf("round trip: got %+v, want %+v", out, in)
-	}
-	if out.ListenAddr() != "0.0.0.0:45000" {
-		t.Fatalf("LAN listen addr = %q", out.ListenAddr())
-	}
+
+	// Assert
+	assert.Equal(t, in, out)
 }
 
-func TestCorruptOrInvalidFallsBack(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(`{"port": 80, "lan": true}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+func TestNetworkAccessListensOnEveryInterface(t *testing.T) {
+	// Arrange
+	s := Settings{Port: 45000, LAN: true}
+
+	// Act
+	addr := s.ListenAddr()
+
+	// Assert
+	assert.Equal(t, "0.0.0.0:45000", addr)
+}
+
+func TestAPrivilegedPortInTheFileIsIgnoredAndTheRestIsRead(t *testing.T) {
+	// Arrange
+	dir := writeSettings(t, `{"port": 80, "lan": true}`)
+
+	// Act
 	s := Load(dir)
-	if s.Port != DefaultPort {
-		t.Fatalf("a privileged port in the file must be ignored, got %d", s.Port)
-	}
-	if !s.LAN {
-		t.Fatal("valid fields must still be read")
-	}
-	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(`not json`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got := Load(dir); got.Port != DefaultPort || got.LAN {
-		t.Fatalf("corrupt file must give defaults, got %+v", got)
+
+	// Assert
+	assert.Equal(t, DefaultPort, s.Port)
+	assert.True(t, s.LAN, "valid fields must still be read")
+}
+
+func TestACorruptFileGivesTheDefaults(t *testing.T) {
+	// Arrange
+	dir := writeSettings(t, `not json`)
+
+	// Act
+	s := Load(dir)
+
+	// Assert
+	assert.Equal(t, DefaultPort, s.Port)
+	assert.False(t, s.LAN)
+}
+
+func TestValidatePortRefusesThePrivilegedAndTheOutOfRange(t *testing.T) {
+	for _, p := range []int{0, 80, 1023, 65536, -1} {
+		assert.Error(t, ValidatePort(p), "port %d", p)
 	}
 }
 
-func TestValidatePort(t *testing.T) {
-	for _, p := range []int{0, 80, 1023, 65536, -1} {
-		if ValidatePort(p) == nil {
-			t.Errorf("port %d should be rejected", p)
-		}
-	}
+func TestValidatePortAcceptsTheUnprivileged(t *testing.T) {
 	for _, p := range []int{1024, 8080, 43210, 65535} {
-		if err := ValidatePort(p); err != nil {
-			t.Errorf("port %d should be accepted: %v", p, err)
-		}
+		assert.NoError(t, ValidatePort(p), "port %d", p)
 	}
 }
 
 func TestTokensAreUnique(t *testing.T) {
-	if NewToken() == NewToken() {
-		t.Fatal("tokens must be random")
-	}
+	assert.NotEqual(t, NewToken(), NewToken(), "tokens must be random")
 }
 
-func TestDetailDefaultsAndSizes(t *testing.T) {
-	if got := Load(t.TempDir()).Detail; got != DetailNormal {
-		t.Fatalf("default detail = %q", got)
-	}
-	if LongEdgePx(DetailNormal) != 3200 || LongEdgePx(DetailHigh) != 4800 || LongEdgePx("whatever") != 3200 {
-		t.Fatal("unexpected sizes")
-	}
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(`{"port": 43210, "detail": "ultra"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got := Load(dir).Detail; got != DetailNormal {
-		t.Fatalf("unknown detail must fall back to normal, got %q", got)
-	}
+func TestDetailDefaultsToNormal(t *testing.T) {
+	// Act
+	s := Load(t.TempDir())
+
+	// Assert
+	assert.Equal(t, DetailNormal, s.Detail)
 }
 
-func TestBasemapDefaultAndValidation(t *testing.T) {
-	if got := Load(t.TempDir()).Basemap; got != BasemapStandard {
-		t.Fatalf("default basemap = %q, want standard", got)
-	}
+func TestDetailGivesTheLongEdgeInPixels(t *testing.T) {
+	assert.Equal(t, 3200, LongEdgePx(DetailNormal))
+	assert.Equal(t, 4800, LongEdgePx(DetailHigh))
+	assert.Equal(t, 3200, LongEdgePx("whatever"))
+}
+
+func TestAnUnknownDetailFallsBackToNormal(t *testing.T) {
+	// Arrange
+	dir := writeSettings(t, `{"port": 43210, "detail": "ultra"}`)
+
+	// Act
+	s := Load(dir)
+
+	// Assert
+	assert.Equal(t, DetailNormal, s.Detail)
+}
+
+func TestBasemapDefaultsToStandard(t *testing.T) {
+	// Act
+	s := Load(t.TempDir())
+
+	// Assert
+	assert.Equal(t, BasemapStandard, s.Basemap)
+}
+
+func TestValidBasemap(t *testing.T) {
 	for _, ok := range []string{BasemapStandard, BasemapLight, BasemapDark, BasemapNone} {
-		if !ValidBasemap(ok) {
-			t.Errorf("%q should be valid", ok)
-		}
+		assert.True(t, ValidBasemap(ok), ok)
 	}
-	if ValidBasemap("neon") || ValidBasemap("") {
-		t.Error("unknown values must be rejected")
-	}
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(`{"port": 43210, "basemap": "neon"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got := Load(dir).Basemap; got != BasemapStandard {
-		t.Fatalf("unknown basemap must fall back to standard, got %q", got)
+	for _, bad := range []string{"neon", ""} {
+		assert.False(t, ValidBasemap(bad), bad)
 	}
 }
 
-func TestAircraftSymbolDefaultAndValidation(t *testing.T) {
-	d := Load(t.TempDir())
-	if d.Aircraft != AircraftPlane || d.AircraftColor != "yellow" {
-		t.Fatalf("default = %q %q, want a yellow plane", d.Aircraft, d.AircraftColor)
-	}
-	if !ValidAircraft(AircraftHelicopter) || ValidAircraft("rocket") || ValidAircraft("") {
-		t.Error("ValidAircraft")
-	}
-	if AircraftHex("yellow") == "" || AircraftHex("plaid") != "" {
-		t.Error("AircraftHex")
-	}
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(`{"port":43210,"aircraft":"rocket","aircraftColor":"plaid"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if got := Load(dir); got.Aircraft != AircraftPlane || got.AircraftColor != "yellow" {
-		t.Fatalf("unknown values must fall back to the defaults, got %q %q", got.Aircraft, got.AircraftColor)
-	}
+func TestAnUnknownBasemapFallsBackToStandard(t *testing.T) {
+	// Arrange
+	dir := writeSettings(t, `{"port": 43210, "basemap": "neon"}`)
+
+	// Act
+	s := Load(dir)
+
+	// Assert
+	assert.Equal(t, BasemapStandard, s.Basemap)
+}
+
+func TestAircraftSymbolDefaultsToAYellowPlane(t *testing.T) {
+	// Act
+	s := Load(t.TempDir())
+
+	// Assert
+	assert.Equal(t, AircraftPlane, s.Aircraft)
+	assert.Equal(t, "yellow", s.AircraftColor)
+}
+
+func TestValidAircraft(t *testing.T) {
+	assert.True(t, ValidAircraft(AircraftHelicopter))
+	assert.False(t, ValidAircraft("rocket"))
+	assert.False(t, ValidAircraft(""))
+}
+
+func TestAircraftHexKnowsOnlyTheColorsOfTheProgram(t *testing.T) {
+	assert.NotEmpty(t, AircraftHex("yellow"))
+	assert.Empty(t, AircraftHex("plaid"))
+}
+
+func TestAnUnknownAircraftSymbolFallsBackToTheDefaults(t *testing.T) {
+	// Arrange
+	dir := writeSettings(t, `{"port":43210,"aircraft":"rocket","aircraftColor":"plaid"}`)
+
+	// Act
+	s := Load(dir)
+
+	// Assert
+	assert.Equal(t, AircraftPlane, s.Aircraft)
+	assert.Equal(t, "yellow", s.AircraftColor)
 }

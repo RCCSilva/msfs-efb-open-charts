@@ -3,6 +3,8 @@ package naming
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCycleOfAnEffectiveDate(t *testing.T) {
@@ -15,32 +17,61 @@ func TestCycleOfAnEffectiveDate(t *testing.T) {
 		"2026-05-20": "", "2026-10-02": "", "nonsense": "",
 	}
 	for date, want := range cases {
-		if got := CycleOfDate(date); got != want {
-			t.Errorf("CycleOfDate(%s) = %q, want %q", date, got, want)
-		}
+		t.Run(date, func(t *testing.T) {
+			// Act
+			got := CycleOfDate(date)
+
+			// Assert
+			assert.Equal(t, want, got)
+		})
 	}
 }
 
 func TestDateOfCycleIsTheInverse(t *testing.T) {
 	for _, c := range []string{"2601", "2608", "2610", "2613", "2508", "2412", "2413", "2701"} {
-		d, ok := DateOfCycle(c)
-		if !ok || CycleOfDate(d) != c {
-			t.Errorf("DateOfCycle(%s) = %s (%v) does not come back", c, d, ok)
-		}
-	}
-	for _, bad := range []string{"", "26", "2600", "2699", "abcd", "2614x"} {
-		if d, ok := DateOfCycle(bad); ok {
-			t.Errorf("DateOfCycle(%q) = %s, want refused", bad, d)
-		}
+		t.Run(c, func(t *testing.T) {
+			// Act
+			d, ok := DateOfCycle(c)
+
+			// Assert
+			assert.True(t, ok)
+			assert.Equal(t, c, CycleOfDate(d), "does not come back")
+		})
 	}
 }
 
-func TestAIRACInForceAndNext(t *testing.T) {
+func TestDateOfCycleRefusesWhatIsNotACycle(t *testing.T) {
+	for _, bad := range []string{"", "26", "2600", "2699", "abcd", "2614x"} {
+		t.Run(bad, func(t *testing.T) {
+			// Act
+			_, ok := DateOfCycle(bad)
+
+			// Assert
+			assert.False(t, ok)
+		})
+	}
+}
+
+func TestAIRACInForce(t *testing.T) {
+	// Arrange
 	on := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
-	if eff, id := AIRAC(on); id != "2610" || eff.Format("2006-01-02") != "2026-10-01" {
-		t.Fatalf("in force = %s %s", eff, id)
-	}
-	if eff, id := NextAIRAC(on); id != "2611" || eff.Format("2006-01-02") != "2026-10-29" {
-		t.Fatalf("next = %s %s", eff, id)
-	}
+
+	// Act
+	eff, id := AIRAC(on)
+
+	// Assert
+	assert.Equal(t, "2610", id)
+	assert.Equal(t, "2026-10-01", eff.Format("2006-01-02"))
+}
+
+func TestNextAIRAC(t *testing.T) {
+	// Arrange
+	on := time.Date(2026, 10, 15, 0, 0, 0, 0, time.UTC)
+
+	// Act
+	eff, id := NextAIRAC(on)
+
+	// Assert
+	assert.Equal(t, "2611", id)
+	assert.Equal(t, "2026-10-29", eff.Format("2006-01-02"))
 }
