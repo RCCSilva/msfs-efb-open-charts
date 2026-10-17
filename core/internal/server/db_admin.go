@@ -6,14 +6,15 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
-	"os"
 	"strings"
 
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/dbadmin"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
 )
 
 // The maintenance of the navigation database file, on the Setup page: its state, copies of it,
-// starting over and restoring a copy. Only the computer itself reaches these (see localOnlyPath).
+// starting over and restoring a copy. What is done is in package dbadmin; this is its HTTP face.
+// Only the computer itself reaches these (see localOnlyPath).
 
 // NavFile is how the server works on the database file, which only the program's start-up code can
 // close and open again.
@@ -27,10 +28,7 @@ type NavFile struct {
 
 // NavProblem is why the database is not in use: "corrupt" (the file is damaged), "newer" (made by a
 // newer version of the program) or "failed" (a migration could not be done).
-type NavProblem struct {
-	Kind   string `json:"kind"`
-	Detail string `json:"detail"`
-}
+type NavProblem = dbadmin.Problem
 
 // SetNavFile tells the server where the database file is and how to reopen it.
 func (s *Server) SetNavFile(f NavFile) {
@@ -64,162 +62,59 @@ func (s *Server) navProblem() *NavProblem {
 
 func (s *Server) loadRunning() bool { return s.nav.job.Running() }
 
-// GET /api/db/status
-func (s *Server) handleDBStatus(w http.ResponseWriter, r *http.Request) {
+// dbManager does the maintenance of the database as it is now: made for each use because the
+// database is replaced while the program runs.
+func (s *Server) dbManager() *dbadmin.Manager {
 	f := s.navFile()
-	out := map[string]any{"ok": s.navDB() != nil, "path": f.Path, "problem": s.navProblem(), "latestSchema": navdb.LatestSchema()}
-	if fi, err := os.Stat(f.Path); err == nil {
-		out["size"] = fi.Size()
+	var db dbadmin.Database // stays nil when the database cannot be used
+	if d := s.navDB(); d != nil {
+		db = d
 	}
-	if db := s.navDB(); db != nil {
-		if v, err := db.SchemaVersion(); err == nil {
-			out["schema"] = v
-		}
-		out["migrated"] = db.Migrated()
-	}
-	if f.Path != "" {
-		if list, err := navdb.ListBackups(f.Path); err == nil {
-			out["backups"] = list
-		}
-	}
-	out["loading"] = s.loadRunning()
-	writeJSON(w, 200, out)
+	return dbadmin.New(dbadmin.Deps{Path: f.Path, DB: db, Problem: s.navProblem(), Disk: navdb.Disk{}, Replace: f.Replace, Busy: s.loadRunning})
 }
 
-// guard returns the file control, or answers why the operation cannot be done now.
-func (s *Server) dbGuard(w http.ResponseWriter, changes bool) (NavFile, bool) {
-	f := s.navFile()
-	if f.Path == "" || f.Replace == nil {
-		writeErr(w, 503, errors.New("the navigation database is not managed here"))
-		return f, false
+// dbErrStatus is the HTTP status of an error of the maintenance.
+func dbErrStatus(err error) int {
+	var invalid *dbadmin.InvalidFileError
+	switch {
+	case errors.Is(err, dbadmin.ErrNotManaged):
+		return 503
+	case errors.Is(err, dbadmin.ErrBusy), errors.Is(err, dbadmin.ErrNoDatabase):
+		return 409
+	case errors.Is(err, navdb.ErrNoBackup):
+		return 404
+	case errors.As(err, &invalid):
+		return 422
 	}
-	if changes && s.loadRunning() {
-		writeErr(w, 409, errors.New("a load from the simulator is running: stop it first"))
-		return f, false
-	}
-	return f, true
+	return 500
+}
+
+// GET /api/db/status
+func (s *Server) handleDBStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, s.dbManager().Status())
 }
 
 // POST /api/db/backup: a copy the user asked for.
 func (s *Server) handleDBBackup(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.dbGuard(w, false); !ok {
-		return
-	}
-	db := s.navDB()
-	if db == nil {
-		writeErr(w, 409, errors.New("the database is not in use: there is nothing to copy"))
-		return
-	}
-	file, err := db.Backup("manual")
+	file, err := s.dbManager().Backup()
 	if err != nil {
-		writeErr(w, 500, err)
+		writeErr(w, dbErrStatus(err), err)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"file": file})
 }
 
-// setAsideOrRemove is what is done to the current file before a new one takes its place: a file
-// that could not be used is set aside (the user may want it), a healthy one was copied first.
-func setAsideOrRemove(path string, usable bool) error {
-	if !usable {
-		_, err := navdb.SetAside(path)
-		return err
-	}
-	return navdb.RemoveFiles(path)
-}
-
 // POST /api/db/reset: starts over. A healthy database is copied first.
 func (s *Server) handleDBReset(w http.ResponseWriter, r *http.Request) {
-	f, ok := s.dbGuard(w, true)
-	if !ok {
-		return
-	}
-	db := s.navDB()
-	backup := ""
-	if db != nil {
-		b, err := db.Backup("reset")
-		if err != nil {
-			writeErr(w, 500, errors.New("could not copy the database first: "+err.Error()))
-			return
-		}
-		backup = b
-	}
-	if err := f.Replace(func() error { return setAsideOrRemove(f.Path, db != nil) }); err != nil {
-		writeErr(w, 500, err)
-		return
-	}
-	writeJSON(w, 200, map[string]any{"ok": true, "backup": backup})
-}
-
-// restoreIncoming puts the file prepared at navdb.IncomingPath in the place of the database, after
-// checking it. status is the HTTP status of a refusal.
-func (s *Server) restoreIncoming(f NavFile) (status int, backup string, err error) {
-	if _, e := navdb.Inspect(navdb.IncomingPath(f.Path)); e != nil {
-		navdb.DiscardIncoming(f.Path)
-		switch {
-		case errors.Is(e, navdb.ErrCorrupt):
-			return 422, "", errors.New("this file is damaged: it cannot be used")
-		case errors.Is(e, navdb.ErrNewerSchema):
-			return 422, "", e
-		case errors.Is(e, navdb.ErrNotNavigation):
-			return 422, "", e
-		}
-		return 500, "", e
-	}
-	db := s.navDB()
-	if db != nil {
-		b, e := db.Backup("restore")
-		if e != nil {
-			navdb.DiscardIncoming(f.Path)
-			return 500, "", errors.New("could not copy the current database first: " + e.Error())
-		}
-		backup = b
-	}
-	if e := f.Replace(func() error {
-		if db == nil {
-			if _, err := navdb.SetAside(f.Path); err != nil {
-				return err
-			}
-		}
-		return navdb.InstallIncoming(f.Path)
-	}); e != nil {
-		navdb.DiscardIncoming(f.Path)
-		return 500, backup, e
-	}
-	return 0, backup, nil
-}
-
-// POST /api/db/restore  {"name": "navdata-manual-....db"}
-// A copy of the backups folder takes the place of the database (after being checked).
-func (s *Server) handleDBRestore(w http.ResponseWriter, r *http.Request) {
-	f, ok := s.dbGuard(w, true)
-	if !ok {
-		return
-	}
-	var body struct {
-		Name string `json:"name"`
-	}
-	if err := readJSON(r, &body); err != nil {
-		writeErr(w, 400, err)
-		return
-	}
-	src, err := navdb.BackupFile(f.Path, body.Name)
+	out, err := s.dbManager().Reset()
 	if err != nil {
-		writeErr(w, 404, err)
+		writeErr(w, dbErrStatus(err), err)
 		return
 	}
-	if _, err := navdb.PrepareIncoming(f.Path, src); err != nil {
-		writeErr(w, 500, err)
-		return
-	}
-	status, backup, err := s.restoreIncoming(f)
-	if err != nil {
-		writeErr(w, status, err)
-		return
-	}
-	writeJSON(w, 200, map[string]any{"ok": true, "backup": backup, "migrated": s.migrated()})
+	writeJSON(w, 200, map[string]any{"ok": true, "backup": out.Backup})
 }
 
+// migrated says what opening the database did, when it is in use.
 func (s *Server) migrated() any {
 	if db := s.navDB(); db != nil {
 		return db.Migrated()
@@ -227,13 +122,27 @@ func (s *Server) migrated() any {
 	return nil
 }
 
+// POST /api/db/restore  {"name": "navdata-manual-....db"}
+// A copy of the backups folder takes the place of the database (after being checked).
+func (s *Server) handleDBRestore(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, 400, err)
+		return
+	}
+	out, err := s.dbManager().Restore(body.Name)
+	if err != nil {
+		writeErr(w, dbErrStatus(err), err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "backup": out.Backup, "migrated": s.migrated()})
+}
+
 // POST /api/db/import  (multipart, field "file")
 // A database file the user brought takes the place of the current one, after being checked.
 func (s *Server) handleDBImport(w http.ResponseWriter, r *http.Request) {
-	f, ok := s.dbGuard(w, true)
-	if !ok {
-		return
-	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<30)
 	_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || params["boundary"] == "" {
@@ -241,62 +150,36 @@ func (s *Server) handleDBImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mr := multipart.NewReader(r.Body, params["boundary"])
-	var saved bool
-	for {
+	var file io.Reader
+	for file == nil {
 		part, err := mr.NextPart()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			navdb.DiscardIncoming(f.Path)
 			writeErr(w, 400, err)
 			return
 		}
-		if part.FormName() != "file" {
-			continue
+		if part.FormName() == "file" {
+			file = part
 		}
-		out, err := os.Create(navdb.IncomingPath(f.Path))
-		if err != nil {
-			writeErr(w, 500, err)
-			return
-		}
-		_, cerr := io.Copy(out, part)
-		if e := out.Close(); cerr == nil {
-			cerr = e
-		}
-		if cerr != nil {
-			navdb.DiscardIncoming(f.Path)
-			writeErr(w, 400, cerr)
-			return
-		}
-		saved = true
-		break
 	}
-	if !saved {
+	if file == nil {
 		writeErr(w, 400, errors.New("no file was sent"))
 		return
 	}
-	status, backup, err := s.restoreIncoming(f)
+	out, err := s.dbManager().Import(file)
 	if err != nil {
-		writeErr(w, status, err)
+		writeErr(w, dbErrStatus(err), err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "backup": backup, "migrated": s.migrated()})
+	writeJSON(w, 200, map[string]any{"ok": true, "backup": out.Backup, "migrated": s.migrated()})
 }
 
 // DELETE /api/db/backups/{name}
 func (s *Server) handleDBBackupDelete(w http.ResponseWriter, r *http.Request) {
-	f, ok := s.dbGuard(w, false)
-	if !ok {
-		return
-	}
-	name := strings.TrimSpace(r.PathValue("name"))
-	if err := navdb.DeleteBackup(f.Path, name); err != nil {
-		if errors.Is(err, navdb.ErrNoBackup) {
-			writeErr(w, 404, err)
-			return
-		}
-		writeErr(w, 500, err)
+	if err := s.dbManager().DeleteBackup(strings.TrimSpace(r.PathValue("name"))); err != nil {
+		writeErr(w, dbErrStatus(err), err)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})

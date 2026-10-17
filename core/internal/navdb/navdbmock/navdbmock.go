@@ -4,6 +4,7 @@ package navdbmock
 
 import (
 	"encoding/json"
+	"io"
 
 	"github.com/stretchr/testify/mock"
 
@@ -137,4 +138,77 @@ func (m *Load) Meta(key string) string {
 
 func (m *Load) SetMeta(key, value string) error {
 	return m.Called(key, value).Error(0)
+}
+
+// Disk is a mock of navdb.Disk.
+type Disk struct{ mock.Mock }
+
+func (m *Disk) List(dbPath string) ([]navdb.BackupInfo, error) {
+	args := m.Called(dbPath)
+	l, _ := args.Get(0).([]navdb.BackupInfo)
+	return l, args.Error(1)
+}
+
+func (m *Disk) File(dbPath, name string) (string, error) {
+	args := m.Called(dbPath, name)
+	return args.String(0), args.Error(1)
+}
+
+func (m *Disk) Delete(dbPath, name string) error {
+	return m.Called(dbPath, name).Error(0)
+}
+
+func (m *Disk) Prepare(dbPath, src string) (string, error) {
+	args := m.Called(dbPath, src)
+	return args.String(0), args.Error(1)
+}
+
+func (m *Disk) WriteIncoming(dbPath string, r io.Reader) error {
+	return m.Called(dbPath, r).Error(0)
+}
+
+func (m *Disk) Discard(dbPath string) {
+	m.Called(dbPath)
+}
+
+func (m *Disk) InspectIncoming(dbPath string) (int, error) {
+	args := m.Called(dbPath)
+	return args.Int(0), args.Error(1)
+}
+
+func (m *Disk) Install(dbPath string) error {
+	return m.Called(dbPath).Error(0)
+}
+
+func (m *Disk) Remove(dbPath string) error {
+	return m.Called(dbPath).Error(0)
+}
+
+func (m *Disk) SetAside(dbPath string) (string, error) {
+	args := m.Called(dbPath)
+	return args.String(0), args.Error(1)
+}
+
+func (m *Disk) Size(path string) (int64, bool) {
+	args := m.Called(path)
+	return int64(args.Int(0)), args.Bool(1)
+}
+
+// Database is a mock of what the maintenance uses of an open navdb.DB.
+type Database struct{ mock.Mock }
+
+func (m *Database) Backup(kind string) (string, error) {
+	args := m.Called(kind)
+	return args.String(0), args.Error(1)
+}
+
+func (m *Database) SchemaVersion() (int, error) {
+	args := m.Called()
+	return args.Int(0), args.Error(1)
+}
+
+func (m *Database) Migrated() navdb.Migration {
+	args := m.Called()
+	v, _ := args.Get(0).(navdb.Migration)
+	return v
 }
