@@ -33,6 +33,7 @@ One Go program (no cgo) that runs in the Windows tray:
 | `core/internal/server` | HTTP handlers, import/inspect flow, lazy renderer, setup API |
 | `core/internal/sim` | What the program needs from a simulator: small interfaces (position, navigation data, seed files, flight plans), the `Provider` that gathers them and its `Capabilities`; `simmock` has the testify mocks |
 | `core/internal/sim/msfs2024` | Everything specific to Microsoft Flight Simulator 2024: builds its `Provider`; `simconnect` (SimConnect through `LazyDLL`, Windows only), `navseed` + `fsarchive` + `bgl` (the streamed navigation packages), `efbapp` (detection of the installation, EFB app install, `EXE.xml` autostart; embeds `efbpkg/`) |
+| `core/internal/sim/msfs2024/cmd` | Development probes of MSFS 2024 (`fsainspect`, `navprobe`): they only read, are used to find out how the simulator's data is laid out, and are not part of the product |
 | `core/internal/tray` | Notification-area icon |
 | `core/web/sim` | In-sim viewer (ES5 for the simulator's Coherent GT browser) |
 | `core/web/manager` | Manager UI (plain JS, pt-BR and en) |
@@ -227,7 +228,7 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   the database, then the simulator). It plans nothing: homonyms are reported with the closest one chosen, a name
   nobody knows is a problem. `POST /api/route/resolve`. The simulator's package file
   (`...\StreamedPackages\fs24-fs-base-nav\content\minimal.fsarchive`, plain, BGL inside) was studied
-  (`internal/sim/msfs2024/fsarchive`, `.../bgl`, `cmd/fsainspect`): identifiers there are base-38 numbers, it holds
+  (`internal/sim/msfs2024/fsarchive`, `.../bgl`, `sim/msfs2024/cmd/fsainspect`): identifiers there are base-38 numbers, it holds
   about a third of the fixes only; it is not used yet.
 - **Viewer flow:** the top box of the in-sim viewer stands for the route ("SBSJ > SBGR"); the route button opens a box
   to paste a route in (resolved by `POST /api/route/resolve` on Resolve, Enter, paste, or when the EFB's text dialog ends).

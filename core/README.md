@@ -25,7 +25,8 @@ go build -trimpath -ldflags "-s -w" -o ..\dist\opencharts.exe .\cmd\opencharts
 
 ## Layout
 
-- `cmd/opencharts` server, `cmd/chartimport` CLI import, `cmd/rendertest` PDFium spike
+- `cmd/opencharts` server, `cmd/chartimport` CLI import, `cmd/mkicon` writes the application icon
+- `internal/sim/msfs2024/cmd` development probes of MSFS 2024 (`fsainspect`: what is inside a package archive; `navprobe`: asks the running simulator for navigation data), not part of the product
 - `internal/geo` projections (TM, LCC) + affine fit; `internal/pdfgeo` GeoPDF `/VP` reader;
   `internal/importer` render + georeference; `internal/store` library, search, groups/pins
 - `internal/sources` provider modules (built-in `manual`, `decea-br`), `internal/jobs` progress
