@@ -3,6 +3,9 @@ package store
 import (
 	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func addChart(t *testing.T, lib *Library, id, icao, typ string) {
@@ -10,98 +13,183 @@ func addChart(t *testing.T, lib *Library, id, icao, typ string) {
 	meta := fmt.Sprintf(`{"id":%q,"name":"%s · %s","source":"manual","icao":%q,"type":%q,"title":"t","addedAt":"2026-10-12T00:00:00Z",
 	  "image":{"file":"chart.png","width":10,"height":10,"dpi":72},"georef":{"errorMeters":1,"metersPerPixel":2},
 	  "originalFile":"%s.pdf","projection":{"kind":"tm"},"toPixel":{"a":1,"b":0,"c":0,"d":0,"e":1,"f":0}}`, id, icao, typ, icao, typ, id)
-	if _, err := lib.Add(id, []byte("png"), []byte(meta), []byte("%PDF-1.4")); err != nil {
-		t.Fatal(err)
-	}
+	_, err := lib.Add(id, []byte("png"), []byte(meta), []byte("%PDF-1.4"))
+	require.NoError(t, err)
 }
 
-func TestAirportsAreSummarisedAndFilteredByPrefix(t *testing.T) {
+// libraryOfAirports has three charts of SBSP, one of SBGR and a visual chart that has no ICAO.
+func libraryOfAirports(t *testing.T) *Library {
+	t.Helper()
 	lib, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	addChart(t, lib, "a1", "SBSP", "IAC")
 	addChart(t, lib, "a2", "SBSP", "IAC")
 	addChart(t, lib, "a3", "SBSP", "ADC")
 	addChart(t, lib, "b1", "SBGR", "SID")
 	addChart(t, lib, "v1", "", "REA")
-
-	all := lib.Airports("")
-	// the visual chart has no ICAO: it is a route chart, not part of any aerodrome
-	if len(all) != 2 || all[0].ICAO != "SBGR" || all[1].ICAO != "SBSP" {
-		t.Fatalf("airports = %+v", all)
-	}
-	if all[1].Count != 3 || all[1].Types["IAC"] != 2 || all[1].Types["ADC"] != 1 {
-		t.Fatalf("SBSP = %+v", all[1])
-	}
-	if got := lib.Airports("sbs"); len(got) != 1 || got[0].ICAO != "SBSP" {
-		t.Fatalf("prefix sbs = %+v", got)
-	}
-	if got := lib.Types(); len(got) != 4 {
-		t.Fatalf("types = %v", got)
-	}
+	return lib
 }
 
-func TestDeleteManyRemovesFromGroupsOnce(t *testing.T) {
+func TestAirportsListsTheAerodromesWithoutTheRouteCharts(t *testing.T) {
+	// Arrange
+	lib := libraryOfAirports(t)
+
+	// Act
+	all := lib.Airports("")
+
+	// Assert
+	// the visual chart has no ICAO: it is a route chart, not part of any aerodrome
+	require.Len(t, all, 2)
+	assert.Equal(t, "SBGR", all[0].ICAO)
+	assert.Equal(t, "SBSP", all[1].ICAO)
+}
+
+func TestAirportsCountTheChartsByType(t *testing.T) {
+	// Arrange
+	lib := libraryOfAirports(t)
+
+	// Act
+	all := lib.Airports("")
+
+	// Assert
+	require.Len(t, all, 2)
+	assert.Equal(t, 3, all[1].Count)
+	assert.Equal(t, 2, all[1].Types["IAC"])
+	assert.Equal(t, 1, all[1].Types["ADC"])
+}
+
+func TestAirportsFilterByPrefix(t *testing.T) {
+	// Arrange
+	lib := libraryOfAirports(t)
+
+	// Act
+	got := lib.Airports("sbs")
+
+	// Assert
+	require.Len(t, got, 1)
+	assert.Equal(t, "SBSP", got[0].ICAO)
+}
+
+func TestTypesListsEveryTypeOfTheLibrary(t *testing.T) {
+	// Arrange
+	lib := libraryOfAirports(t)
+
+	// Act
+	got := lib.Types()
+
+	// Assert
+	assert.ElementsMatch(t, []string{"IAC", "ADC", "SID", "REA"}, got)
+}
+
+// threePinned has the charts c1, c2 and c3 of SBSP, all pinned to the current group.
+func threePinned(t *testing.T) *Library {
+	t.Helper()
 	lib, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range []string{"c1", "c2", "c3"} {
-		addChart(t, lib, id, "SBSP", "IAC")
-	}
+	require.NoError(t, err)
 	g := lib.Groups().Current
 	for _, id := range []string{"c1", "c2", "c3"} {
-		if err := lib.Pin(g, id); err != nil {
-			t.Fatal(err)
-		}
+		addChart(t, lib, id, "SBSP", "IAC")
+		require.NoError(t, lib.Pin(g, id))
 	}
-	n, err := lib.DeleteMany([]string{"c1", "c3", "c3", "does-not-exist"})
-	if err != nil || n != 2 {
-		t.Fatalf("deleted %d, %v; want 2", n, err)
-	}
-	if lib.Count() != 1 {
-		t.Fatalf("count = %d, want 1", lib.Count())
-	}
-	pins := lib.Groups().Groups[0].Pins
-	if len(pins) != 1 || pins[0] != "c2" {
-		t.Fatalf("pins = %v, want [c2]", pins)
-	}
-	if _, err := lib.DeleteMany([]string{"../x"}); err == nil {
-		t.Fatal("an invalid id must be refused")
-	}
+	return lib
 }
 
-func TestChartCycleIsDerivedFromItsDate(t *testing.T) {
+func TestDeleteManyCountsEachChartOnce(t *testing.T) {
+	// Arrange
+	lib := threePinned(t)
+
+	// Act
+	n, err := lib.DeleteMany([]string{"c1", "c3", "c3", "does-not-exist"})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 2, n)
+	assert.Equal(t, 1, lib.Count())
+}
+
+func TestDeleteManyRemovesTheChartsFromTheGroups(t *testing.T) {
+	// Arrange
+	lib := threePinned(t)
+
+	// Act
+	_, err := lib.DeleteMany([]string{"c1", "c3"})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, []string{"c2"}, lib.Groups().Groups[0].Pins)
+}
+
+func TestDeleteManyRefusesAnInvalidID(t *testing.T) {
+	// Arrange
+	lib := threePinned(t)
+
+	// Act
+	_, err := lib.DeleteMany([]string{"../x"})
+
+	// Assert
+	assert.Error(t, err)
+}
+
+func TestADateGivesTheCycleOfTheChart(t *testing.T) {
+	// Arrange
 	lib, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	addChart(t, lib, "c1", "SBSP", "IAC")
-	c, _ := lib.Get("c1")
 	v := "2026-08-06"
+
+	// Act
 	u, err := lib.Update("c1", Patch{Validity: &v})
-	if err != nil || u.Cycle != "2608" || u.Validity != "2026-08-06" {
-		t.Fatalf("date -> %+v (%v)", u, err)
-	}
-	cy := "2610" // a cycle stands for its effective date
-	u, err = lib.Update("c1", Patch{Validity: &cy})
-	if err != nil || u.Validity != "2026-10-01" || u.Cycle != "2610" {
-		t.Fatalf("cycle -> %+v (%v)", u, err)
-	}
-	other := "2026-05-20" // not the first day of a cycle: the date stays, there is no cycle
-	u, err = lib.Update("c1", Patch{Validity: &other})
-	if err != nil || u.Cycle != "" || u.Validity != "2026-05-20" {
-		t.Fatalf("plain date -> %+v (%v)", u, err)
-	}
-	_ = c
-	if res := lib.Search(Query{Text: "2610"}); len(res) != 0 {
-		t.Fatalf("no chart has cycle 2610 now: %d", len(res))
-	}
-	if _, err := lib.Update("c1", Patch{Validity: &cy}); err != nil {
-		t.Fatal(err)
-	}
-	if res := lib.Search(Query{Text: "2610"}); len(res) != 1 {
-		t.Fatalf("a chart is found by its cycle: %d", len(res))
-	}
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "2608", u.Cycle)
+	assert.Equal(t, "2026-08-06", u.Validity)
+}
+
+func TestACycleStandsForItsEffectiveDate(t *testing.T) {
+	// Arrange
+	lib, err := Open(t.TempDir())
+	require.NoError(t, err)
+	addChart(t, lib, "c1", "SBSP", "IAC")
+	cy := "2610"
+
+	// Act
+	u, err := lib.Update("c1", Patch{Validity: &cy})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "2026-10-01", u.Validity)
+	assert.Equal(t, "2610", u.Cycle)
+}
+
+func TestADateThatStartsNoCycleHasNoCycle(t *testing.T) {
+	// Arrange
+	lib, err := Open(t.TempDir())
+	require.NoError(t, err)
+	addChart(t, lib, "c1", "SBSP", "IAC")
+	other := "2026-05-20"
+
+	// Act
+	u, err := lib.Update("c1", Patch{Validity: &other})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Empty(t, u.Cycle, "not the first day of a cycle: the date stays, there is no cycle")
+	assert.Equal(t, "2026-05-20", u.Validity)
+}
+
+func TestAChartIsFoundByItsCycle(t *testing.T) {
+	// Arrange
+	lib, err := Open(t.TempDir())
+	require.NoError(t, err)
+	addChart(t, lib, "c1", "SBSP", "IAC")
+	require.Empty(t, lib.Search(Query{Text: "2610"}), "no chart has cycle 2610 yet")
+	cy := "2610"
+
+	// Act
+	_, err = lib.Update("c1", Patch{Validity: &cy})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Len(t, lib.Search(Query{Text: "2610"}), 1)
 }

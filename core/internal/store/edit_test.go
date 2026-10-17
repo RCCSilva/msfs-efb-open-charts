@@ -6,63 +6,79 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func newTestChart(t *testing.T) (*Library, string) {
 	t.Helper()
 	lib, err := Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	meta := `{"id":"t1","name":"SBSP · IAC · ILS X RWY 17R","source":"manual","icao":"SBSP","type":"IAC",
 	  "title":"ILS X RWY 17R","validity":"2026-08-06","originalFile":"a.pdf","addedAt":"2026-10-12T00:00:00Z",
 	  "image":{"file":"chart.png","width":100,"height":200,"dpi":72},
 	  "georef":{"errorMeters":1.5,"metersPerPixel":2.5},
 	  "projection":{"kind":"tm"},"toPixel":{"a":1,"b":0,"c":0,"d":0,"e":1,"f":0}}`
-	if _, err := lib.Add("t1", []byte("png"), []byte(meta), []byte("%PDF-1.4")); err != nil {
-		t.Fatal(err)
-	}
+	_, err = lib.Add("t1", []byte("png"), []byte(meta), []byte("%PDF-1.4"))
+	require.NoError(t, err)
 	return lib, "t1"
 }
 
 func ptr(s string) *string { return &s }
 
-func TestUpdateRegeneratesNameAndKeepsTheRest(t *testing.T) {
+func TestUpdateCleansTheFieldsAndRegeneratesTheName(t *testing.T) {
+	// Arrange
 	lib, id := newTestChart(t)
+
+	// Act
 	c, err := lib.Update(id, Patch{ICAO: ptr("sbgr"), Title: ptr("  ILS  Z   RWY 09L ")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.ICAO != "SBGR" || c.Title != "ILS Z RWY 09L" || c.Type != "IAC" {
-		t.Fatalf("bad fields: %+v", c)
-	}
-	if want := "SBGR · IAC · ILS Z RWY 09L"; c.Name != want {
-		t.Fatalf("name = %q, want %q", c.Name, want)
-	}
-	// persisted, and untouched fields (georeference, source, projection) are still there
-	raw, _ := os.ReadFile(filepath.Join(lib.ChartDir(id), "chart.json"))
-	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
-		t.Fatal(err)
-	}
-	if m["icao"] != "SBGR" || m["source"] != "manual" || m["projection"] == nil || m["toPixel"] == nil {
-		t.Fatalf("chart.json lost data: %s", raw)
-	}
-	// search finds it by the new ICAO and no longer by the old one
-	if got := lib.Search(Query{Text: "sbgr"}); len(got) != 1 {
-		t.Fatalf("search sbgr = %d results, want 1", len(got))
-	}
-	if got := lib.Search(Query{Text: "sbsp"}); len(got) != 0 {
-		t.Fatalf("search sbsp = %d results, want 0", len(got))
-	}
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "SBGR", c.ICAO)
+	assert.Equal(t, "ILS Z RWY 09L", c.Title)
+	assert.Equal(t, "IAC", c.Type)
+	assert.Equal(t, "SBGR · IAC · ILS Z RWY 09L", c.Name)
 }
 
-func TestUpdateValidation(t *testing.T) {
+func TestUpdateKeepsWhatItDidNotTouch(t *testing.T) {
+	// Arrange
 	lib, id := newTestChart(t)
-	bad := []struct {
-		name string
-		p    Patch
-		want string
+
+	// Act
+	_, err := lib.Update(id, Patch{ICAO: ptr("sbgr")})
+
+	// Assert
+	require.NoError(t, err)
+	raw, err := os.ReadFile(filepath.Join(lib.ChartDir(id), "chart.json"))
+	require.NoError(t, err)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(raw, &m))
+	assert.Equal(t, "SBGR", m["icao"], "persisted")
+	assert.Equal(t, "manual", m["source"])
+	assert.NotNil(t, m["projection"], "the georeference is still there")
+	assert.NotNil(t, m["toPixel"])
+}
+
+func TestUpdateMakesTheChartFoundByTheNewICAOOnly(t *testing.T) {
+	// Arrange
+	lib, id := newTestChart(t)
+
+	// Act
+	_, err := lib.Update(id, Patch{ICAO: ptr("sbgr")})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Len(t, lib.Search(Query{Text: "sbgr"}), 1)
+	assert.Empty(t, lib.Search(Query{Text: "sbsp"}))
+}
+
+func TestUpdateRefusesInvalidValues(t *testing.T) {
+	cases := []struct {
+		name  string
+		p     Patch
+		field string
 	}{
 		{"icao too long", Patch{ICAO: ptr("SBSPX")}, "icao"},
 		{"icao symbols", Patch{ICAO: ptr("SB-P")}, "icao"},
@@ -71,32 +87,46 @@ func TestUpdateValidation(t *testing.T) {
 		{"validity impossible date", Patch{Validity: ptr("2026-13-40")}, "validity"},
 		{"empty name", Patch{Name: ptr("   ")}, "name"},
 	}
-	for _, c := range bad {
-		_, err := lib.Update(id, c.p)
-		var inv InvalidError
-		if !errors.As(err, &inv) || inv.Field != c.want {
-			t.Errorf("%s: got %v, want an InvalidError on %q", c.name, err, c.want)
-		}
-	}
-	// nothing was changed by the rejected patches
-	if c, _ := lib.Get(id); c.ICAO != "SBSP" || c.Validity != "2026-08-06" {
-		t.Fatalf("rejected patches modified the chart: %+v", c)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// Arrange
+			lib, id := newTestChart(t)
+
+			// Act
+			_, err := lib.Update(id, c.p)
+
+			// Assert
+			var inv InvalidError
+			require.True(t, errors.As(err, &inv), "%v", err)
+			assert.Equal(t, c.field, inv.Field)
+			got, _ := lib.Get(id)
+			assert.Equal(t, "SBSP", got.ICAO, "the rejected patch modified the chart")
+			assert.Equal(t, "2026-08-06", got.Validity, "the rejected patch modified the chart")
+		})
 	}
 }
 
-func TestUpdateClearsAndFallsBack(t *testing.T) {
+func TestUpdateClearsAndFallsBackToTheOriginalFileName(t *testing.T) {
+	// Arrange
 	lib, id := newTestChart(t)
+
+	// Act
 	c, err := lib.Update(id, Patch{ICAO: ptr(""), Type: ptr(""), Title: ptr(""), Validity: ptr("")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.Validity != "" || c.ICAO != "" {
-		t.Fatalf("fields not cleared: %+v", c)
-	}
-	if c.Name != "A" { // nothing left to build a name from: the original file name, tidied
-		t.Fatalf("fallback name = %q, want %q", c.Name, "A")
-	}
-	if _, err := lib.Update("missing", Patch{ICAO: ptr("SBSP")}); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("unknown chart: got %v, want not-exist", err)
-	}
+
+	// Assert
+	require.NoError(t, err)
+	assert.Empty(t, c.Validity)
+	assert.Empty(t, c.ICAO)
+	assert.Equal(t, "A", c.Name, "nothing left to build a name from: the original file name, tidied")
+}
+
+func TestUpdateOfAnUnknownChartIsNotFound(t *testing.T) {
+	// Arrange
+	lib, _ := newTestChart(t)
+
+	// Act
+	_, err := lib.Update("missing", Patch{ICAO: ptr("SBSP")})
+
+	// Assert
+	assert.True(t, errors.Is(err, os.ErrNotExist), "%v", err)
 }
