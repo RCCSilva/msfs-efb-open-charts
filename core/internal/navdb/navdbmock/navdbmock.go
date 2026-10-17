@@ -95,3 +95,46 @@ func (m *SavedRoutes) DeleteSavedRoute(id int64) error {
 func (m *SavedRoutes) SetSavedRouteResult(id int64, result json.RawMessage) error {
 	return m.Called(id, result).Error(0)
 }
+
+// Load is a mock of what the bulk load uses of navdb.DB.
+type Load struct{ mock.Mock }
+
+func (m *Load) SaveSeed(list []navdb.SeedIdent) error {
+	return m.Called(list).Error(0)
+}
+
+func (m *Load) Counts() (navdb.Counts, error) {
+	args := m.Called()
+	c, _ := args.Get(0).(navdb.Counts)
+	return c, args.Error(1)
+}
+
+func (m *Load) SeedPending(n int) ([]string, error) {
+	args := m.Called(n)
+	l, _ := args.Get(0).([]string)
+	return l, args.Error(1)
+}
+
+func (m *Load) MissingNeighbors(n int) ([]string, error) {
+	args := m.Called(n)
+	l, _ := args.Get(0).([]string)
+	return l, args.Error(1)
+}
+
+func (m *Load) Airports(prefix string) ([]navdb.Summary, error) {
+	args := m.Called(prefix)
+	l, _ := args.Get(0).([]navdb.Summary)
+	return l, args.Error(1)
+}
+
+func (m *Load) SaveAirport(a *navdata.Airport) error {
+	return m.Called(a).Error(0)
+}
+
+func (m *Load) Meta(key string) string {
+	return m.Called(key).String(0)
+}
+
+func (m *Load) SetMeta(key, value string) error {
+	return m.Called(key, value).Error(0)
+}

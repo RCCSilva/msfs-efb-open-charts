@@ -62,12 +62,7 @@ func (s *Server) navProblem() *NavProblem {
 	return s.nav.problem
 }
 
-func (s *Server) loadRunning() bool {
-	j := &s.nav.job
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	return j.Running
-}
+func (s *Server) loadRunning() bool { return s.nav.job.Running() }
 
 // GET /api/db/status
 func (s *Server) handleDBStatus(w http.ResponseWriter, r *http.Request) {

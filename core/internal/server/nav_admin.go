@@ -1,19 +1,15 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/lnmpoints"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navload"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navlookup"
 )
 
@@ -24,84 +20,6 @@ import (
 //     computer (no region, no airways: only the names of what exists);
 //  2. every identifier is then asked to the simulator, as a whole, through SimConnect: that is what
 //     brings the region, the position and the airways. The simulator is always the source of data.
-
-// navJob is the state of the bulk load, as the page shows it.
-type navJob struct {
-	mu      sync.Mutex
-	Running bool      `json:"running"`
-	Phase   string    `json:"phase"` // idle, reading, asking, done, stopped, error
-	Message string    `json:"message"`
-	Total   int       `json:"total"`
-	Done    int       `json:"done"`
-	Started time.Time `json:"startedAt"`
-	Ended   time.Time `json:"endedAt"`
-	stop    bool
-}
-
-// navJobView is what is sent to the page.
-type navJobView struct {
-	Running bool      `json:"running"`
-	Phase   string    `json:"phase"`
-	Message string    `json:"message"`
-	Total   int       `json:"total"`
-	Done    int       `json:"done"`
-	Started time.Time `json:"startedAt"`
-	Ended   time.Time `json:"endedAt"`
-}
-
-func (j *navJob) snapshot() navJobView {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	phase := j.Phase
-	if phase == "" {
-		phase = "idle"
-	}
-	return navJobView{Running: j.Running, Phase: phase, Message: j.Message, Total: j.Total, Done: j.Done, Started: j.Started, Ended: j.Ended}
-}
-
-func (j *navJob) set(f func(j *navJob)) {
-	j.mu.Lock()
-	f(j)
-	j.mu.Unlock()
-}
-
-const navJobKey = "navload"
-
-// saveJob keeps the state of the load with the database, so that a restart of the program does not
-// make the page forget that one was running.
-func (s *Server) saveJob() {
-	db := s.nav.db
-	if db == nil {
-		return
-	}
-	if b, err := json.Marshal(s.nav.job.snapshot()); err == nil {
-		_ = db.SetMeta(navJobKey, string(b))
-	}
-}
-
-// restoreJob is called when the database is given to the server: a load that was running when the
-// program went away is shown as interrupted (it is not resumed by itself).
-func (s *Server) restoreJob() {
-	db := s.nav.db
-	if db == nil {
-		return
-	}
-	var v navJobView
-	if err := json.Unmarshal([]byte(db.Meta(navJobKey)), &v); err != nil {
-		// a database with no load in its history (a new one): nothing is shown of the last one
-		s.nav.job.set(func(j *navJob) {
-			j.Running, j.Phase, j.Message, j.Total, j.Done, j.Started, j.Ended, j.stop = false, "", "", 0, 0, time.Time{}, time.Time{}, false
-		})
-		return
-	}
-	if v.Running {
-		v.Running, v.Phase = false, "interrupted"
-		v.Message = ""
-	}
-	s.nav.job.set(func(j *navJob) {
-		j.Running, j.Phase, j.Message, j.Total, j.Done, j.Started, j.Ended = v.Running, v.Phase, v.Message, v.Total, v.Done, v.Started, v.Ended
-	})
-}
 
 // navDB returns the database without waiting for a fetch in progress (the bulk load holds the
 // fetch lock for the whole time a batch is asked to the simulator).
@@ -143,7 +61,7 @@ func (s *Server) handleNavSummary(w http.ResponseWriter, r *http.Request) {
 	}
 	canAsk := s.canAskSim()
 	files := s.seedFiles()
-	writeJSON(w, 200, map[string]any{"counts": c, "simLink": canAsk, "files": files, "job": s.nav.job.snapshot()})
+	writeJSON(w, 200, map[string]any{"counts": c, "simLink": canAsk, "files": files, "job": s.nav.job.Snapshot()})
 }
 
 // GET /api/nav/fixes?q=&kind=&limit=&offset=
@@ -341,12 +259,12 @@ func (s *Server) handleNavPointDelete(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/nav/load: how the load is going.
 func (s *Server) handleNavLoadStatus(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, s.nav.job.snapshot())
+	writeJSON(w, 200, s.nav.job.Snapshot())
 }
 
-// POST /api/nav/load  {"mode": "files" | "all"}
-// "files" only reads the identifiers from the simulator's files; "all" also asks the simulator for
-// each of them (it must be running).
+// POST /api/nav/load  {"mode": "files" | "fixes" | "airports" | "all", "prefix": "SB"}
+// "files" only reads the identifiers from the simulator's files; the others also ask the simulator
+// (it must be running). The steps are in package navload.
 func (s *Server) handleNavLoadStart(w http.ResponseWriter, r *http.Request) {
 	db := s.navDB()
 	if db == nil {
@@ -358,231 +276,27 @@ func (s *Server) handleNavLoadStart(w http.ResponseWriter, r *http.Request) {
 		Prefix string `json:"prefix"` // only airports whose code starts with this ("SB"); empty: every airport
 	}
 	_ = readJSON(r, &body)
-	switch body.Mode {
-	case "files", "fixes", "airports":
-	default:
-		body.Mode = "all"
-	}
-	body.Prefix = strings.ToUpper(strings.TrimSpace(body.Prefix))
-	canAsk := s.canAskSim()
-	if body.Mode != "files" && !canAsk {
+	mode := navload.ParseMode(body.Mode)
+	if mode != navload.Files && !s.canAskSim() {
 		writeErr(w, 503, errors.New("there is no link to the simulator (SimConnect.dll was not found)"))
 		return
 	}
-	j := &s.nav.job
-	j.mu.Lock()
-	if j.Running {
-		j.mu.Unlock()
-		writeErr(w, 409, errors.New("a load is already running"))
+	if err := s.nav.job.Begin(); err != nil {
+		writeErr(w, 409, err)
 		return
 	}
-	j.Running, j.Phase, j.Message, j.Total, j.Done, j.stop = true, "reading", "", 0, 0, false
-	j.Started, j.Ended = time.Now(), time.Time{}
-	j.mu.Unlock()
-	s.saveJob()
-	go s.runNavLoad(db, body.Mode, body.Prefix)
-	writeJSON(w, 202, j.snapshot())
+	s.nav.job.Save(db)
+	loader := navload.New(&s.nav.job, navload.Deps{
+		Store: db, Airports: s.sim.Nav, Seed: s.sim.Seed, Idents: navlookup.New(db, s.sim.Nav), Turn: &s.nav.mu,
+	})
+	go loader.Run(mode, body.Prefix)
+	writeJSON(w, 202, s.nav.job.Snapshot())
 }
 
 // DELETE /api/nav/load: stop it (what was loaded stays).
 func (s *Server) handleNavLoadStop(w http.ResponseWriter, r *http.Request) {
-	s.nav.job.set(func(j *navJob) { j.stop = true })
-	writeJSON(w, 200, s.nav.job.snapshot())
-}
-
-func (s *Server) runNavLoad(db *navdb.DB, mode, prefix string) {
-	j := &s.nav.job
-	finish := func(phase, msg string) {
-		j.set(func(j *navJob) { j.Running, j.Phase, j.Message, j.Ended = false, phase, msg, time.Now() })
-		s.saveJob()
-	}
-	stopped := func() bool {
-		j.mu.Lock()
-		defer j.mu.Unlock()
-		return j.stop
-	}
-
-	if mode != "airports" {
-		if !s.loadFixes(db, mode, finish, stopped) {
-			return
-		}
-	}
-	if mode == "all" || mode == "airports" {
-		if !s.loadAirports(db, prefix, finish, stopped) {
-			return
-		}
-	}
-	finish("done", "")
-}
-
-// loadFixes is steps 1 and 2: the identifiers from the simulator's files, then each of them asked
-// to the simulator as a whole. It returns false when the load ended (finish was called).
-func (s *Server) loadFixes(db *navdb.DB, mode string, finish func(phase, msg string), stopped func() bool) bool {
-	j := &s.nav.job
-
-	// 1. the identifiers, from the simulator's files
-	paths := s.seedFiles()
-	if len(paths) > 0 {
-		list, err := s.sim.Seed.Read(paths, func(done, total int) bool {
-			j.set(func(j *navJob) { j.Total, j.Done = total, done })
-			return !stopped()
-		})
-		if err != nil {
-			if stopped() {
-				finish("stopped", "")
-				return false
-			}
-			finish("error", err.Error())
-			return false
-		}
-		if err := db.SaveSeed(list); err != nil {
-			finish("error", err.Error())
-			return false
-		}
-	}
-	if mode == "files" {
-		if len(paths) == 0 {
-			finish("error", "no navigation package of the simulator was found on this computer")
-			return false
-		}
-		finish("done", "")
-		return false
-	}
-
-	// 2. each identifier is asked to the simulator, as a whole
-	c, err := db.Counts()
-	if err != nil {
-		finish("error", err.Error())
-		return false
-	}
-	if c.SeedIdents == 0 {
-		finish("error", "no identifiers to ask for: the simulator's files were not found")
-		return false
-	}
-	j.set(func(j *navJob) { j.Phase, j.Total, j.Done = "asking", c.SeedIdents, c.SeedIdents-c.SeedPending })
-	const batch = 40
-	answered, empty := false, 0
-	for {
-		if stopped() {
-			finish("stopped", "")
-			return false
-		}
-		idents, err := db.SeedPending(batch)
-		if err != nil {
-			finish("error", err.Error())
-			return false
-		}
-		if len(idents) == 0 {
-			// the names of the files are done: the fixes that airways cite and the files did not
-			// have are asked too, until no airway leads to a place the database does not have
-			idents, err = db.MissingNeighbors(batch)
-			if err != nil {
-				finish("error", err.Error())
-				return false
-			}
-			if len(idents) == 0 {
-				return true
-			}
-			j.set(func(j *navJob) { j.Total += len(idents) })
-		}
-		// the route page and the load take turns: a batch holds the lock, then lets it go
-		s.nav.mu.Lock()
-		n, err := navlookup.New(db, s.sim.Nav).LoadIdentsCount(idents, answered)
-		s.nav.mu.Unlock()
-		if err != nil {
-			finish("error", err.Error())
-			return false
-		}
-		if n > 0 {
-			answered = true
-		} else if !answered {
-			// nothing came back and nothing ever did in this load: the simulator is probably at its
-			// menu, not in a flight. Nothing was marked as "does not exist"; stop instead of doing so.
-			empty++
-			if empty >= 3 {
-				finish("error", "the simulator answered nothing for 120 identifiers in a row: load a flight and try again")
-				return false
-			}
-		}
-		j.set(func(j *navJob) { j.Done += len(idents) })
-		s.saveJob()
-	}
-}
-
-// loadAirports is step 3: the simulator lists its airports, and each one that is not stored yet
-// (and starts with the prefix, when there is one) is asked in full, with its procedures.
-func (s *Server) loadAirports(db *navdb.DB, prefix string, finish func(phase, msg string), stopped func() bool) bool {
-	j := &s.nav.job
-	if s.sim.Nav == nil {
-		finish("error", "there is no link to the simulator to list its airports")
-		return false
-	}
-	j.set(func(j *navJob) { j.Phase, j.Message, j.Total, j.Done = "listing", "", 0, 0 })
-	s.saveJob()
-	all, err := s.sim.Nav.ListAirports()
-	if err != nil {
-		finish("error", err.Error())
-		return false
-	}
-	have := map[string]bool{}
-	if stored, err := db.Airports(""); err == nil {
-		for _, a := range stored {
-			have[a.ICAO] = true
-		}
-	}
-	var todo []string
-	for _, a := range all {
-		icao := strings.ToUpper(a.ICAO)
-		if !icaoRe.MatchString(icao) || have[icao] || (prefix != "" && !strings.HasPrefix(icao, prefix)) {
-			continue
-		}
-		have[icao] = true // a repeat in the list is asked once
-		todo = append(todo, icao)
-	}
-	sort.Strings(todo)
-	j.set(func(j *navJob) { j.Phase, j.Total, j.Done = "airports", len(todo), 0 })
-	s.saveJob()
-	// the simulator answers each request after a fixed delay, so many are asked at once
-	const chunk = 200
-	failures := 0
-	for from := 0; from < len(todo); from += chunk {
-		if stopped() {
-			finish("stopped", "")
-			return false
-		}
-		codes := todo[from:min(len(todo), from+chunk)]
-		s.nav.mu.Lock()
-		answers, err := s.sim.Nav.Airports(codes)
-		if err == nil && len(answers) != len(codes) {
-			err = errors.New("the simulator answered a different number of airports than asked")
-		}
-		if err == nil {
-			for _, ans := range answers {
-				if ans.Err == nil {
-					ans.Err = db.SaveAirport(ans.Airport)
-				}
-				switch {
-				case ans.Err == nil:
-					failures = 0
-				case errors.Is(ans.Err, navdata.ErrUnknown):
-					// the simulator listed it and then did not know it: skip
-				default:
-					failures++
-					err = ans.Err
-				}
-			}
-		} else {
-			failures++
-		}
-		s.nav.mu.Unlock()
-		if failures >= 5 {
-			finish("error", err.Error())
-			return false
-		}
-		j.set(func(j *navJob) { j.Done = from + len(codes) })
-		s.saveJob()
-	}
-	return true
+	s.nav.job.Stop()
+	writeJSON(w, 200, s.nav.job.Snapshot())
 }
 
 // GET /api/nav/area?minLat=&minLon=&maxLat=&maxLon=&fixes=1&segments=1

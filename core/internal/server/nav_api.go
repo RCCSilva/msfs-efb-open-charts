@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navload"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navlookup"
 )
 
@@ -16,7 +17,7 @@ type navState struct {
 	mu      sync.Mutex   // one fetch at a time: the simulator answers one conversation, and a repeat is wasted work
 	ptrMu   sync.RWMutex // guards only the fields below that are set once (never held while the simulator is asked)
 	db      *navdb.DB
-	job     navJob // the bulk load of the Navigation page
+	job     navload.Job // the bulk load of the Navigation page
 	file    NavFile
 	problem *NavProblem
 }
@@ -28,7 +29,9 @@ func (s *Server) SetNav(db *navdb.DB) {
 	s.nav.db = db
 	s.nav.ptrMu.Unlock()
 	s.nav.mu.Unlock()
-	s.restoreJob()
+	if db != nil {
+		s.nav.job.Restore(db)
+	}
 }
 
 // lookup answers the questions a route raises, from the database and the simulator. It is made for
