@@ -8,9 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestChartLevelsAreMadeOnDemandAndRefreshed(t *testing.T) {
+// chartDir has a chart.png of 40x20.
+func chartDir(t *testing.T) string {
+	t.Helper()
 	dir := t.TempDir()
 	src := image.NewRGBA(image.Rect(0, 0, 40, 20))
 	for x := 0; x < 40; x++ {
@@ -19,29 +24,47 @@ func TestChartLevelsAreMadeOnDemandAndRefreshed(t *testing.T) {
 		}
 	}
 	var buf bytes.Buffer
-	if err := png.Encode(&buf, src); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "chart.png"), buf.Bytes(), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, png.Encode(&buf, src))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "chart.png"), buf.Bytes(), 0o644))
+	return dir
+}
+
+func TestChartLevelIsMadeOnDemandAtHalfTheSize(t *testing.T) {
+	// Arrange
+	dir := chartDir(t)
+
+	// Act
 	p, ok := chartLevelPath(dir, "chart@2.png")
-	if !ok {
-		t.Fatal("level 2 was not made")
-	}
+
+	// Assert
+	require.True(t, ok, "level 2 was not made")
 	f, err := os.Open(p)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer f.Close()
 	cfg, err := png.DecodeConfig(f)
-	if err != nil || cfg.Width != 20 || cfg.Height != 10 {
-		t.Fatalf("level 2 = %dx%d (%v), want 20x10", cfg.Width, cfg.Height, err)
-	}
-	if _, ok := chartLevelPath(dir, "chart@3.png"); ok {
-		t.Fatal("only levels 2 and 4 exist")
-	}
-	if _, ok := chartLevelPath(dir, "chart@../x.png"); ok {
-		t.Fatal("a path must never be accepted as a level name")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 20, cfg.Width)
+	assert.Equal(t, 10, cfg.Height)
+}
+
+func TestChartLevelRefusesLevelsThatDoNotExist(t *testing.T) {
+	// Arrange
+	dir := chartDir(t)
+
+	// Act
+	_, ok := chartLevelPath(dir, "chart@3.png")
+
+	// Assert
+	assert.False(t, ok, "only levels 2 and 4 exist")
+}
+
+func TestChartLevelNeverAcceptsAPath(t *testing.T) {
+	// Arrange
+	dir := chartDir(t)
+
+	// Act
+	_, ok := chartLevelPath(dir, "chart@../x.png")
+
+	// Assert
+	assert.False(t, ok)
 }

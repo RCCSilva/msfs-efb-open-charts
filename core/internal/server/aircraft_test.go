@@ -6,6 +6,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func putSettings(h http.Handler, body string) *httptest.ResponseRecorder {
@@ -18,33 +21,56 @@ func putSettings(h http.Handler, body string) *httptest.ResponseRecorder {
 	return rec
 }
 
-func TestAircraftSymbolDefaultsToAYellowPlaneAndCanBeChanged(t *testing.T) {
+func readViewerState(t *testing.T, h http.Handler) map[string]any {
+	t.Helper()
+	r := do(h, reqOpt{from: "127.0.0.1", host: "127.0.0.1:43210", path: "/api/viewer-state"})
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(r.Body.Bytes(), &m))
+	return m
+}
+
+func TestAircraftSymbolDefaultsToAYellowPlane(t *testing.T) {
+	// Arrange
 	_, h := newAccessServer(t, false)
-	state := func() map[string]any {
-		r := do(h, reqOpt{from: "127.0.0.1", host: "127.0.0.1:43210", path: "/api/viewer-state"})
-		var m map[string]any
-		if err := json.Unmarshal(r.Body.Bytes(), &m); err != nil {
-			t.Fatal(err)
-		}
-		return m
-	}
-	st := state()
-	if st["aircraft"] != "plane" || st["aircraftColor"] != "yellow" || st["aircraftHex"] == "" {
-		t.Fatalf("default symbol = %v %v %v", st["aircraft"], st["aircraftColor"], st["aircraftHex"])
-	}
-	if r := putSettings(h, `{"aircraft":"helicopter","aircraftColor":"blue"}`); r.Code != 200 {
-		t.Fatalf("PUT: %d %s", r.Code, r.Body.String())
-	}
-	st = state()
-	if st["aircraft"] != "helicopter" || st["aircraftColor"] != "blue" {
-		t.Fatalf("after PUT = %v %v", st["aircraft"], st["aircraftColor"])
-	}
+
+	// Act
+	st := readViewerState(t, h)
+
+	// Assert
+	assert.Equal(t, "plane", st["aircraft"])
+	assert.Equal(t, "yellow", st["aircraftColor"])
+	assert.NotEmpty(t, st["aircraftHex"])
+}
+
+func TestAircraftSymbolCanBeChanged(t *testing.T) {
+	// Arrange
+	_, h := newAccessServer(t, false)
+
+	// Act
+	r := putSettings(h, `{"aircraft":"helicopter","aircraftColor":"blue"}`)
+
+	// Assert
+	require.Equal(t, 200, r.Code, r.Body.String())
+	st := readViewerState(t, h)
+	assert.Equal(t, "helicopter", st["aircraft"])
+	assert.Equal(t, "blue", st["aircraftColor"])
+}
+
+func TestAircraftSymbolRefusesUnknownValuesAndKeepsTheCurrentOne(t *testing.T) {
 	for _, bad := range []string{`{"aircraft":"rocket"}`, `{"aircraftColor":"plaid"}`} {
-		if r := putSettings(h, bad); r.Code != 400 {
-			t.Errorf("%s: %d, want 400", bad, r.Code)
-		}
-	}
-	if st = state(); st["aircraft"] != "helicopter" || st["aircraftColor"] != "blue" {
-		t.Fatalf("a refused change altered the symbol: %v %v", st["aircraft"], st["aircraftColor"])
+		t.Run(bad, func(t *testing.T) {
+			// Arrange
+			_, h := newAccessServer(t, false)
+			require.Equal(t, 200, putSettings(h, `{"aircraft":"helicopter","aircraftColor":"blue"}`).Code)
+
+			// Act
+			r := putSettings(h, bad)
+
+			// Assert
+			assert.Equal(t, 400, r.Code)
+			st := readViewerState(t, h)
+			assert.Equal(t, "helicopter", st["aircraft"], "a refused change altered the symbol")
+			assert.Equal(t, "blue", st["aircraftColor"])
+		})
 	}
 }
