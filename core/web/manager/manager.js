@@ -1707,7 +1707,7 @@
     }
   };
   const nv = (k) => (NV[lang] && NV[lang][k]) || NV.en[k] || k;
-  const navState = { prefix: '', tab: 'airports', fixQ: '', fixKind: '', fixOffset: 0, airportQ: '', airwayQ: '', edit: null, open: '' };
+  const navState = { prefix: '', tab: 'airports', fixQ: '', fixKind: '', fixOffset: 0, airportOffset: 0, airportQ: '', airwayQ: '', edit: null, open: '' };
   let navTimer = null;
 
   const fmtNum = (n) => Number(n || 0).toLocaleString(lang === 'pt' ? 'pt-BR' : 'en-US');
@@ -1755,9 +1755,11 @@
   }
 
   async function navAirports(body) {
-    const r = await api('GET', '/api/nav/airports?q=' + encodeURIComponent(navState.airportQ));
+    const limit = 100;
+    const r = await api('GET', `/api/nav/airports?q=${encodeURIComponent(navState.airportQ)}&limit=${limit}&offset=${navState.airportOffset}`);
+    const last = navState.airportOffset + r.airports.length;
     body.replaceChildren(
-      h('div', { class: 'row' }, ...navSearch(navState.airportQ, nv('search'), (v) => { navState.airportQ = v.trim(); renderNav(); })),
+      h('div', { class: 'row' }, ...navSearch(navState.airportQ, nv('search'), (v) => { navState.airportQ = v.trim(); navState.airportOffset = 0; renderNav(); })),
       h('div', { style: 'height:10px' }),
       r.airports.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) :
         h('table', null,
@@ -1768,7 +1770,11 @@
               h('button', { class: 'btn sm danger', onclick: async () => {
                 if (!confirm(nv('confirmDel'))) return;
                 await api('DELETE', '/api/nav/airport/' + encodeURIComponent(a.icao)); renderNav();
-              } }, nv('del'))))))));
+              } }, nv('del'))))))),
+      h('div', { class: 'row', style: 'margin-top:10px' },
+        h('button', { class: 'btn sm', disabled: navState.airportOffset === 0, onclick: () => { navState.airportOffset = Math.max(0, navState.airportOffset - limit); renderNav(); } }, nv('prev')),
+        h('span', { class: 'muted' }, r.total ? `${fmtNum(navState.airportOffset + 1)}-${fmtNum(last)} / ${fmtNum(r.total)}` : ''),
+        h('button', { class: 'btn sm', disabled: last >= r.total, onclick: () => { navState.airportOffset += limit; renderNav(); } }, nv('next'))));
   }
 
   async function navFixes(body) {

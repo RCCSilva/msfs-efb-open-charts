@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -195,20 +196,25 @@ func (s *Server) handleNavFix(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, f)
 }
 
-// GET /api/nav/airports[?q=SB]: the airports already stored.
+// GET /api/nav/airports[?q=SB&limit=100&offset=0]: a page of the airports already stored, and how many match.
 func (s *Server) handleNavAirports(w http.ResponseWriter, r *http.Request) {
 	db := s.navDB()
 	if db == nil {
 		writeErr(w, 503, errors.New("the navigation database is not available"))
 		return
 	}
-	list, err := db.Airports(r.URL.Query().Get("q"))
+	q := r.URL.Query()
+	limit, offset := 100, 0
+	if v, err := strconv.Atoi(q.Get("limit")); err == nil && v > 0 {
+		limit = min(v, 500)
+	}
+	if v, err := strconv.Atoi(q.Get("offset")); err == nil && v > 0 {
+		offset = v
+	}
+	list, total, err := db.AirportsPage(q.Get("q"), limit, offset)
 	if err != nil {
 		writeErr(w, 500, err)
 		return
 	}
-	if list == nil {
-		list = []navdb.Summary{}
-	}
-	writeJSON(w, 200, map[string]any{"airports": list})
+	writeJSON(w, 200, map[string]any{"airports": list, "total": total})
 }

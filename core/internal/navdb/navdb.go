@@ -283,6 +283,38 @@ type Summary struct {
 	FetchedAt time.Time `json:"fetchedAt"`
 }
 
+// AirportsPage lists one page of the stored airports whose ICAO starts with q or whose name has it,
+// and how many match in all. (With every airport of the simulator stored, a list of all of them is
+// tens of thousands of rows: a page is what a screen can show.)
+func (d *DB) AirportsPage(q string, limit, offset int) ([]Summary, int, error) {
+	q = strings.TrimSpace(q)
+	where, args := ``, []any{}
+	if q != "" {
+		where = ` WHERE icao LIKE ? OR name LIKE ?`
+		args = append(args, strings.ToUpper(q)+"%", "%"+q+"%")
+	}
+	var total int
+	if err := d.db.QueryRow(`SELECT COUNT(*) FROM airport`+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := d.db.Query(`SELECT icao, name, fetched_at FROM airport`+where+` ORDER BY icao LIMIT ? OFFSET ?`, append(args, limit, offset)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := []Summary{}
+	for rows.Next() {
+		var s Summary
+		var f string
+		if err := rows.Scan(&s.ICAO, &s.Name, &f); err != nil {
+			return nil, 0, err
+		}
+		s.FetchedAt, _ = time.Parse(time.RFC3339, f)
+		out = append(out, s)
+	}
+	return out, total, rows.Err()
+}
+
 // Airports lists the stored airports whose ICAO starts with the prefix.
 func (d *DB) Airports(prefix string) ([]Summary, error) {
 	rows, err := d.db.Query(`SELECT icao, name, fetched_at FROM airport WHERE icao LIKE ? ORDER BY icao`, strings.ToUpper(prefix)+"%")

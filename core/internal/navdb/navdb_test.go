@@ -103,3 +103,33 @@ func TestReopenKeepsData(t *testing.T) {
 		t.Fatalf("data lost on reopen: %v", err)
 	}
 }
+
+// With every airport of the simulator stored, the list is read a page at a time.
+func TestAirportsPage(t *testing.T) {
+	d, err := Open(filepath.Join(t.TempDir(), "n.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	for _, a := range []struct{ icao, name string }{
+		{"SBAA", "Alpha Field"}, {"SBBB", "Bravo Intl"}, {"SBCC", "Charlie"}, {"SBDD", "Delta"}, {"KJFK", "John F Kennedy Alpha"},
+	} {
+		if err := d.SaveAirport(&navdata.Airport{ICAO: a.icao, Name: a.name}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, total, err := d.AirportsPage("", 2, 0)
+	if err != nil || total != 5 || len(page) != 2 || page[0].ICAO != "KJFK" {
+		t.Fatalf("%+v %d %v", page, total, err)
+	}
+	page, _, _ = d.AirportsPage("", 2, 4)
+	if len(page) != 1 || page[0].ICAO != "SBDD" {
+		t.Fatalf("the last page: %+v", page)
+	}
+	if page, total, _ = d.AirportsPage("sb", 10, 0); total != 4 || len(page) != 4 {
+		t.Fatalf("by the start of the code: %d %+v", total, page)
+	}
+	if page, total, _ = d.AirportsPage("alpha", 10, 0); total != 2 {
+		t.Fatalf("by the name: %d %+v", total, page)
+	}
+}
