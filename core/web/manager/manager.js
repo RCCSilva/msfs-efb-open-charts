@@ -317,8 +317,13 @@
   }
 
   async function render() {
+    clearTimeout(setupTimer);
     const r = parseRoute();
-    document.body.classList.toggle('fullmap', r.name === 'map');
+    // the database is looked at on every page: when it cannot be used, every page says so
+    let dbst = null;
+    try { dbst = await api('GET', '/api/db/status'); } catch (e) { dbst = null; }   // only the computer itself may ask
+    const dbBad = !!dbst && dbst.ok === false;
+    document.body.classList.toggle('fullmap', r.name === 'map' && !dbBad);
     const tab = r.name === 'source' ? 'sources' : (r.name === 'chart' ? 'library' : r.name);
     document.getElementById('brand').replaceChildren(pageLink('#library', '', 'Open Charts'));
     if (state.local === undefined) {
@@ -332,7 +337,8 @@
       await loadGroups();
       drawGroupBar();
       drawFooter();
-      if (r.name === 'sources') await renderSources();
+      if (dbBad && (r.name === 'routes' || r.name === 'map' || r.name === 'nav')) view.replaceChildren(h('h2', null, t(r.name === 'map' ? 'mapTab' : r.name)), dbBanner(dbst));
+      else if (r.name === 'sources') await renderSources();
       else if (r.name === 'source') await renderSource(r.arg);
       else if (r.name === 'chart') await renderChart(r.arg);
       else if (r.name === 'groups') await renderGroups();
@@ -343,6 +349,7 @@
       else if (r.name === 'guide') renderGuide();
       else if (r.name === 'about') renderAbout();
       else await renderLibrary();
+      if (dbBad && r.name !== 'setup' && !['routes', 'map', 'nav'].includes(r.name)) view.prepend(dbBanner(dbst));
     } catch (e) {
       view.replaceChildren(h('div', { class: 'card' }, h('span', { class: 'badge bad' }, e.message)));
     }
@@ -1198,6 +1205,7 @@
 
   // ---- Setup: status checklist, EFB app install, start with the simulator
   async function renderSetup() {
+    clearTimeout(setupTimer);
     const st = await api('GET', '/api/setup');
     const row = (label, value, extra) => h('div', { class: 'row setuprow' },
       h('div', { class: 'setuplbl' }, label), h('div', { class: 'grow' }, value), extra || null);
@@ -1414,16 +1422,242 @@
         h('div', { class: 'row', style: 'margin-top:8px' }, h('div', { class: 'grow' }, path),
           h('button', { class: 'btn primary', onclick: () => act(() => api('POST', '/api/setup/efb', { community: path.value }), t('stRestart')) }, t('btnInstall')))));
     }
+    cards.push(...await databaseCards());
     view.replaceChildren(h('h2', null, t('setup')), ...cards);
   }
 
-  // ---- About
+
+  // ---- Setup > database: the file that holds the navigation data, its copies, starting over and
+  // restoring a copy; and the loads from the simulator, which are made from here.
+  const SD = {
+    en: {
+      title: 'Navigation database', intro: 'The file where Open Charts keeps the airports, fixes, airways, your own points and your saved routes. Copies of it are kept in the backups folder next to it.',
+      file: 'File', size: 'Size', schema: 'Version of the structure', stateOk: 'Working', problemWord: 'Problem',
+      corruptTitle: 'The navigation database is corrupted',
+      corruptText: 'Open Charts cannot use it. It has to be set aside and started again from scratch: the airports and fixes are loaded again from the simulator. The damaged file is kept in the backups folder.',
+      newerTitle: 'The navigation database is from a newer version',
+      newerText: 'It was made by a newer version of Open Charts, so this one does not touch it. Update Open Charts. Starting over would set that file aside and begin a new one.',
+      failedTitle: 'The navigation database could not be updated',
+      failedText: 'The update to the new version failed and the file was left as it was (a copy was made before). You can start over: the file is kept in the backups folder.',
+      goSetup: 'Open the Setup page', bannerNoDb: 'Until this is solved, the Navigation, Routes and Map tabs cannot be used.',
+      backupNow: 'Make a backup now', backupMade: 'Backup saved', reset: 'Start over...',
+      resetConfirm: 'Start the navigation database over?\n\nEverything in it is lost: airports, fixes, airways, your own points and your saved routes. A backup is saved first, in the backups folder, and you can restore it later.',
+      resetConfirmBroken: 'Set the damaged database aside and start over?\n\nEverything that was in it is lost, including your own points and saved routes. The damaged file is kept in the backups folder.',
+      resetDone: 'Done: a new database was created',
+      backupsTitle: 'Backups', backupsEmpty: 'No backup yet.', restore: 'Restore', remove: 'Remove',
+      restoreConfirm: 'Replace the current database with this backup?\n\nWhat is in the database now is lost, except for a copy that is saved first. If the backup is from an older version it is updated.',
+      removeConfirm: 'Remove this backup file? It cannot be undone.', restored: 'Restored',
+      importBackup: 'Restore from a file...', importHow: 'Choose a database file (.db) that you saved before. It is checked, and if it is a healthy navigation database it takes the place of the current one (a copy of the current one is saved first).',
+      importConfirm: 'Replace the current database with this file?\n\nWhat is in the database now is lost, except for a copy that is saved first.',
+      working: 'Working...',
+      kinds: { schema: 'before an update', manual: 'made by you', reset: 'before starting over', restore: 'before restoring', corrupt: 'damaged file set aside', imported: 'a file you brought' },
+      loadSection: 'Load from the simulator', loadAirportTitle: 'Load one airport', loadAirportHow: 'Asks the simulator for one airport and stores it.',
+      needDb: 'The database is not in use: solve the problem above first.'
+    },
+    pt: {
+      title: 'Banco de dados de navegação', intro: 'O arquivo onde o Open Charts guarda os aeroportos, fixos, aerovias, os seus pontos e as suas rotas salvas. As cópias dele ficam na pasta backups, ao lado.',
+      file: 'Arquivo', size: 'Tamanho', schema: 'Versão da estrutura', stateOk: 'Funcionando', problemWord: 'Problema',
+      corruptTitle: 'O banco de dados de navegação está corrompido',
+      corruptText: 'O Open Charts não consegue usá-lo. Ele precisa ser posto de lado e recomeçado do zero: os aeroportos e fixos são carregados de novo do simulador. O arquivo danificado fica guardado na pasta backups.',
+      newerTitle: 'O banco de dados de navegação é de uma versão mais nova',
+      newerText: 'Ele foi feito por uma versão mais nova do Open Charts, então esta não mexe nele. Atualize o Open Charts. Recomeçar poria esse arquivo de lado e começaria um novo.',
+      failedTitle: 'Não foi possível atualizar o banco de dados de navegação',
+      failedText: 'A atualização para a versão nova falhou e o arquivo ficou como estava (uma cópia foi feita antes). Você pode recomeçar: o arquivo fica guardado na pasta backups.',
+      goSetup: 'Abrir a página Setup', bannerNoDb: 'Enquanto isso não for resolvido, as abas Navegação, Rotas e Mapa não funcionam.',
+      backupNow: 'Fazer uma cópia agora', backupMade: 'Cópia salva', reset: 'Recomeçar...',
+      resetConfirm: 'Recomeçar o banco de dados de navegação?\n\nTudo o que há nele se perde: aeroportos, fixos, aerovias, os seus pontos e as suas rotas salvas. Uma cópia é salva antes, na pasta backups, e você pode restaurá-la depois.',
+      resetConfirmBroken: 'Pôr o banco danificado de lado e recomeçar?\n\nTudo o que havia nele se perde, inclusive os seus pontos e rotas salvas. O arquivo danificado fica guardado na pasta backups.',
+      resetDone: 'Pronto: um banco novo foi criado',
+      backupsTitle: 'Cópias de segurança', backupsEmpty: 'Nenhuma cópia ainda.', restore: 'Restaurar', remove: 'Remover',
+      restoreConfirm: 'Trocar o banco de dados atual por esta cópia?\n\nO que há no banco agora se perde, exceto por uma cópia que é salva antes. Se a cópia for de uma versão mais antiga, ela é atualizada.',
+      removeConfirm: 'Remover este arquivo de cópia? Não dá para desfazer.', restored: 'Restaurado',
+      importBackup: 'Restaurar de um arquivo...', importHow: 'Escolha um arquivo de banco de dados (.db) que você guardou antes. Ele é verificado e, se for um banco de navegação saudável, toma o lugar do atual (uma cópia do atual é salva antes).',
+      importConfirm: 'Trocar o banco de dados atual por este arquivo?\n\nO que há no banco agora se perde, exceto por uma cópia que é salva antes.',
+      working: 'Trabalhando...',
+      kinds: { schema: 'antes de uma atualização', manual: 'feita por você', reset: 'antes de recomeçar', restore: 'antes de restaurar', corrupt: 'arquivo danificado posto de lado', imported: 'um arquivo que você trouxe' },
+      loadSection: 'Carregar do simulador', loadAirportTitle: 'Carregar um aeroporto', loadAirportHow: 'Pede ao simulador um aeroporto e o guarda.',
+      needDb: 'O banco não está em uso: resolva o problema acima primeiro.'
+    }
+  };
+  const sd = (k) => (SD[lang] && SD[lang][k]) || SD.en[k] || k;
+  const fmtBytes = (n) => (n >= 1 << 30 ? (n / (1 << 30)).toFixed(1) + ' GB' : n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB');
+  const fmtWhen = (iso) => { try { return new Date(iso).toLocaleString(lang === 'pt' ? 'pt-BR' : 'en-US'); } catch (e) { return iso; } };
+  let setupTimer = null;
+
+  // what is wrong with the database, in words (the banner and the Setup card use it)
+  function dbProblemText(p) {
+    const kind = p && p.kind;
+    if (kind === 'corrupt') return { title: sd('corruptTitle'), text: sd('corruptText') };
+    if (kind === 'newer') return { title: sd('newerTitle'), text: sd('newerText') };
+    return { title: sd('failedTitle'), text: sd('failedText') };
+  }
+
+  // shown at the top of every page while the database cannot be used
+  function dbBanner(st) {
+    const w = dbProblemText(st.problem);
+    return h('div', { class: 'warnbox dbbanner', style: 'margin-bottom:12px' },
+      h('strong', null, w.title), h('div', { style: 'margin:4px 0' }, w.text), h('div', { class: 'muted' }, sd('bannerNoDb')),
+      state.local ? h('div', { style: 'margin-top:8px' }, h('a', { class: 'btn primary', href: '#setup' }, sd('goSetup'))) : null);
+  }
+
+  // the card with the file, and the buttons that make a copy or start over
+  function dbStateCard(st) {
+    const busy = h('div', { class: 'muted', style: 'margin-top:8px' });
+    const run = async (fn, done) => {
+      busy.textContent = sd('working');
+      try { await fn(); toast(done); } catch (e) { toast(e.message); }
+      render();
+    };
+    const w = st.ok ? null : dbProblemText(st.problem);
+    return h('div', { class: 'card' },
+      h('h3', null, sd('title')),
+      h('p', { class: 'muted' }, sd('intro')),
+      h('div', { class: 'muted', style: 'margin-bottom:6px' }, sd('file') + ': ', h('code', null, st.path || '?')),
+      st.size ? h('div', { class: 'muted', style: 'margin-bottom:6px' }, sd('size') + ': ' + fmtBytes(st.size)) : null,
+      st.ok ? h('div', { class: 'muted', style: 'margin-bottom:6px' }, sd('schema') + ': ' + st.schema + '  \u00b7  ', h('span', { class: 'badge ok' }, sd('stateOk')))
+        : h('div', { class: 'warnbox', style: 'margin:8px 0' }, h('strong', null, w.title), h('div', { style: 'margin-top:4px' }, w.text),
+          st.problem && st.problem.detail ? h('div', { class: 'muted', style: 'margin-top:4px;font-size:12px' }, st.problem.detail) : null),
+      h('div', { class: 'row', style: 'margin-top:8px' },
+        h('button', { class: 'btn', disabled: !st.ok || st.loading, onclick: () => run(() => api('POST', '/api/db/backup'), sd('backupMade')) }, sd('backupNow')),
+        h('button', { class: 'btn danger', disabled: st.loading, onclick: async () => {
+          if (!confirm(st.ok ? sd('resetConfirm') : sd('resetConfirmBroken'))) return;
+          run(() => api('POST', '/api/db/reset'), sd('resetDone'));
+        } }, sd('reset'))),
+      busy);
+  }
+
+  // the copies in the backups folder: restore one, remove one, or bring a file
+  function dbBackupsCard(st) {
+    const busy = h('div', { class: 'muted', style: 'margin-top:8px' });
+    const run = async (fn, done) => {
+      busy.textContent = sd('working');
+      try { await fn(); toast(done); } catch (e) { toast(e.message); }
+      render();
+    };
+    const file = h('input', { type: 'file', accept: '.db,application/octet-stream', style: 'display:none' });
+    file.addEventListener('change', async () => {
+      if (!file.files.length) return;
+      if (!confirm(sd('importConfirm'))) { file.value = ''; return; }
+      const fd = new FormData();
+      fd.append('file', file.files[0]);
+      run(() => api('POST', '/api/db/import', fd), sd('restored'));
+    });
+    const list = st.backups || [];
+    const baseKind = (k) => String(k || '').replace(/[0-9]+$/, '');
+    return h('div', { class: 'card' },
+      h('h3', null, sd('backupsTitle')),
+      list.length === 0 ? h('p', { class: 'muted' }, sd('backupsEmpty')) : h('table', null,
+        h('tbody', null, list.map((b) => h('tr', null,
+          h('td', null, fmtWhen(b.time), h('div', { class: 'muted', style: 'font-size:12px' }, (sd('kinds')[baseKind(b.kind)] || b.kind) + '  \u00b7  ' + fmtBytes(b.size))),
+          h('td', { class: 'actions' },
+            h('button', { class: 'btn sm', disabled: st.loading, onclick: () => {
+              if (!confirm(sd('restoreConfirm'))) return;
+              run(() => api('POST', '/api/db/restore', { name: b.name }), sd('restored'));
+            } }, sd('restore')), ' ',
+            h('button', { class: 'btn sm danger', onclick: () => {
+              if (!confirm(sd('removeConfirm'))) return;
+              run(() => api('DELETE', '/api/db/backups/' + encodeURIComponent(b.name)), t('done'));
+            } }, sd('remove'))))))),
+      h('p', { class: 'muted', style: 'margin-top:10px' }, sd('importHow')),
+      h('button', { class: 'btn', disabled: st.loading, onclick: () => file.click() }, sd('importBackup')), file, busy);
+  }
+
+  // load from the simulator: the names from its files, each name asked through SimConnect, airports.
+  // The numbers follow a running load in place: the page is not redrawn (that lost the scroll
+  // position and whatever was being typed).
+  async function dbLoadCard() {
+    const sum = await api('GET', '/api/nav/summary');
+    const c = sum.counts;
+    const job = sum.job;
+    const pct = job.total > 0 ? Math.min(100, Math.round(job.done * 100 / job.total)) : 0;
+    const barFill = h('i', { style: `width:${pct}%` });
+    const phaseText = h('div', { class: 'muted' }, navPhaseText(job, pct));
+    const pendingBadge = h('span', { class: 'badge' }, navPendingText(c));
+    const start = async (body) => {
+      try { await api('POST', '/api/nav/load', body); } catch (e) { toast(e.message); }
+      renderSetup();
+    };
+    const addIn = h('input', { type: 'text', placeholder: nv('loadAirport'), style: 'max-width:260px' });
+    const loadOne = async () => {
+      const icao = addIn.value.trim().toUpperCase();
+      if (!icao) return;
+      try { await api('GET', '/api/nav/airport/' + encodeURIComponent(icao) + '?refresh=1'); toast(nv('loaded') + ': ' + icao); } catch (e) { toast(nv('failed') + ': ' + e.message); }
+      addIn.value = '';
+    };
+    const tick = async () => {
+      if (parseRoute().name !== 'setup') return;
+      let now;
+      try { now = await api('GET', '/api/nav/summary'); } catch (e) { setupTimer = setTimeout(tick, 3000); return; }
+      if (parseRoute().name !== 'setup') return;
+      if (!now.job.running) { renderSetup(); return; }
+      const p = now.job.total > 0 ? Math.min(100, Math.round(now.job.done * 100 / now.job.total)) : 0;
+      barFill.style.width = p + '%';
+      phaseText.textContent = navPhaseText(now.job, p);
+      pendingBadge.textContent = navPendingText(now.counts);
+      setupTimer = setTimeout(tick, 1500);
+    };
+    if (job.running) setupTimer = setTimeout(tick, 1500);
+    return h('div', { class: 'card' },
+      h('h3', null, sd('loadSection')),
+      h('p', { class: 'muted' }, nv('loadHow')),
+      h('p', null,
+        sum.files.length ? h('span', { class: 'badge ok' }, `${nv('filesFound')}: ${sum.files.length}`) : h('span', { class: 'badge warn' }, nv('filesNone')),
+        !sum.simLink ? h('span', { class: 'badge bad' }, nv('noLink')) : null,
+        c.seedIdents ? pendingBadge : null),
+      h('div', null, h('div', { class: 'bar' }, barFill), phaseText,
+        job.message ? h('div', { class: 'badge bad', style: 'margin-top:6px' }, job.message) : null),
+      h('div', { class: 'row', style: 'margin-top:10px' },
+        h('label', { class: 'fld' }, h('span', { class: 'muted' }, nv('airportPrefix') + ' (' + nv('airportPrefixHint') + ')'),
+          h('input', { type: 'text', value: navState.prefix, maxlength: 4, style: 'width:90px', oninput: (e) => { navState.prefix = e.target.value.toUpperCase(); } }))),
+      h('div', { class: 'row', style: 'margin-top:10px' },
+        job.running
+          ? h('button', { class: 'btn danger', onclick: async () => { await api('DELETE', '/api/nav/load'); renderSetup(); } }, nv('stop'))
+          : [
+            h('button', { class: 'btn primary', disabled: !sum.simLink, onclick: () => start({ mode: 'all', prefix: navState.prefix }) }, nv('loadAll')),
+            h('button', { class: 'btn', disabled: !sum.simLink, onclick: () => start({ mode: 'airports', prefix: navState.prefix }) }, nv('loadAirportsOnly')),
+            h('button', { class: 'btn', disabled: !sum.files.length, onclick: () => start({ mode: 'files' }) }, nv('loadFiles'))]),
+      h('h4', { style: 'margin:16px 0 4px' }, sd('loadAirportTitle')),
+      h('div', { class: 'muted', style: 'margin-bottom:6px' }, sd('loadAirportHow')),
+      h('div', { class: 'row' }, addIn, h('button', { class: 'btn', disabled: !sum.simLink, onclick: loadOne }, nv('loadAirportBtn'))));
+  }
+
+  // import the user points that Little Navmap exports
+  function dbPointsImportCard() {
+    const file = h('input', { type: 'file', accept: '.csv,text/csv,text/plain', style: 'display:none' });
+    file.addEventListener('change', async () => {
+      if (!file.files.length) return;
+      const fd = new FormData();
+      fd.append('file', file.files[0]);
+      try {
+        const res = await api('POST', '/api/nav/points/import', fd);
+        toast(fill(nv('imported'), { a: res.added, d: res.duplicates, i: res.ignored }));
+      } catch (err) { toast(nv('failed') + ': ' + err.message); }
+      file.value = '';
+    });
+    return h('div', { class: 'card' },
+      h('h3', null, nv('importTitle')),
+      h('p', { class: 'muted' }, nv('importHow')),
+      h('button', { class: 'btn', onclick: () => file.click() }, nv('importBtn')), file);
+  }
+
+  // every card of the database section of Setup
+  async function databaseCards() {
+    let st;
+    try { st = await api('GET', '/api/db/status'); } catch (e) { return []; }
+    const cards = [dbStateCard(st), dbBackupsCard(st)];
+    if (st.ok) {
+      try { cards.push(await dbLoadCard()); } catch (e) { /* the card is an extra */ }
+      cards.push(dbPointsImportCard());
+    }
+    return cards;
+  }
+
   // ---- Navigation: the data the route uses (airports, fixes, airways), the user's own points, and the
   // bulk load. Everything here comes from the simulator; nothing is shipped with Open Charts.
   const NV = {
     en: {
       title: 'Navigation data',
-      intro: 'Airports, waypoints, VORs, NDBs and airways that Open Charts uses to read a route. They are loaded from your own simulator (SimConnect), as routes ask for them, or all at once below.',
+      intro: 'Airports, waypoints, VORs, NDBs and airways that Open Charts uses to read a route, as they are stored. They are loaded from your own simulator (SimConnect), as routes ask for them. To load everything at once, import points, or look after the database (copies, starting over), use the Setup page.',
       stats: 'Stored now', airports: 'Airports', runways: 'Runways', procedures: 'Procedures', waypoints: 'Waypoints', vors: 'VORs', ndbs: 'NDBs',
       airways: 'Airways', segments: 'Segments', idents: 'Names asked', myPoints: 'My points',
       loadTitle: 'Load everything',
@@ -1448,7 +1682,7 @@
     },
     pt: {
       title: 'Dados de navegação',
-      intro: 'Aeroportos, waypoints, VORs, NDBs e aerovias que o Open Charts usa para ler uma rota. Eles vêm do seu próprio simulador (SimConnect), conforme as rotas pedem, ou todos de uma vez abaixo.',
+      intro: 'Aeroportos, waypoints, VORs, NDBs e aerovias que o Open Charts usa para ler uma rota, como estão guardados. Eles vêm do seu próprio simulador (SimConnect), conforme as rotas pedem. Para carregar tudo de uma vez, importar pontos ou cuidar do banco (cópias, recomeçar), use a página Setup.',
       stats: 'Guardado agora', airports: 'Aeroportos', runways: 'Pistas', procedures: 'Procedimentos', waypoints: 'Waypoints', vors: 'VORs', ndbs: 'NDBs',
       airways: 'Aerovias', segments: 'Trechos', idents: 'Nomes consultados', myPoints: 'Meus pontos',
       loadTitle: 'Carregar tudo',
@@ -1483,50 +1717,12 @@
     clearTimeout(navTimer);
     const sum = await api('GET', '/api/nav/summary');
     const c = sum.counts;
-    const job = sum.job;
-    const live = {};   // the parts of the page that follow the load without redrawing it
+    const live = {};
     const stat = (label, n, key) => {
       const num = h('div', { class: 'statn' }, fmtNum(n));
       if (key) live[key] = num;
       return h('div', { class: 'stat' }, num, h('div', { class: 'muted' }, label));
     };
-
-    const pct = job.total > 0 ? Math.min(100, Math.round(job.done * 100 / job.total)) : 0;
-    const barFill = h('i', { style: `width:${pct}%` });
-    const phaseText = h('div', { class: 'muted' }, navPhaseText(job, pct));
-    const pendingBadge = h('span', { class: 'badge' }, navPendingText(c));
-    live.bar = barFill; live.phase = phaseText; live.pending = pendingBadge;
-    const progress = h('div', null,
-      h('div', { class: 'bar' }, barFill), phaseText,
-      job.message ? h('div', { class: 'badge bad', style: 'margin-top:6px' }, job.message) : null);
-
-    const loadCard = h('div', { class: 'card' },
-      h('h3', null, nv('loadTitle')),
-      h('p', { class: 'muted' }, nv('loadHow')),
-      h('p', null,
-        sum.files.length ? h('span', { class: 'badge ok' }, `${nv('filesFound')}: ${sum.files.length}`) : h('span', { class: 'badge warn' }, nv('filesNone')),
-        !sum.simLink ? h('span', { class: 'badge bad' }, nv('noLink')) : null,
-        c.seedIdents ? pendingBadge : null),
-      progress,
-      h('div', { class: 'row', style: 'margin-top:10px' },
-        h('label', { class: 'fld' }, h('span', { class: 'muted' }, nv('airportPrefix') + ' (' + nv('airportPrefixHint') + ')'),
-          h('input', { type: 'text', value: navState.prefix, maxlength: 4, style: 'width:90px', oninput: (e) => { navState.prefix = e.target.value.toUpperCase(); } }))),
-      h('div', { class: 'row', style: 'margin-top:10px' },
-        job.running
-          ? h('button', { class: 'btn danger', onclick: async () => { await api('DELETE', '/api/nav/load'); renderNav(); } }, nv('stop'))
-          : [
-            h('button', { class: 'btn primary', disabled: !sum.simLink, onclick: async () => {
-              try { await api('POST', '/api/nav/load', { mode: 'all', prefix: navState.prefix }); } catch (e) { toast(e.message); }
-              renderNav();
-            } }, nv('loadAll')),
-            h('button', { class: 'btn', disabled: !sum.simLink, onclick: async () => {
-              try { await api('POST', '/api/nav/load', { mode: 'airports', prefix: navState.prefix }); } catch (e) { toast(e.message); }
-              renderNav();
-            } }, nv('loadAirportsOnly')),
-            h('button', { class: 'btn', disabled: !sum.files.length, onclick: async () => {
-              try { await api('POST', '/api/nav/load', { mode: 'files' }); } catch (e) { toast(e.message); }
-              renderNav();
-            } }, nv('loadFiles'))]));
 
     const tabs = h('div', { class: 'row', style: 'margin-bottom:12px' },
       [['airports', 'tabAirports'], ['fixes', 'tabFixes'], ['airways', 'tabAirways'], ['points', 'tabPoints']].map(([id, key]) =>
@@ -1539,36 +1735,18 @@
           stat(nv('procedures'), c.procedures, 'procedures'), stat(nv('waypoints'), c.waypoints, 'waypoints'), stat(nv('vors'), c.vors, 'vors'),
           stat(nv('ndbs'), c.ndbs, 'ndbs'), stat(nv('airways'), c.airways, 'airways'), stat(nv('segments'), c.segments, 'segments'),
           stat(nv('idents'), c.identsChecked, 'identsChecked'), stat(nv('myPoints'), c.userPoints, 'userPoints'))),
-      loadCard, tabs, body);
+      tabs, body);
 
     if (navState.tab === 'airports') await navAirports(body);
     else if (navState.tab === 'fixes') await navFixes(body);
     else if (navState.tab === 'airways') await navAirways(body);
     else await navPoints(body);
-
-    // while a load runs the numbers follow it in place (the page is not redrawn: that lost the scroll
-    // position and whatever was being typed); when it ends the page is drawn once more
-    if (job.running) navTimer = setTimeout(() => navTick(live), 1500);
   }
 
   function navPhaseText(job, pct) {
     return `${nv('phase')[job.phase] || job.phase}${job.total ? ` - ${fmtNum(job.done)} / ${fmtNum(job.total)} (${pct}%)` : ''}`;
   }
   const navPendingText = (c) => `${fmtNum(c.seedPending)} ${nv('pending')} (${fmtNum(c.seedIdents)} ${nv('total')})`;
-
-  async function navTick(live) {
-    if (parseRoute().name !== 'nav') return;
-    let sum;
-    try { sum = await api('GET', '/api/nav/summary'); } catch (e) { navTimer = setTimeout(() => navTick(live), 3000); return; }
-    if (parseRoute().name !== 'nav') return;
-    if (!sum.job.running) { renderNav(); return; }
-    for (const k of Object.keys(sum.counts)) if (live[k]) live[k].textContent = fmtNum(sum.counts[k]);
-    const pct = sum.job.total > 0 ? Math.min(100, Math.round(sum.job.done * 100 / sum.job.total)) : 0;
-    live.bar.style.width = pct + '%';
-    live.phase.textContent = navPhaseText(sum.job, pct);
-    live.pending.textContent = navPendingText(sum.counts);
-    navTimer = setTimeout(() => navTick(live), 1500);
-  }
 
   function navSearch(value, placeholder, onGo) {
     const input = h('input', { type: 'text', value, placeholder, class: 'grow' });
@@ -1578,27 +1756,15 @@
 
   async function navAirports(body) {
     const r = await api('GET', '/api/nav/airports?q=' + encodeURIComponent(navState.airportQ));
-    const add = h('input', { type: 'text', placeholder: nv('loadAirport'), style: 'max-width:260px' });
-    const doLoad = async () => {
-      const icao = add.value.trim().toUpperCase();
-      if (!icao) return;
-      try { await api('GET', '/api/nav/airport/' + encodeURIComponent(icao)); toast(nv('loaded') + ': ' + icao); } catch (e) { toast(nv('failed') + ': ' + e.message); }
-      renderNav();
-    };
     body.replaceChildren(
       h('div', { class: 'row' }, ...navSearch(navState.airportQ, nv('search'), (v) => { navState.airportQ = v.trim(); renderNav(); })),
-      h('div', { class: 'row', style: 'margin:10px 0' }, add, h('button', { class: 'btn', onclick: doLoad }, nv('loadAirportBtn'))),
+      h('div', { style: 'height:10px' }),
       r.airports.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) :
         h('table', null,
           h('thead', null, h('tr', null, h('th', null, 'ICAO'), h('th', null, nv('name')), h('th', null, nv('fetched')), h('th'))),
           h('tbody', null, r.airports.map((a) => h('tr', null,
             h('td', null, h('strong', null, a.icao)), h('td', null, a.name), h('td', { class: 'muted' }, (a.fetchedAt || '').slice(0, 10)),
             h('td', { class: 'actions' },
-              h('button', { class: 'btn sm', onclick: async () => {
-                try { await api('GET', '/api/nav/airport/' + encodeURIComponent(a.icao) + '?refresh=1'); toast(nv('loaded') + ': ' + a.icao); } catch (e) { toast(nv('failed') + ': ' + e.message); }
-                renderNav();
-              } }, nv('refresh')),
-              ' ',
               h('button', { class: 'btn sm danger', onclick: async () => {
                 if (!confirm(nv('confirmDel'))) return;
                 await api('DELETE', '/api/nav/airport/' + encodeURIComponent(a.icao)); renderNav();
@@ -1669,22 +1835,7 @@
           } catch (err) { toast(nv('failed') + ': ' + err.message); }
         } }, e.id ? nv('save') : nv('add')),
         e.id ? h('button', { class: 'btn', onclick: () => { navState.edit = null; renderNav(); } }, nv('cancel')) : null));
-    const file = h('input', { type: 'file', accept: '.csv,text/csv,text/plain', style: 'display:none' });
-    file.addEventListener('change', async () => {
-      if (!file.files.length) return;
-      const fd = new FormData();
-      fd.append('file', file.files[0]);
-      try {
-        const res = await api('POST', '/api/nav/points/import', fd);
-        toast(fill(nv('imported'), { a: res.added, d: res.duplicates, i: res.ignored }));
-      } catch (err) { toast(nv('failed') + ': ' + err.message); }
-      renderNav();
-    });
-    const importRow = h('div', { class: 'card', style: 'margin-bottom:12px' },
-      h('h3', null, nv('importTitle')),
-      h('p', { class: 'muted' }, nv('importHow')),
-      h('button', { class: 'btn', onclick: () => file.click() }, nv('importBtn')), file);
-    body.replaceChildren(h('p', { class: 'muted' }, nv('pointsIntro')), importRow, form,
+    body.replaceChildren(h('p', { class: 'muted' }, nv('pointsIntro')), form,
       r.points.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) : h('table', null,
         h('thead', null, h('tr', null, h('th', null, nv('ident')), h('th', null, nv('name')), h('th', null, nv('kind')), h('th', null, nv('pos')), h('th', null, nv('note')), h('th'))),
         h('tbody', null, r.points.map((p) => h('tr', null,

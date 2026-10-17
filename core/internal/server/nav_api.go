@@ -63,6 +63,8 @@ type navState struct {
 	list     AirportLister
 	batch    AirportBatchFetcher
 	planLoad PlanLoader
+	file     NavFile
+	problem  *NavProblem
 }
 
 // SetNav gives the server the navigation database and, when the simulator link exists, the way

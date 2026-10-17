@@ -12,6 +12,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"io"
 	"log"
@@ -205,45 +206,83 @@ func main() {
 	srv.UseSettings(*data, defaultDataDir(), cfg, fixedAddr)
 
 	// What the simulator knows about airports and procedures: asked on demand, kept in SQLite.
-	if nav, err := navdb.Open(filepath.Join(*data, "navdata.db")); err != nil {
-		log.Printf("navigation database: %v (airport data will be unavailable)", err)
-	} else {
-		defer nav.Close()
-		var fetch server.NavFetcher
-		var fixes server.FixFetcher
-		var lookup server.IdentFetcher
-		if simDLL != "" {
-			fetch = func(icao string) (*navdata.Airport, error) {
-				return simconnect.FetchAirport(simDLL, icao, 30*time.Second)
+	navPath := filepath.Join(*data, "navdata.db")
+	var fetch server.NavFetcher
+	var fixes server.FixFetcher
+	var lookup server.IdentFetcher
+	if simDLL != "" {
+		fetch = func(icao string) (*navdata.Airport, error) {
+			return simconnect.FetchAirport(simDLL, icao, 30*time.Second)
+		}
+		fixes = func(refs []navdata.FixRef) ([]navdata.Fix, error) {
+			return simconnect.FetchFixes(simDLL, refs, 60*time.Second)
+		}
+		lookup = func(idents []string) ([]navdata.Fix, error) {
+			return simconnect.LookupFixes(simDLL, idents, 30*time.Second)
+		}
+		srv.SetPlanLoader(func(file string) error { return simconnect.LoadFlightPlan(simDLL, file, 1500*time.Millisecond) })
+		srv.SetAirportBatcher(func(icaos []string) ([]server.AirportAnswer, error) {
+			res, err := simconnect.FetchAirports(simDLL, icaos, 120*time.Second)
+			out := make([]server.AirportAnswer, len(res))
+			for i, r := range res {
+				out[i] = server.AirportAnswer{Airport: r.Airport, Err: r.Err}
 			}
-			fixes = func(refs []navdata.FixRef) ([]navdata.Fix, error) {
-				return simconnect.FetchFixes(simDLL, refs, 60*time.Second)
+			return out, err
+		})
+		srv.SetAirportLister(func() ([]server.AirportRef, error) {
+			list, err := simconnect.ListAirports(simDLL, 90*time.Second)
+			out := make([]server.AirportRef, 0, len(list))
+			for _, a := range list {
+				out = append(out, server.AirportRef{ICAO: a.ICAO, Region: a.Region, Lat: a.Lat, Lon: a.Lon})
 			}
-			lookup = func(idents []string) ([]navdata.Fix, error) {
-				return simconnect.LookupFixes(simDLL, idents, 30*time.Second)
+			return out, err
+		})
+	}
+	// The database is opened (its schema brought up to date, its structure checked) here, and again
+	// when the user starts over or restores a copy. A file that cannot be used is not fatal: the
+	// program runs without navigation data and the manager tells the user why.
+	var navCur *navdb.DB
+	openNav := func() error {
+		nav, err := navdb.Open(navPath)
+		if err != nil {
+			kind := "failed"
+			switch {
+			case errors.Is(err, navdb.ErrCorrupt):
+				kind = "corrupt"
+			case errors.Is(err, navdb.ErrNewerSchema):
+				kind = "newer"
 			}
+			srv.SetNavProblem(kind, err.Error())
+			log.Printf("navigation database: %v (it is not in use)", err)
+			return err
+		}
+		navCur = nav
+		if m := nav.Migrated(); m.To != m.From {
+			log.Printf("navigation database: schema %d -> %d (copy before: %q)", m.From, m.To, m.Backup)
 		}
 		srv.SetNav(nav, fetch, fixes, lookup)
-		if simDLL != "" {
-			srv.SetPlanLoader(func(file string) error { return simconnect.LoadFlightPlan(simDLL, file, 1500*time.Millisecond) })
-			srv.SetAirportBatcher(func(icaos []string) ([]server.AirportAnswer, error) {
-				res, err := simconnect.FetchAirports(simDLL, icaos, 120*time.Second)
-				out := make([]server.AirportAnswer, len(res))
-				for i, r := range res {
-					out[i] = server.AirportAnswer{Airport: r.Airport, Err: r.Err}
-				}
-				return out, err
-			})
-			srv.SetAirportLister(func() ([]server.AirportRef, error) {
-				list, err := simconnect.ListAirports(simDLL, 90*time.Second)
-				out := make([]server.AirportRef, 0, len(list))
-				for _, a := range list {
-					out = append(out, server.AirportRef{ICAO: a.ICAO, Region: a.Region, Lat: a.Lat, Lon: a.Lon})
-				}
-				return out, err
-			})
-		}
+		srv.SetNavProblem("", "")
+		return nil
 	}
+	_ = openNav()
+	srv.SetNavFile(server.NavFile{Path: navPath, Replace: func(change func() error) error {
+		srv.SetNav(nil, fetch, fixes, lookup) // nothing uses the file while it is changed
+		if navCur != nil {
+			navCur.Close()
+			navCur = nil
+		}
+		cerr := change()
+		oerr := openNav()
+		if cerr != nil {
+			return cerr
+		}
+		return oerr
+	}})
+	defer func() {
+		if navCur != nil {
+			navCur.Close()
+		}
+	}()
 	defer srv.Close()
 	srv.Serve(ln)
 	log.Printf("listening on %s (network access: %v)", ln.Addr(), cfg.LAN && !fixedAddr)

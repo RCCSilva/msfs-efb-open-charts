@@ -1,15 +1,15 @@
 // Package navdb stores the navigation data of the simulator (package navdata) in a SQLite file:
 // airports, runways, frequencies and procedures with their legs.
 //
-// It uses modernc.org/sqlite, a Go translation of SQLite, so the program stays free of cgo. The file
-// is a cache: everything in it can be fetched again from the simulator, so a schema change is
-// handled by starting over (see the version in the meta table).
+// It uses modernc.org/sqlite, a Go translation of SQLite, so the program stays free of cgo. Most of
+// the file can be fetched again from the simulator, but not all of it (the user's points, the saved
+// routes) and fetching takes a long time, so the schema changes by migrations that keep the data
+// (see migrations.go).
 package navdb
 
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -17,9 +17,6 @@ import (
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 )
-
-// schemaVersion changes whenever the tables below do.
-const schemaVersion = 3
 
 const schema = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -75,11 +72,14 @@ CREATE TABLE IF NOT EXISTS ident_check (ident TEXT PRIMARY KEY, found INTEGER NO
 
 // DB is the navigation database.
 type DB struct {
-	db *sql.DB
+	db       *sql.DB
+	path     string
+	migrated Migration
 }
 
-// Open opens (creating it when needed) the database file. A file with another schema version is
-// emptied: it only holds data that can be fetched again.
+// Open opens (creating it when needed) the database file and brings its schema up to date with the
+// migrations (a copy of the file is made first when there is data to protect). A file made by a
+// newer version of the program is not opened: ErrNewerSchema.
 func Open(path string) (*DB, error) {
 	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
 	if err != nil {
@@ -87,52 +87,12 @@ func Open(path string) (*DB, error) {
 	}
 	// one writer at a time is what SQLite does anyway; this keeps the pool simple
 	db.SetMaxOpenConns(4)
-	d := &DB{db: db}
-	if err := d.init(); err != nil {
+	d := &DB{db: db, path: path}
+	if err := d.migrate(); err != nil {
 		db.Close()
 		return nil, err
 	}
 	return d, nil
-}
-
-func (d *DB) init() error {
-	if _, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`); err != nil {
-		return err
-	}
-	var v string
-	err := d.db.QueryRow(`SELECT value FROM meta WHERE key = 'schema'`).Scan(&v)
-	switch {
-	case err == nil && v == fmt.Sprint(schemaVersion):
-	case err == nil || errors.Is(err, sql.ErrNoRows):
-		if err == nil { // another version: start over
-			for _, t := range []string{"ident_check", "route", "fix", "leg", "transition", "procedure", "frequency", "runway", "airport"} {
-				if _, e := d.db.Exec("DROP TABLE IF EXISTS " + t); e != nil {
-					return e
-				}
-			}
-		}
-		if _, e := d.db.Exec(schema); e != nil {
-			return e
-		}
-		if _, e := d.db.Exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', ?)`, fmt.Sprint(schemaVersion)); e != nil {
-			return e
-		}
-	default:
-		return err
-	}
-	if _, err = d.db.Exec(schema); err != nil {
-		return err
-	}
-	if _, err = d.db.Exec(extraSchema); err != nil {
-		return err
-	}
-	if _, err = d.db.Exec(savedRouteSchema); err != nil {
-		return err
-	}
-	if err := d.migrateSavedRoutes(); err != nil {
-		return err
-	}
-	return d.migrateUserPoints()
 }
 
 // Close closes the database.

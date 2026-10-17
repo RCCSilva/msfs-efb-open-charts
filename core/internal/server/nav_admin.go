@@ -88,6 +88,10 @@ func (s *Server) restoreJob() {
 	}
 	var v navJobView
 	if err := json.Unmarshal([]byte(db.Meta(navJobKey)), &v); err != nil {
+		// a database with no load in its history (a new one): nothing is shown of the last one
+		s.nav.job.set(func(j *navJob) {
+			j.Running, j.Phase, j.Message, j.Total, j.Done, j.Started, j.Ended, j.stop = false, "", "", 0, 0, time.Time{}, time.Time{}, false
+		})
 		return
 	}
 	if v.Running {

@@ -408,34 +408,6 @@ func (d *DB) SeedPending(limit int) ([]string, error) {
 	return out, rows.Err()
 }
 
-// migrateUserPoints adds the columns a table made by an earlier version does not have.
-func (d *DB) migrateUserPoints() error {
-	rows, err := d.db.Query(`PRAGMA table_info(user_point)`)
-	if err != nil {
-		return err
-	}
-	have := map[string]bool{}
-	for rows.Next() {
-		var cid, notnull, pk int
-		var name, typ string
-		var dflt sql.NullString
-		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
-			rows.Close()
-			return err
-		}
-		have[name] = true
-	}
-	rows.Close()
-	for _, c := range []struct{ name, def string }{{"alt_ft", "REAL"}, {"type", "TEXT"}, {"tags", "TEXT"}} {
-		if !have[c.name] {
-			if _, err := d.db.Exec(`ALTER TABLE user_point ADD COLUMN ` + c.name + ` ` + c.def); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
 // ImportResult says what an import did.
 type ImportResult struct {
 	Added   int `json:"added"`
@@ -653,34 +625,6 @@ func (d *DB) UpdateSavedRoute(r SavedRoute) (SavedRoute, error) {
 		return r, ErrNotFound
 	}
 	return r, nil
-}
-
-// migrateSavedRoutes adds the columns a table made by an earlier version does not have.
-func (d *DB) migrateSavedRoutes() error {
-	rows, err := d.db.Query(`PRAGMA table_info(saved_route)`)
-	if err != nil {
-		return err
-	}
-	has := map[string]bool{}
-	for rows.Next() {
-		var cid, notnull, pk int
-		var name, typ string
-		var dflt sql.NullString
-		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
-			rows.Close()
-			return err
-		}
-		has[name] = true
-	}
-	rows.Close()
-	for _, col := range []string{"choices", "result"} {
-		if !has[col] {
-			if _, err := d.db.Exec(`ALTER TABLE saved_route ADD COLUMN ` + col + ` TEXT`); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 // SavedRoute returns one saved route.

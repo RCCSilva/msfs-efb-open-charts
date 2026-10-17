@@ -95,6 +95,9 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   `powershell -File installer\set-version.ps1 -Version X.Y.Z`, which syncs the manager, the EFB
   app and its package version, the executable resource (icon + version, regenerated with a pinned
   go-winres), the installer defaults and the docs. Then run `installer\build.ps1`.
+  Policy: the major number is almost never used (a big feature, a refactor, a big change of the project);
+  nearly every release raises the **minor** number; the **patch** number is used only for a release that
+  just fixes bugs.
 
 ## Where logic lives
 
@@ -153,6 +156,26 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   marked in `ident_check`. So "is in the database" means "all of them are"; an unchecked name is asked from the
   simulator once, and an empty answer from it is a real "not found". A fix that exists once is stored without a
   region (the simulator does not say it); it is given one the first time something cites it with a region.
+- **Database migrations and maintenance (`navdb/migrations.go`, `backup.go`, `recovery.go`; API in
+  `server/db_admin.go`; UI in Setup > Navigation database):** the schema version is the file's own
+  `PRAGMA user_version`. Opening the file runs, in order, the migrations it has not had, each in a transaction
+  (a failure undoes it); a copy of the file is made first (`backups/` next to it, `VACUUM INTO`) when there is data to
+  protect. Rules: never edit or reorder a released migration, add one at the end of `migrations`; never drop or empty the
+  user's own tables (`user_point`, `saved_route`: change them by adding columns or by copying rows); prefer converting
+  what is fetched from the simulator to fetching it again (84k airports take minutes and need the simulator running);
+  a migration that recreates tables other tables refer to sets `rebuild` (foreign keys off while it runs, checked
+  before the commit). A file with a newer schema than the program knows is not opened (`ErrNewerSchema`). Every start
+  runs `PRAGMA quick_check` (under a second for the full database): a damaged file (`ErrCorrupt`: not a database, or
+  malformed) does not stop the program; it runs without navigation data and every page of the manager shows a banner
+  (`dbBanner`) until the user starts over on Setup. Setup also has: a backup now, the list of copies (restore, remove),
+  restoring from a `.db` file the user brings (the file is copied, inspected with `navdb.Inspect`, a copy of the current
+  one is made, then the file is swapped in place and opened again, which migrates it), starting over (a copy first;
+  a file that could not be used is set aside as `navdata-corrupt-<time>.db`, never deleted), and the loads from the
+  simulator and the Little Navmap CSV import (the Navigation tab only shows the data and edits the user's own points).
+  `main.go` owns the open handle (`openNav`; `NavFile.Replace` closes it, lets the file change, opens it again).
+  Backup kinds: `schemaN`, `manual`, `reset`, `restore`, `corrupt`, `imported`. Add a test in
+  `navdb/migrations_test.go` for every migration (a file at the previous version with data in it must come out
+  with the data).
 - **Route paste:** `internal/route` reads a route as pilots write it (airport, SID, fixes, airways, STAR, airport,
   coordinates; `DCT` and level groups ignored) and resolves each name through a `Provider` (the server's one reads
   the database, then the simulator). It plans nothing: homonyms are reported with the closest one chosen, a name
