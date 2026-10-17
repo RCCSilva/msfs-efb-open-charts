@@ -71,6 +71,37 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   the checks). Every test has the three parts marked with the comments `// Arrange`, `// Act` and `// Assert`
   (a table test marks them inside the `t.Run`). Add testify to `go.mod` and `NOTICE.md` (MIT) with the first test that
   uses it. New and changed tests follow this; older tests are converted when they are touched.
+- **Mocks:** a package that exports a struct with methods also exports its mock, in a sub-package named
+  `<package>mock` (so the program does not import testify): a plain struct that embeds `mock.Mock`, one method per
+  method of the interface that other packages consume. Tests of those packages inject it. A test that needs
+  something specific makes its own mock. A mock method reads the values the test returned with the comma-ok form, so a
+  test may write `Return(nil, err)` without casting the nil:
+
+  ```go
+  // internal/navdb/navdbmock/store.go
+  type Store struct{ mock.Mock }
+
+  func (m *Store) Airport(icao string) (*navdata.Airport, error) {
+  	args := m.Called(icao)
+  	a, _ := args.Get(0).(*navdata.Airport) // nil when the test returned nil
+  	return a, args.Error(1)
+  }
+  ```
+
+  ```go
+  func TestResolveReportsAnAirportThatFails(t *testing.T) {
+  	// Arrange
+  	store := new(navdbmock.Store)
+  	store.On("Airport", "SBSP").Return(nil, errors.New("boom"))
+
+  	// Act
+  	_, err := route.ResolveWith("SBSP SBBR", newProvider(store), nil)
+
+  	// Assert
+  	require.Error(t, err)
+  	assert.ErrorContains(t, err, "boom")
+  }
+  ```
 - **In-sim viewer (`core/web/sim`):** the simulator's browser is old (Chromium ~49). Write ES5
   (`var`, no arrow functions, no `fetch`, no template literals), use XHR, SVG icons only, no CSS
   animations or 3D transforms. Leaflet runs with `L_DISABLE_3D = true`. Defer layout until the
