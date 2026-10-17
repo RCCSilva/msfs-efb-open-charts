@@ -8,10 +8,11 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"sync/atomic"
 	"testing"
-	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // a small coloured "map": white ground, a green park, an orange road and a black label
@@ -33,92 +34,131 @@ func fakeOSMTile(t *testing.T) []byte {
 		}
 	}
 	var b bytes.Buffer
-	if err := png.Encode(&b, img); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, png.Encode(&b, img))
 	return b.Bytes()
 }
 
 func gray(t *testing.T, jpg []byte, x, y int) uint8 {
 	t.Helper()
 	img, err := jpeg.Decode(bytes.NewReader(jpg))
-	if err != nil {
-		t.Fatalf("not a JPEG: %v", err)
-	}
+	require.NoError(t, err, "not a JPEG")
 	r, _, _, _ := img.At(x, y).RGBA()
 	return uint8(r >> 8)
 }
 
-func TestRestyleLightIsQuietAndKeepsLabelsReadable(t *testing.T) {
+func TestRestyleLightKeepsTheGroundLight(t *testing.T) {
+	// Arrange
 	src := fakeOSMTile(t)
+
+	// Act
 	out, err := restyle(src, BasemapLight)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ground, park, label := gray(t, out, 5, 5), gray(t, out, 80, 80), gray(t, out, 190, 62)
-	if ground < 225 {
-		t.Fatalf("the ground must stay light, got %d", ground)
-	}
-	if label >= ground-80 {
-		t.Fatalf("labels must still contrast with the ground: label %d vs ground %d", label, ground)
-	}
-	if ground-park > 70 {
-		t.Fatalf("a park must be only slightly different from the ground (quiet map): ground %d park %d", ground, park)
-	}
+
+	// Assert
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, int(gray(t, out, 5, 5)), 225)
+}
+
+func TestRestyleLightKeepsLabelsReadable(t *testing.T) {
+	// Arrange
+	src := fakeOSMTile(t)
+
+	// Act
+	out, err := restyle(src, BasemapLight)
+
+	// Assert
+	require.NoError(t, err)
+	ground, label := int(gray(t, out, 5, 5)), int(gray(t, out, 190, 62))
+	assert.Less(t, label, ground-80, "labels must still contrast with the ground")
+}
+
+func TestRestyleLightIsQuiet(t *testing.T) {
+	// Arrange
+	src := fakeOSMTile(t)
+
+	// Act
+	out, err := restyle(src, BasemapLight)
+
+	// Assert
+	require.NoError(t, err)
+	ground, park := int(gray(t, out, 5, 5)), int(gray(t, out, 80, 80))
+	assert.LessOrEqual(t, ground-park, 70, "a park must be only slightly different from the ground")
 }
 
 func TestRestyleDarkIsDark(t *testing.T) {
-	out, err := restyle(fakeOSMTile(t), BasemapDark)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if g := gray(t, out, 5, 5); g > 60 {
-		t.Fatalf("dark ground = %d, want a dark value", g)
-	}
-	if l := gray(t, out, 190, 62); l <= gray(t, out, 5, 5) {
-		t.Fatalf("dark map: labels must be lighter than the ground (label %d)", l)
-	}
+	// Arrange
+	src := fakeOSMTile(t)
+
+	// Act
+	out, err := restyle(src, BasemapDark)
+
+	// Assert
+	require.NoError(t, err)
+	assert.LessOrEqual(t, int(gray(t, out, 5, 5)), 60, "dark ground")
+	assert.Greater(t, gray(t, out, 190, 62), gray(t, out, 5, 5), "labels must be lighter than the ground")
 }
 
-// Styled tiles are produced from the original, cached, and fetched from OSM only once.
-func TestStyledTileIsServedAndCached(t *testing.T) {
-	var calls int32
+// styledTiles is a styled-tile handler over a fake OSM that counts how often it is asked.
+func styledTiles(t *testing.T) (get func(path string) *httptest.ResponseRecorder, calls *int32) {
+	t.Helper()
+	calls = new(int32)
 	tc, _ := newTestTiles(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&calls, 1)
+		atomic.AddInt32(calls, 1)
 		_, _ = w.Write(fakeOSMTile(t))
 	}))
-	tc.backoff = time.Millisecond
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /tiles/{style}/{z}/{x}/{file}", tc.handleStyled)
-	get := func(path string) *httptest.ResponseRecorder {
+	return func(path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
 		return rec
+	}, calls
+}
+
+func TestStyledTileIsAJPEG(t *testing.T) {
+	// Arrange
+	get, _ := styledTiles(t)
+
+	// Act
+	rec := get("/tiles/light/5/3/2.jpg")
+
+	// Assert
+	require.Equal(t, 200, rec.Code)
+	assert.Equal(t, "image/jpeg", rec.Header().Get("Content-Type"))
+	_, err := jpeg.Decode(bytes.NewReader(rec.Body.Bytes()))
+	assert.NoError(t, err)
+}
+
+// Styled tiles are made from the original, which is fetched from OSM only once.
+func TestStyledTilesOfTheSameTileShareTheOriginal(t *testing.T) {
+	// Arrange
+	get, calls := styledTiles(t)
+	get("/tiles/light/5/3/2.jpg")
+
+	// Act
+	dark := get("/tiles/dark/5/3/2.jpg")
+	again := get("/tiles/light/5/3/2.jpg")
+
+	// Assert
+	assert.Equal(t, 200, dark.Code)
+	assert.Equal(t, 200, again.Code)
+	assert.EqualValues(t, 1, atomic.LoadInt32(calls), "no second download")
+}
+
+func TestStyledTileRefusesWhatIsNotAKnownStyleOrTile(t *testing.T) {
+	cases := map[string]string{
+		"an unknown style":    "/tiles/neon/5/3/2.jpg",
+		"a tile out of range": "/tiles/light/3/99/2.jpg",
 	}
-	first := get("/tiles/light/5/3/2.jpg")
-	if first.Code != 200 || first.Header().Get("Content-Type") != "image/jpeg" {
-		t.Fatalf("first: %d %s", first.Code, first.Header().Get("Content-Type"))
+	for name, path := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			get, _ := styledTiles(t)
+
+			// Act
+			rec := get(path)
+
+			// Assert
+			assert.Equal(t, 404, rec.Code)
+		})
 	}
-	if _, err := jpeg.Decode(bytes.NewReader(first.Body.Bytes())); err != nil {
-		t.Fatalf("body is not a JPEG: %v", err)
-	}
-	// the dark version of the same tile reuses the original: no second download
-	if dark := get("/tiles/dark/5/3/2.jpg"); dark.Code != 200 {
-		t.Fatalf("dark: %d", dark.Code)
-	}
-	if n := atomic.LoadInt32(&calls); n != 1 {
-		t.Fatalf("upstream called %d times, want 1", n)
-	}
-	// served again from disk
-	if again := get("/tiles/light/5/3/2.jpg"); again.Code != 200 || atomic.LoadInt32(&calls) != 1 {
-		t.Fatal("second request must come from the cache")
-	}
-	// only the known styles; out-of-range tiles are not found
-	if r := get("/tiles/neon/5/3/2.jpg"); r.Code != 404 {
-		t.Fatalf("unknown style: %d, want 404", r.Code)
-	}
-	if r := get("/tiles/light/3/99/2.jpg"); r.Code != 404 {
-		t.Fatalf("tile out of range: %d, want 404", r.Code)
-	}
-	_ = filepath.Join
 }

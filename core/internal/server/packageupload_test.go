@@ -8,6 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPackageFileNameIsSafe(t *testing.T) {
@@ -22,20 +25,22 @@ func TestPackageFileNameIsSafe(t *testing.T) {
 		"":                                    "",
 	}
 	for in, want := range cases {
-		if got := packageFileName(in); got != want {
-			t.Errorf("packageFileName(%q) = %q, want %q", in, got, want)
-		}
+		t.Run(in, func(t *testing.T) {
+			// Act
+			got := packageFileName(in)
+
+			// Assert
+			assert.Equal(t, want, got)
+		})
 	}
 }
 
-func upload(t *testing.T, s *Server, name string, body []byte) *httptest.ResponseRecorder {
+func uploadPackage(t *testing.T, s *Server, name string, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	fw, err := mw.CreateFormFile("file", name)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	_, _ = fw.Write(body)
 	_ = mw.Close()
 	req := httptest.NewRequest("POST", "/api/packages/upload", &buf)
@@ -48,44 +53,52 @@ func upload(t *testing.T, s *Server, name string, body []byte) *httptest.Respons
 }
 
 func TestPackageUploadKeepsTheZipInThePackagesFolder(t *testing.T) {
+	// Arrange
 	s, _ := newAccessServer(t, false)
 
-	rec := upload(t, s, "pacote-full-20261001.zip", []byte("PK\x03\x04 not a real zip"))
-	if rec.Code != 201 {
-		t.Fatalf("zip upload: %d %s", rec.Code, rec.Body.String())
-	}
+	// Act
+	rec := uploadPackage(t, s, "pacote-full-20261001.zip", []byte("PK\x03\x04 not a real zip"))
+
+	// Assert
+	require.Equal(t, 201, rec.Code, rec.Body.String())
 	var got struct {
 		Name string `json:"name"`
 		Path string `json:"path"`
 		Size int64  `json:"size"`
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatal(err)
-	}
-	if got.Name != "pacote-full-20261001.zip" || got.Size == 0 {
-		t.Fatalf("answer = %+v", got)
-	}
-	if filepath.Dir(got.Path) != s.packagesDir() {
-		t.Fatalf("saved outside the packages folder: %s", got.Path)
-	}
-	if _, err := os.Stat(got.Path); err != nil {
-		t.Fatalf("file missing: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	assert.Equal(t, "pacote-full-20261001.zip", got.Name)
+	assert.NotZero(t, got.Size)
+	assert.Equal(t, s.packagesDir(), filepath.Dir(got.Path), "saved outside the packages folder")
+	assert.FileExists(t, got.Path)
+}
 
-	// a path in the name must not escape the folder
-	rec = upload(t, s, "../../escape.zip", []byte("PK\x03\x04"))
-	if rec.Code != 201 {
-		t.Fatalf("second upload: %d", rec.Code)
-	}
-	if _, err := os.Stat(filepath.Join(s.packagesDir(), "escape.zip")); err != nil {
-		t.Fatalf("the base name should have been kept in the packages folder: %v", err)
-	}
+func TestPackageUploadKeepsOnlyTheBaseNameOfAPath(t *testing.T) {
+	// Arrange
+	s, _ := newAccessServer(t, false)
 
-	// other types are refused, PDFs included (they go through the import flow)
-	if rec = upload(t, s, "a.pdf", []byte("%PDF-1.4")); rec.Code != 400 {
-		t.Fatalf("a PDF must be refused here, got %d", rec.Code)
-	}
-	if rec = upload(t, s, "script.exe", []byte("MZ")); rec.Code != 400 {
-		t.Fatalf("an .exe must be refused, got %d", rec.Code)
+	// Act
+	rec := uploadPackage(t, s, "../../escape.zip", []byte("PK\x03\x04"))
+
+	// Assert
+	require.Equal(t, 201, rec.Code)
+	_, err := os.Stat(filepath.Join(s.packagesDir(), "escape.zip"))
+	assert.NoError(t, err, "the base name should have been kept in the packages folder")
+}
+
+func TestPackageUploadRefusesOtherTypes(t *testing.T) {
+	// A PDF goes through the import flow, not through here.
+	cases := map[string][]byte{"a.pdf": []byte("%PDF-1.4"), "script.exe": []byte("MZ")}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			// Arrange
+			s, _ := newAccessServer(t, false)
+
+			// Act
+			rec := uploadPackage(t, s, name, body)
+
+			// Assert
+			assert.Equal(t, 400, rec.Code)
+		})
 	}
 }

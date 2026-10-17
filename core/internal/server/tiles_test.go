@@ -4,9 +4,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func newTestTiles(t *testing.T, upstream http.Handler) (*tileCache, *httptest.Server) {
@@ -27,50 +31,67 @@ func get(tc *tileCache, path string) *httptest.ResponseRecorder {
 	return rec
 }
 
-// A throttled tile (429) must be retried and succeed, not stay black until the user zooms.
-func TestTileRetriesOnThrottling(t *testing.T) {
-	var calls int32
-	tc, _ := newTestTiles(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if atomic.AddInt32(&calls, 1) < 3 {
+// throttledThenFine answers 429 to the first n calls and a tile after them.
+func throttledThenFine(n int32, calls *int32) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(calls, 1) <= n {
 			http.Error(w, "slow down", http.StatusTooManyRequests)
 			return
 		}
 		_, _ = w.Write([]byte("PNGDATA"))
-	}))
+	})
+}
+
+// A throttled tile (429) must be retried and succeed, not stay black until the user zooms.
+func TestTileRetriesOnThrottling(t *testing.T) {
+	// Arrange
+	var calls int32
+	tc, _ := newTestTiles(t, throttledThenFine(2, &calls))
+
+	// Act
 	rec := get(tc, "/tiles/3/2/1.png")
-	if rec.Code != 200 || rec.Body.String() != "PNGDATA" {
-		t.Fatalf("got %d %q, want 200 PNGDATA", rec.Code, rec.Body.String())
-	}
-	if n := atomic.LoadInt32(&calls); n != 3 {
-		t.Fatalf("upstream called %d times, want 3", n)
-	}
-	// now cached: no further upstream call
-	if rec := get(tc, "/tiles/3/2/1.png"); rec.Code != 200 || atomic.LoadInt32(&calls) != 3 {
-		t.Fatalf("second request must be served from the disk cache")
-	}
+
+	// Assert
+	assert.Equal(t, 200, rec.Code)
+	assert.Equal(t, "PNGDATA", rec.Body.String())
+	assert.EqualValues(t, 3, atomic.LoadInt32(&calls))
+}
+
+func TestTileIsServedFromTheDiskCacheTheSecondTime(t *testing.T) {
+	// Arrange
+	var calls int32
+	tc, _ := newTestTiles(t, throttledThenFine(0, &calls))
+	get(tc, "/tiles/3/2/1.png")
+
+	// Act
+	rec := get(tc, "/tiles/3/2/1.png")
+
+	// Assert
+	assert.Equal(t, 200, rec.Code)
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls), "no further upstream call")
 }
 
 // A client error (404) is not retried, and the failure is not cacheable.
 func TestTileNotFoundIsNotRetried(t *testing.T) {
+	// Arrange
 	var calls int32
 	tc, _ := newTestTiles(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&calls, 1)
 		http.NotFound(w, r)
 	}))
+
+	// Act
 	rec := get(tc, "/tiles/3/2/1.png")
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("got %d, want 503", rec.Code)
-	}
-	if rec.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("a failed tile must not be cacheable, got %q", rec.Header().Get("Cache-Control"))
-	}
-	if n := atomic.LoadInt32(&calls); n != 1 {
-		t.Fatalf("upstream called %d times, want 1", n)
-	}
+
+	// Assert
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"), "a failed tile must not be cacheable")
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
 }
 
 // Many tiles asked at once must not hit the upstream with more than 4 simultaneous requests.
 func TestTileUpstreamConcurrencyIsLimited(t *testing.T) {
+	// Arrange
 	var cur, peak int32
 	tc, _ := newTestTiles(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n := atomic.AddInt32(&cur, 1)
@@ -84,29 +105,19 @@ func TestTileUpstreamConcurrencyIsLimited(t *testing.T) {
 		atomic.AddInt32(&cur, -1)
 		_, _ = w.Write([]byte("x"))
 	}))
-	done := make(chan struct{})
 	const total = 24
-	for i := 0; i < total; i++ {
-		go func(i int) {
-			get(tc, "/tiles/6/"+itoa(i)+"/5.png")
-			done <- struct{}{}
-		}(i)
-	}
-	for i := 0; i < total; i++ {
-		<-done
-	}
-	if p := atomic.LoadInt32(&peak); p > 4 {
-		t.Fatalf("peak concurrent upstream requests = %d, want <= 4", p)
-	}
-}
 
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
+	// Act
+	var wg sync.WaitGroup
+	for i := 0; i < total; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			get(tc, "/tiles/6/"+strconv.Itoa(i)+"/5.png")
+		}()
 	}
-	var b []byte
-	for ; i > 0; i /= 10 {
-		b = append([]byte{byte('0' + i%10)}, b...)
-	}
-	return string(b)
+	wg.Wait()
+
+	// Assert
+	assert.LessOrEqual(t, atomic.LoadInt32(&peak), int32(4))
 }
