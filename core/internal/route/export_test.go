@@ -7,6 +7,9 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // SBSP > GERTU > UZ25 (PUGOR, KOMTO) > PABIN > SBBR, as the resolver returns it: the places an
@@ -23,76 +26,109 @@ func exportRoute() []Point {
 }
 
 func TestICAORouteLeavesOutTheEnds(t *testing.T) {
-	if got := ICAORoute(exportRoute()); got != "GERTU UZ25 PABIN" {
-		t.Fatalf("%q", got)
-	}
-	if got := Text(exportRoute()); got != "SBSP GERTU UZ25 PABIN SBBR" {
-		t.Fatalf("%q", got)
-	}
-	// a procedure is named once, then the place it ends at
-	proc := []Point{
+	// Arrange
+	points := exportRoute()
+
+	// Act
+	icao := ICAORoute(points)
+	whole := Text(points)
+
+	// Assert
+	assert.Equal(t, "GERTU UZ25 PABIN", icao)
+	assert.Equal(t, "SBSP GERTU UZ25 PABIN SBBR", whole)
+}
+
+func TestAProcedureIsNamedOnceThenThePlaceItEndsAt(t *testing.T) {
+	// Arrange
+	points := []Point{
 		{Kind: "airport", Ident: "SBSJ"},
 		{Kind: "procedure", Ident: "BOBI3A", Via: "SID"},
 		{Kind: "waypoint", Ident: "ABCDE", Via: "BOBI3A"},
 		{Kind: "waypoint", Ident: "DAGUB", Via: "BOBI3A"},
 		{Kind: "airport", Ident: "SBGR"},
 	}
-	if got := ICAORoute(proc); got != "BOBI3A DAGUB" {
-		t.Fatalf("%q", got)
-	}
+
+	// Act
+	got := ICAORoute(points)
+
+	// Assert
+	assert.Equal(t, "BOBI3A DAGUB", got)
 }
 
 func TestIVAOLinkCarriesOriginDestinationAndRoute(t *testing.T) {
-	link, plan, err := IVAOLink(exportRoute())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plan.DepartureID != "SBSP" || plan.ArrivalID != "SBBR" || plan.Route != "GERTU UZ25 PABIN" {
-		t.Fatalf("%+v", plan)
-	}
+	// Arrange
+	points := exportRoute()
+
+	// Act
+	link, plan, err := IVAOLink(points)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, IVAOPlan{DepartureID: "SBSP", ArrivalID: "SBBR", Route: "GERTU UZ25 PABIN"}, plan)
 	u, err := url.Parse(link)
-	if err != nil || u.Host != "fpl.ivao.aero" || u.Path != "/flight-plans/create" {
-		t.Fatalf("%s %v", link, err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "fpl.ivao.aero", u.Host)
+	assert.Equal(t, "/flight-plans/create", u.Path)
 	raw, err := base64.StdEncoding.DecodeString(u.Query().Get("flightPlan"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var got map[string]any
-	if err := json.Unmarshal(raw, &got); err != nil || got["departureId"] != "SBSP" || got["arrivalId"] != "SBBR" || got["route"] != "GERTU UZ25 PABIN" || len(got) != 3 {
-		t.Fatalf("%s %v", raw, err)
-	}
-	if _, _, err := IVAOLink(exportRoute()[:3]); err != ErrNoEnds {
-		t.Fatalf("a route that does not end at an airport: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(raw, &got))
+	assert.Equal(t, map[string]any{"departureId": "SBSP", "arrivalId": "SBBR", "route": "GERTU UZ25 PABIN"}, got)
+}
+
+func TestIVAOLinkNeedsAirportsAtBothEnds(t *testing.T) {
+	// Arrange
+	points := exportRoute()[:3] // ends at a waypoint
+
+	// Act
+	_, _, err := IVAOLink(points)
+
+	// Assert
+	assert.ErrorIs(t, err, ErrNoEnds)
 }
 
 func TestDMS(t *testing.T) {
 	cases := []struct {
+		name     string
 		v        float64
 		pos, neg string
 		want     string
 	}{
-		{46.565583, "N", "S", `N46° 33' 56.10"`},
-		{-120.531744, "E", "W", `W120° 31' 54.28"`},
-		{-23.5, "N", "S", `S23° 30' 0.00"`},
-		{0.99999999, "N", "S", `N1° 0' 0.00"`}, // the rounding carries into the minutes and the degrees
+		{"north", 46.565583, "N", "S", "N46" + deg + " 33' 56.10" + secs},
+		{"west", -120.531744, "E", "W", "W120" + deg + " 31' 54.28" + secs},
+		{"south, a round half", -23.5, "N", "S", "S23" + deg + " 30' 0.00" + secs},
+		{"the rounding carries into the minutes and the degrees", 0.99999999, "N", "S", "N1" + deg + " 0' 0.00" + secs},
 	}
 	for _, c := range cases {
-		if got := dms(c.v, c.pos, c.neg); got != c.want {
-			t.Errorf("%v: %s, want %s", c.v, got, c.want)
-		}
-	}
-	if got := lla(46.565583, -120.531744, 1095); got != `N46° 33' 56.10",W120° 31' 54.28",+001095.00` {
-		t.Fatalf("%s", got)
+		t.Run(c.name, func(t *testing.T) {
+			// Arrange: the case
+
+			// Act
+			got := dms(c.v, c.pos, c.neg)
+
+			// Assert
+			assert.Equal(t, c.want, got)
+		})
 	}
 }
 
+func TestLLAHasTheAltitudeInFeet(t *testing.T) {
+	// Arrange / Act
+	got := lla(46.565583, -120.531744, 1095)
+
+	// Assert
+	assert.Equal(t, "N46"+deg+" 33' 56.10"+secs+",W120"+deg+" 31' 54.28"+secs+",+001095.00", got)
+}
+
 func TestPLNIsTheSimulatorsFlightPlan(t *testing.T) {
-	b, err := PLN(exportRoute(), 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Arrange
+	points := exportRoute()
+
+	// Act
+	b, err := PLN(points, 0)
+
+	// Assert
+	require.NoError(t, err)
 	s := string(b)
 	for _, want := range []string{
 		"<Title>SBSP to SBBR</Title>", "<FPType>IFR</FPType>", "<CruisingAlt>10000</CruisingAlt>",
@@ -100,33 +136,48 @@ func TestPLNIsTheSimulatorsFlightPlan(t *testing.T) {
 		`<ATCWaypoint id="GERTU">`, "<ATCWaypointType>Intersection</ATCWaypointType>", "<ATCAirway>UZ25</ATCAirway>",
 		"<ICAORegion>SB</ICAORegion>", "<ICAOIdent>PABIN</ICAOIdent>", "<ATCWaypointType>Airport</ATCWaypointType>",
 	} {
-		if !strings.Contains(s, want) {
-			t.Errorf("missing %q", want)
-		}
+		assert.Contains(t, s, want)
 	}
-	if strings.Count(s, "<ATCWaypoint ") != 6 || strings.Count(s, "<ATCAirway>") != 3 {
-		t.Errorf("waypoints %d, airways %d", strings.Count(s, "<ATCWaypoint "), strings.Count(s, "<ATCAirway>"))
-	}
-	// it is well-formed XML
-	var doc struct {
-		XMLName xml.Name
-	}
-	if err := xml.Unmarshal([]byte(strings.TrimPrefix(s, "\ufeff")), &doc); err != nil || doc.XMLName.Local != "SimBase.Document" {
-		t.Fatalf("%v %v", doc, err)
-	}
-	// a procedure is not a waypoint, and its legs have no airway
-	proc := []Point{
+	assert.Equal(t, 6, strings.Count(s, "<ATCWaypoint "))
+	assert.Equal(t, 3, strings.Count(s, "<ATCAirway>"))
+	var doc struct{ XMLName xml.Name }
+	require.NoError(t, xml.Unmarshal([]byte(strings.TrimPrefix(s, "\ufeff")), &doc), "it is well-formed XML")
+	assert.Equal(t, "SimBase.Document", doc.XMLName.Local)
+}
+
+func TestPLNDoesNotWriteAProcedureAsAWaypoint(t *testing.T) {
+	// Arrange
+	points := []Point{
 		{Kind: "airport", Ident: "SBSJ"},
 		{Kind: "procedure", Ident: "BOBI3A", Via: "SID"},
 		{Kind: "waypoint", Ident: "DAGUB", Region: "SB", Via: "BOBI3A"},
 		{Kind: "airport", Ident: "SBGR"},
 	}
-	b, _ = PLN(proc, 35000)
-	s = string(b)
-	if strings.Contains(s, "BOBI3A") || strings.Count(s, "<ATCWaypoint ") != 3 || !strings.Contains(s, "<CruisingAlt>35000</CruisingAlt>") {
-		t.Fatalf("%s", s)
-	}
-	if _, err := PLN(proc[:2], 0); err != ErrNoEnds {
-		t.Fatalf("%v", err)
-	}
+
+	// Act
+	b, err := PLN(points, 35000)
+
+	// Assert
+	require.NoError(t, err)
+	s := string(b)
+	assert.NotContains(t, s, "BOBI3A", "a procedure is not a waypoint, and its legs have no airway")
+	assert.Equal(t, 3, strings.Count(s, "<ATCWaypoint "))
+	assert.Contains(t, s, "<CruisingAlt>35000</CruisingAlt>")
 }
+
+func TestPLNNeedsAirportsAtBothEnds(t *testing.T) {
+	// Arrange
+	points := []Point{{Kind: "airport", Ident: "SBSJ"}, {Kind: "procedure", Ident: "BOBI3A"}}
+
+	// Act
+	_, err := PLN(points, 0)
+
+	// Assert
+	assert.ErrorIs(t, err, ErrNoEnds)
+}
+
+// The simulator's flight plan files write an angle as N46° 33' 56.10"
+const (
+	deg  = "°"
+	secs = "\""
+)

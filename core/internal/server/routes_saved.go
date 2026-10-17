@@ -146,8 +146,12 @@ func (s *Server) validRoute(text string, rawChoices json.RawMessage) (json.RawMe
 	if text == "" {
 		return nil, 400, errors.New("the route is empty")
 	}
+	lk, err := s.lookup()
+	if err != nil {
+		return nil, 502, err
+	}
 	s.nav.mu.Lock()
-	res, err := route.ResolveWith(text, routeProvider{s}, choices)
+	res, err := route.ResolveWith(text, lk, choices)
 	s.nav.mu.Unlock()
 	if err != nil {
 		return nil, 502, err

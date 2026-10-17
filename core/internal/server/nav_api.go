@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navlookup"
 )
 
 type navState struct {
@@ -31,57 +31,14 @@ func (s *Server) SetNav(db *navdb.DB) {
 	s.restoreJob()
 }
 
-// resolveFixes asks the simulator for the fixes the procedures of an airport cite and the database
-// does not know yet, stores them, and returns the airport again with every leg placed. Without a
-// link to the simulator (or when it does not know a fix) the legs simply stay without a position.
-func (s *Server) resolveFixes(a *navdata.Airport) *navdata.Airport {
-	idents, err := s.nav.db.UncheckedIdents(a.ICAO)
-	if err != nil || len(idents) == 0 {
-		return a
+// lookup answers the questions a route raises, from the database and the simulator. It is made for
+// each use because the database can be replaced while the program runs.
+func (s *Server) lookup() (*navlookup.Lookup, error) {
+	db := s.navDB()
+	if db == nil {
+		return nil, errors.New("the navigation database is not available")
 	}
-	if err := s.loadIdents(idents); err != nil {
-		return a
-	}
-	if again, err := s.nav.db.Airport(a.ICAO); err == nil {
-		return again
-	}
-	return a
-}
-
-// loadIdents asks the simulator for identifiers as a whole (every place of that name, any region
-// and kind), stores what it knows and marks them checked. This is the only way fixes enter the
-// database, so that "is in the database" always means "all of them are".
-func (s *Server) loadIdents(idents []string) error {
-	_, err := s.loadIdentsCount(idents, true)
-	return err
-}
-
-// loadIdentsCount is loadIdents that also says how many places the simulator knew. With
-// markEmpty false, an answer with nothing in it is not recorded (the caller doubts the simulator).
-func (s *Server) loadIdentsCount(idents []string, markEmpty bool) (int, error) {
-	if s.sim.Nav == nil || len(idents) == 0 {
-		return 0, nil
-	}
-	found, err := s.sim.Nav.LookupFixes(idents)
-	if err != nil {
-		return 0, err // not asked: nothing is marked, the next time asks again
-	}
-	if len(found) == 0 && !markEmpty {
-		return 0, nil
-	}
-	if err := s.nav.db.SaveFixes(found); err != nil {
-		return 0, err
-	}
-	count := map[string]int{}
-	for _, f := range found {
-		count[strings.ToUpper(f.Ident)]++
-	}
-	for _, id := range idents {
-		if err := s.nav.db.MarkIdentChecked(id, count[strings.ToUpper(id)]); err != nil {
-			return 0, err
-		}
-	}
-	return len(found), nil
+	return navlookup.New(db, s.sim.Nav), nil
 }
 
 var icaoRe = regexp.MustCompile(`^[A-Z0-9]{2,8}$`)
@@ -97,13 +54,14 @@ func (s *Server) handleNavAirport(w http.ResponseWriter, r *http.Request) {
 	}
 	s.nav.mu.Lock()
 	defer s.nav.mu.Unlock()
-	if s.nav.db == nil {
-		writeErr(w, 503, errors.New("the navigation database is not available"))
+	lk, err := s.lookup()
+	if err != nil {
+		writeErr(w, 503, err)
 		return
 	}
 	if r.URL.Query().Get("refresh") != "1" {
 		if a, err := s.nav.db.Airport(icao); err == nil {
-			writeJSON(w, 200, s.resolveFixes(a))
+			writeJSON(w, 200, lk.ResolveFixes(a))
 			return
 		} else if !errors.Is(err, navdb.ErrNotFound) {
 			writeErr(w, 500, err)
@@ -124,7 +82,7 @@ func (s *Server) handleNavAirport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if stored, err := s.nav.db.Airport(icao); err == nil {
-		a = s.resolveFixes(stored)
+		a = lk.ResolveFixes(stored)
 	}
 	writeJSON(w, 200, a)
 }

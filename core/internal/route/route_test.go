@@ -1,12 +1,15 @@
 package route
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 )
 
+// fake is an in-memory navigation provider with a small, known world (see provider()).
 type fake struct {
 	airports map[string]*navdata.Airport
 	fixes    map[string][]navdata.Fix
@@ -59,151 +62,194 @@ func provider() fake {
 	}
 }
 
-func TestTokens(t *testing.T) {
-	got := Tokens("sbsj dct BOBI3A/N0400F250  DAGUB, N0450F350 uz6 SBGR")
-	want := []string{"SBSJ", "BOBI3A", "DAGUB", "UZ6", "SBGR"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %v", got)
+func idents(points []Point) []string {
+	var out []string
+	for _, p := range points {
+		out = append(out, p.Ident)
 	}
+	return out
+}
+
+func TestTokens(t *testing.T) {
+	// Arrange
+	text := "sbsj dct BOBI3A/N0400F250  DAGUB, N0450F350 uz6 SBGR"
+
+	// Act
+	got := Tokens(text)
+
+	// Assert
+	assert.Equal(t, []string{"SBSJ", "BOBI3A", "DAGUB", "UZ6", "SBGR"}, got)
 }
 
 func TestAirwayAndAirports(t *testing.T) {
-	res, err := Resolve("SBSJ AAAAA UZ6 DDDDD SBGR", provider())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var ids []string
-	for _, p := range res.Points {
-		ids = append(ids, p.Ident)
-	}
-	want := []string{"SBSJ", "AAAAA", "BBBBB", "CCCCC", "DDDDD", "SBGR"}
-	if !reflect.DeepEqual(ids, want) {
-		t.Fatalf("points %v, want %v (problems %+v)", ids, want, res.Problems)
-	}
-	if len(res.Problems) != 0 {
-		t.Fatalf("problems: %+v", res.Problems)
-	}
-	if res.Points[2].Via != "UZ6" || res.Points[1].Via != "" {
-		t.Fatalf("via: %+v", res.Points)
-	}
+	// Arrange
+	p := provider()
+
+	// Act
+	res, err := Resolve("SBSJ AAAAA UZ6 DDDDD SBGR", p)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, []string{"SBSJ", "AAAAA", "BBBBB", "CCCCC", "DDDDD", "SBGR"}, idents(res.Points))
+	assert.Empty(t, res.Problems)
+	assert.Equal(t, "UZ6", res.Points[2].Via)
+	assert.Empty(t, res.Points[1].Via)
 }
 
 func TestProcedureWithTransition(t *testing.T) {
-	res, _ := Resolve("SBSJ BOBI3A AAAAA SBGR", provider())
-	var ids []string
-	for _, p := range res.Points {
-		ids = append(ids, p.Ident)
-	}
-	// the common leg and the enroute transition named AAAAA; the fix written after the procedure
-	// is the place the procedure ended at, not a second point
-	want := []string{"SBSJ", "BOBIC", "AAAAA", "SBGR"}
-	if !reflect.DeepEqual(ids, want) {
-		t.Fatalf("points %v, want %v (problems %+v)", ids, want, res.Problems)
-	}
+	// Arrange
+	p := provider()
+
+	// Act
+	res, err := Resolve("SBSJ BOBI3A AAAAA SBGR", p)
+
+	// Assert: the common leg and the enroute transition named AAAAA; the fix written after the
+	// procedure is the place the procedure ended at, not a second point
+	require.NoError(t, err)
+	assert.Equal(t, []string{"SBSJ", "BOBIC", "AAAAA", "SBGR"}, idents(res.Points), "problems: %+v", res.Problems)
 }
 
 func TestHomonymsUseTheClosest(t *testing.T) {
-	res, _ := Resolve("SBSJ RBV SBGR", provider())
+	// Arrange
+	p := provider()
+
+	// Act
+	res, err := Resolve("SBSJ RBV SBGR", p)
+
+	// Assert
+	require.NoError(t, err)
 	var rbv *Point
 	for i := range res.Points {
 		if res.Points[i].Ident == "RBV" {
 			rbv = &res.Points[i]
 		}
 	}
-	if rbv == nil || rbv.Region != "FA" {
-		t.Fatalf("closest RBV to São Paulo is the one in FA: %+v", res.Points)
-	}
-	if len(res.Problems) != 1 || len(res.Problems[0].Candidates) != 2 {
-		t.Fatalf("the doubt must be reported: %+v", res.Problems)
-	}
+	require.NotNil(t, rbv)
+	assert.Equal(t, "FA", rbv.Region, "the closest RBV to São Paulo is the one in FA")
+	require.Len(t, res.Problems, 1, "the doubt must be reported")
+	assert.Len(t, res.Problems[0].Candidates, 2)
 }
 
 func TestNotFoundIsReported(t *testing.T) {
-	res, _ := Resolve("SBSJ ZZZZZ SBGR", provider())
-	if len(res.Problems) != 1 || res.Problems[0].Token != "ZZZZZ" {
-		t.Fatalf("problems: %+v", res.Problems)
-	}
-	if len(res.Points) != 2 {
-		t.Fatalf("the rest of the route is kept: %+v", res.Points)
-	}
+	// Arrange
+	p := provider()
+
+	// Act
+	res, err := Resolve("SBSJ ZZZZZ SBGR", p)
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, res.Problems, 1)
+	assert.Equal(t, "ZZZZZ", res.Problems[0].Token)
+	assert.Len(t, res.Points, 2, "the rest of the route is kept")
 }
 
 func TestCoordinates(t *testing.T) {
-	res, _ := Resolve("SBSJ 2330S04600W SBGR", provider())
-	p := res.Points[1]
-	if p.Kind != "coordinate" || p.Lat > -23.49 || p.Lat < -23.51 || p.Lon > -45.99 || p.Lon < -46.01 {
-		t.Fatalf("coordinate: %+v", p)
-	}
+	// Arrange
+	p := provider()
+
+	// Act
+	res, err := Resolve("SBSJ 2330S04600W SBGR", p)
+
+	// Assert
+	require.NoError(t, err)
+	got := res.Points[1]
+	assert.Equal(t, "coordinate", got.Kind)
+	assert.InDelta(t, -23.5, got.Lat, 0.01)
+	assert.InDelta(t, -46.0, got.Lon, 0.01)
 }
 
 func TestAirwayThatDoesNotConnect(t *testing.T) {
-	res, _ := Resolve("SBSJ AAAAA UY1 DDDDD SBGR", provider())
-	if len(res.Problems) == 0 {
-		t.Fatalf("an unknown airway must be a problem: %+v", res)
-	}
+	// Arrange
+	p := provider()
+
+	// Act
+	res, err := Resolve("SBSJ AAAAA UY1 DDDDD SBGR", p)
+
+	// Assert
+	require.NoError(t, err)
+	assert.NotEmpty(t, res.Problems, "an unknown airway must be a problem")
 }
 
+// The other RBV is the one the user wants: the choice is by region and survives edits of the text.
 func TestChoiceOverridesTheClosest(t *testing.T) {
-	// the other RBV is the one the user wants; the choice is by region and survives text edits
-	res, _ := Resolve("SBSJ RBV SBGR", provider())
+	// Arrange
+	p := provider()
+	first, err := Resolve("SBSJ RBV SBGR", p)
+	require.NoError(t, err)
 	var other string
-	var cands []Candidate
-	for _, p := range res.Points {
-		if p.Ident == "RBV" {
-			cands = p.Candidates
-			if len(cands) != 2 || p.Chosen {
-				t.Fatalf("point must list both places and not be chosen: %+v", p)
+	for _, pt := range first.Points {
+		if pt.Ident != "RBV" {
+			continue
+		}
+		require.Len(t, pt.Candidates, 2, "the point lists both places")
+		assert.False(t, pt.Chosen)
+		for _, c := range pt.Candidates {
+			if c.Region != "FA" {
+				other = c.Region
 			}
 		}
 	}
-	for _, c := range cands {
-		if c.Region != "FA" {
-			other = c.Region
-		}
-	}
-	res, err := ResolveWith("SBSJ RBV SBGR", provider(), []Choice{{Token: "RBV", Nth: 0, Region: other, Kind: "vor"}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NotEmpty(t, other)
+
+	// Act
+	res, err := ResolveWith("SBSJ RBV SBGR", p, []Choice{{Token: "RBV", Nth: 0, Region: other, Kind: "vor"}})
+
+	// Assert
+	require.NoError(t, err)
 	found := false
-	for _, p := range res.Points {
-		if p.Ident == "RBV" {
+	for _, pt := range res.Points {
+		if pt.Ident == "RBV" {
 			found = true
-			if p.Region != other || !p.Chosen {
-				t.Fatalf("the choice was not applied: %+v", p)
-			}
+			assert.Equal(t, other, pt.Region, "the choice was applied")
+			assert.True(t, pt.Chosen)
 		}
 	}
-	if !found {
-		t.Fatal("RBV missing")
-	}
-	if len(res.Problems) != 0 {
-		t.Fatalf("a chosen place is not a doubt: %+v", res.Problems)
-	}
-	// a choice for another occurrence changes nothing
-	res, _ = ResolveWith("SBSJ RBV SBGR", provider(), []Choice{{Token: "RBV", Nth: 1, Region: other}})
-	for _, p := range res.Points {
-		if p.Ident == "RBV" && p.Region != "FA" {
-			t.Fatalf("a choice for the second RBV must not change the first: %+v", p)
+	assert.True(t, found, "RBV is in the route")
+	assert.Empty(t, res.Problems, "a chosen place is not a doubt")
+}
+
+func TestChoiceForAnotherOccurrenceChangesNothing(t *testing.T) {
+	// Arrange
+	p := provider()
+	choices := []Choice{{Token: "RBV", Nth: 1, Region: "K6"}} // the second RBV; the route has one
+
+	// Act
+	res, err := ResolveWith("SBSJ RBV SBGR", p, choices)
+
+	// Assert
+	require.NoError(t, err)
+	for _, pt := range res.Points {
+		if pt.Ident == "RBV" {
+			assert.Equal(t, "FA", pt.Region, "a choice for the second RBV must not change the first")
 		}
 	}
 }
 
 func TestGreatCircleNm(t *testing.T) {
-	// one degree of latitude is 60 nautical miles, within a few tenths
+	// Arrange: one degree of latitude is 60 nautical miles
+
+	// Act
 	d := GreatCircleNm(0, 0, 1, 0)
-	if d < 59.9 || d > 60.2 {
-		t.Fatalf("1 degree of latitude: %.2f NM", d)
-	}
 	legs, total := Legs([]float64{0, 1, 2}, []float64{0, 0, 0})
-	if len(legs) != 3 || legs[0] != 0 || total < 119.8 || total > 120.4 {
-		t.Fatalf("legs %v total %.1f", legs, total)
-	}
+
+	// Assert
+	assert.InDelta(t, 60, d, 0.2)
+	require.Len(t, legs, 3)
+	assert.Equal(t, 0.0, legs[0])
+	assert.InDelta(t, 120, total, 0.3)
 }
 
 func TestResolveGivesTheLengthOfTheRoute(t *testing.T) {
-	res, _ := Resolve("SBSJ AAAAA UZ6 DDDDD SBGR", provider())
-	if res.TotalNm <= 0 || res.Points[0].LegNm != 0 || res.Points[1].LegNm <= 0 {
-		t.Fatalf("total %.1f, legs %+v", res.TotalNm, res.Points)
-	}
+	// Arrange
+	p := provider()
+
+	// Act
+	res, err := Resolve("SBSJ AAAAA UZ6 DDDDD SBGR", p)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Greater(t, res.TotalNm, 0.0)
+	assert.Equal(t, 0.0, res.Points[0].LegNm)
+	assert.Greater(t, res.Points[1].LegNm, 0.0)
 }

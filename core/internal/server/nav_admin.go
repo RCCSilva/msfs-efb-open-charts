@@ -14,6 +14,7 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/lnmpoints"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navlookup"
 )
 
 // The "Navigation" page of the manager: what is stored, small edits, the user's own points, and the
@@ -486,7 +487,7 @@ func (s *Server) loadFixes(db *navdb.DB, mode string, finish func(phase, msg str
 		}
 		// the route page and the load take turns: a batch holds the lock, then lets it go
 		s.nav.mu.Lock()
-		n, err := s.loadIdentsCount(idents, answered)
+		n, err := navlookup.New(db, s.sim.Nav).LoadIdentsCount(idents, answered)
 		s.nav.mu.Unlock()
 		if err != nil {
 			finish("error", err.Error())

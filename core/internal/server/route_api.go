@@ -5,90 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/route"
 )
-
-// routeProvider looks names up for the route package: the database first; the simulator for what
-// the database has never been asked about, and only once for each name.
-type routeProvider struct{ s *Server }
-
-func (p routeProvider) Airport(icao string) (*navdata.Airport, error) {
-	s := p.s
-	if s.nav.db == nil {
-		return nil, errors.New("the navigation database is not available")
-	}
-	a, err := s.nav.db.Airport(icao)
-	if err == nil {
-		return s.resolveFixes(a), nil
-	}
-	if !errors.Is(err, navdb.ErrNotFound) {
-		return nil, err
-	}
-	if s.sim.Nav == nil {
-		return nil, nil // without a link to the simulator an unknown airport is just unknown
-	}
-	got, err := s.sim.Nav.Airport(icao)
-	if errors.Is(err, navdata.ErrUnknown) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if err := s.nav.db.SaveAirport(got); err != nil {
-		return nil, err
-	}
-	stored, err := s.nav.db.Airport(icao)
-	if err != nil {
-		return nil, err
-	}
-	return s.resolveFixes(stored), nil
-}
-
-func (p routeProvider) Fixes(ident string) ([]navdata.Fix, error) {
-	s := p.s
-	if s.nav.db == nil {
-		return nil, errors.New("the navigation database is not available")
-	}
-	checked, err := s.nav.db.IdentChecked(ident)
-	if err != nil {
-		return nil, err
-	}
-	if !checked {
-		// the simulator may not be reachable: then what is stored is the answer, and the name stays
-		// unchecked so that the next time asks again
-		_ = s.loadIdents([]string{ident})
-	}
-	list, err := s.nav.db.FixesByIdent(ident)
-	if err != nil {
-		return nil, err
-	}
-	// the points the user made are places like any other
-	mine, err := s.nav.db.UserFixes(ident)
-	if err != nil {
-		return nil, err
-	}
-	return append(list, mine...), nil
-}
-
-func (p routeProvider) FixAt(ref navdata.FixRef) (*navdata.Fix, error) {
-	s := p.s
-	if s.nav.db == nil {
-		return nil, errors.New("the navigation database is not available")
-	}
-	if strings.EqualFold(ref.Region, navdb.UserRegion) {
-		mine, err := s.nav.db.UserFixes(ref.Ident)
-		if err != nil || len(mine) == 0 {
-			return nil, err
-		}
-		return &mine[0], nil
-	}
-	if checked, err := s.nav.db.IdentChecked(ref.Ident); err == nil && !checked {
-		_ = s.loadIdents([]string{ref.Ident})
-	}
-	return s.nav.db.FixAt(ref)
-}
 
 // POST /api/route/distance  {"points": [{"lat": .., "lon": ..}, ...]}
 // The straight-line length of each leg and of the whole route, in nautical miles (the planner asks
@@ -136,7 +54,12 @@ func (s *Server) handleRouteResolve(w http.ResponseWriter, r *http.Request) {
 	}
 	s.nav.mu.Lock()
 	defer s.nav.mu.Unlock()
-	res, err := route.ResolveWith(text, routeProvider{s}, choices)
+	lk, err := s.lookup()
+	if err != nil {
+		writeErr(w, 502, err)
+		return
+	}
+	res, err := route.ResolveWith(text, lk, choices)
 	if err != nil {
 		writeErr(w, 502, err)
 		return

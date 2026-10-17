@@ -31,6 +31,7 @@ One Go program (no cgo) that runs in the Windows tray:
 | `core/internal/sources` | Chart sources: built-in `manual` and `decea-br` |
 | `core/internal/naming` | Name display, accent folding, type words (generic parts only) |
 | `core/internal/server` | HTTP handlers, import/inspect flow, lazy renderer, setup API |
+| `core/internal/navlookup` | The questions reading a route raises: the navigation database first, the simulator for what it was never asked, once per name; takes `Store` (the database, mocked by `navdb/navdbmock`) and a `Source` (the simulator, `sim/simmock`) |
 | `core/internal/sim` | What the program needs from a simulator: small interfaces (position, navigation data, seed files, flight plans), the `Provider` that gathers them and its `Capabilities`; `simmock` has the testify mocks |
 | `core/internal/sim/msfs2024` | Everything specific to Microsoft Flight Simulator 2024: builds its `Provider`; `simconnect` (SimConnect through `LazyDLL`, Windows only), `navseed` + `fsarchive` + `bgl` (the streamed navigation packages), `efbapp` (detection of the installation, EFB app install, `EXE.xml` autostart; embeds `efbpkg/`) |
 | `core/internal/sim/msfs2024/cmd` | Development probes of MSFS 2024 (`fsainspect`, `navprobe`): they only read, are used to find out how the simulator's data is laid out, and are not part of the product |
