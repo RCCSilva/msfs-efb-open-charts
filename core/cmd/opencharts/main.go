@@ -225,7 +225,7 @@ func main() {
 		}
 		srv.SetNav(nav, fetch, fixes, lookup)
 		if simDLL != "" {
-			srv.SetPlanLoader(func(file string) error { return simconnect.LoadFlightPlan(simDLL, file, 4*time.Second) })
+			srv.SetPlanLoader(func(file string) error { return simconnect.LoadFlightPlan(simDLL, file, 1500*time.Millisecond) })
 			srv.SetAirportBatcher(func(icaos []string) ([]server.AirportAnswer, error) {
 				res, err := simconnect.FetchAirports(simDLL, icaos, 120*time.Second)
 				out := make([]server.AirportAnswer, len(res))

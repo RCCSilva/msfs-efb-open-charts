@@ -1708,7 +1708,7 @@
       ok: 'All names were found.', saved: 'Saved', failed: 'Could not do that', needName: 'Give the route a name.',
       sendTo: 'Send the plan', ivao: 'Open in IVAO', savePln: 'Save the plan (.pln)', loadSim: 'Load in the simulator',
       sendHint: 'Only the origin, the destination and the route are sent. IVAO opens its form with them filled in: check it and file it there. The .pln is the simulator\'s flight plan file.',
-      sentSim: 'Sent to the simulator', needText: 'Write the route first.',
+      sentSim: 'Sent to the simulator', sendingSim: 'Sending to the simulator...', needText: 'Write the route first.',
       nameCol: 'Name', kind: 'Type', pos: 'Position', via: 'Via', empty: 'Write a route and press Validate.',
       kinds: { airport: 'Airport', waypoint: 'Waypoint', vor: 'VOR', ndb: 'NDB', coordinate: 'Coordinate', procedure: 'Procedure' },
       mapFail: 'The map could not be loaded.',
@@ -1724,7 +1724,7 @@
       ok: 'Todos os nomes foram encontrados.', saved: 'Salva', failed: 'Não foi possível', needName: 'Dê um nome para a rota.',
       sendTo: 'Enviar o plano', ivao: 'Abrir na IVAO', savePln: 'Salvar o plano (.pln)', loadSim: 'Carregar no simulador',
       sendHint: 'Só a origem, o destino e a rota são enviados. A IVAO abre o formulário com eles preenchidos: confira e registre lá. O .pln é o arquivo de plano de voo do simulador.',
-      sentSim: 'Enviado ao simulador', needText: 'Escreva a rota primeiro.',
+      sentSim: 'Enviado ao simulador', sendingSim: 'Enviando ao simulador...', needText: 'Escreva a rota primeiro.',
       nameCol: 'Nome', kind: 'Tipo', pos: 'Posição', via: 'Via', empty: 'Escreva uma rota e aperte Validar.',
       kinds: { airport: 'Aeroporto', waypoint: 'Waypoint', vor: 'VOR', ndb: 'NDB', coordinate: 'Coordenada', procedure: 'Procedimento' },
       mapFail: 'Não foi possível carregar o mapa.',
@@ -1884,9 +1884,11 @@
     const sendIvao = async () => {
       if (!textIn.value.trim()) { toast(rt('needText')); return; }
       try {
+        status.textContent = '...';
         const r = await api('POST', '/api/route/ivao', sendBody());
         window.open(r.url, '_blank', 'noopener');
       } catch (e) { toast(rt('failed') + ': ' + e.message); }
+      status.textContent = '';
     };
     const savePln = async () => {
       if (!textIn.value.trim()) { toast(rt('needText')); return; }
@@ -1904,9 +1906,11 @@
     const loadSim = async () => {
       if (!textIn.value.trim()) { toast(rt('needText')); return; }
       try {
+        status.textContent = rt('sendingSim');
         await api('POST', '/api/route/pln/load', sendBody());
         toast(rt('sentSim'));
       } catch (e) { toast(rt('failed') + ': ' + e.message); }
+      status.textContent = '';
     };
 
     const listCard = h('div', { class: 'card' },

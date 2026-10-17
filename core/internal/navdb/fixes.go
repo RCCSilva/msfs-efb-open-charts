@@ -125,9 +125,11 @@ func (d *DB) fixOf(ident, region, kind string) (*navdata.Fix, error) {
 // placeLegs fills the position of every leg whose fix is known: waypoints, VORs and NDBs from
 // the fix table, runways and the airport itself from the airport's own data.
 func (d *DB) placeLegs(a *navdata.Airport) error {
-	rows, err := d.db.Query(`SELECT f.ident, f.region, f.kind, f.lat, f.lon FROM fix f WHERE EXISTS (
-		SELECT 1 FROM leg l JOIN transition t ON t.id = l.transition_id JOIN procedure p ON p.id = t.procedure_id
-		WHERE p.airport = ? AND l.fix = f.ident)`, a.ICAO)
+	// the names the airport's legs cite come first, then only those fixes are read (the other way
+	// round it scans every fix once per leg of every airport stored)
+	rows, err := d.db.Query(`SELECT f.ident, f.region, f.kind, f.lat, f.lon FROM fix f WHERE f.ident IN (
+		SELECT DISTINCT l.fix FROM procedure p JOIN transition t ON t.procedure_id = p.id JOIN leg l ON l.transition_id = t.id
+		WHERE p.airport = ?)`, a.ICAO)
 	if err != nil {
 		return err
 	}
