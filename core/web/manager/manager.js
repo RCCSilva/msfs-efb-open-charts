@@ -246,7 +246,7 @@
         else n.setAttribute(k, v === true ? '' : v);
       }
     }
-    for (const kid of kids.flat()) {
+    for (const kid of kids.flat(Infinity)) {
       if (kid === null || kid === undefined || kid === false) continue;
       n.appendChild(typeof kid === 'string' || typeof kid === 'number' ? document.createTextNode(String(kid)) : kid);
     }
