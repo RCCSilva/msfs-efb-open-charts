@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // buildTIFF writes a small little-endian GeoTIFF: 4x2, 8-bit grey, uncompressed, LCC (two parallels).
@@ -102,65 +105,103 @@ func buildTIFF(t *testing.T, withGeo bool) []byte {
 	return out.Bytes()
 }
 
-func TestReadsAGeoTIFFAndItsLambertProjection(t *testing.T) {
+func TestReadsTheSizeAndTheGeoTransformOfAGeoTIFF(t *testing.T) {
+	// Arrange
 	data := buildTIFF(t, true)
+
+	// Act
 	g, err := ReadGeoref(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if g.Width != 4 || g.Height != 2 || g.DX != 100 || g.DY != -100 || g.X0 != -1000 || g.Y0 != 2000 {
-		t.Fatalf("georef = %+v", g)
-	}
-	if g.Projection.Kind != "lcc" || g.Projection.Lat1 != 42.75 || g.Projection.Lon0 != -71 || g.Projection.Lat0 != 42.36667 {
-		t.Fatalf("projection = %+v", g.Projection)
-	}
-	if g.Datum != "NAD83" {
-		t.Errorf("datum = %q", g.Datum)
-	}
-	if e, n := g.PixelToProjected(2, 1); e != -800 || n != 1900 {
-		t.Errorf("pixel (2,1) = %v, %v", e, n)
-	}
-	if c, r := g.ProjectedToPixel(-800, 1900); c != 2 || r != 1 {
-		t.Errorf("projected back = %v, %v", c, r)
-	}
-	img, err := Decode(data)
-	if err != nil || img.Bounds().Dx() != 4 || img.Bounds().Dy() != 2 {
-		t.Fatalf("decode: %v %v", err, img)
-	}
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 4, g.Width)
+	assert.Equal(t, 2, g.Height)
+	assert.Equal(t, 100.0, g.DX)
+	assert.Equal(t, -100.0, g.DY)
+	assert.Equal(t, -1000.0, g.X0)
+	assert.Equal(t, 2000.0, g.Y0)
+}
+
+func TestReadsTheLambertProjectionAndTheDatumOfAGeoTIFF(t *testing.T) {
+	// Arrange
+	data := buildTIFF(t, true)
+
+	// Act
+	g, err := ReadGeoref(data)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, "lcc", g.Projection.Kind)
+	assert.Equal(t, 42.75, g.Projection.Lat1)
+	assert.Equal(t, -71.0, g.Projection.Lon0)
+	assert.Equal(t, 42.36667, g.Projection.Lat0)
+	assert.Equal(t, "NAD83", g.Datum)
+}
+
+func TestPixelsAndProjectedCoordinatesConvertBothWays(t *testing.T) {
+	// Arrange
+	g, err := ReadGeoref(buildTIFF(t, true))
+	require.NoError(t, err)
+
+	// Act
+	e, n := g.PixelToProjected(2, 1)
+	c, r := g.ProjectedToPixel(-800, 1900)
+
+	// Assert
+	assert.Equal(t, -800.0, e)
+	assert.Equal(t, 1900.0, n)
+	assert.Equal(t, 2.0, c)
+	assert.Equal(t, 1.0, r)
+}
+
+func TestTheImageOfAGeoTIFFIsDecoded(t *testing.T) {
+	// Act
+	img, err := Decode(buildTIFF(t, true))
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 4, img.Bounds().Dx())
+	assert.Equal(t, 2, img.Bounds().Dy())
 }
 
 func TestATIFFWithoutGeoTagsIsRefusedPlainly(t *testing.T) {
-	if _, err := ReadGeoref(buildTIFF(t, false)); err != ErrNotGeoreference {
-		t.Fatalf("err = %v", err)
-	}
-	if _, err := ReadGeoref([]byte("%PDF-1.4 ...")); err != ErrNotTIFF {
-		t.Fatalf("a PDF: %v", err)
-	}
+	// Act
+	_, err := ReadGeoref(buildTIFF(t, false))
+
+	// Assert
+	assert.Equal(t, ErrNotGeoreference, err)
+}
+
+func TestAPDFIsNotATIFF(t *testing.T) {
+	// Act
+	_, err := ReadGeoref([]byte("%PDF-1.4 ..."))
+
+	// Assert
+	assert.Equal(t, ErrNotTIFF, err)
 }
 
 // With a real FAA chart around (samples are never committed), the numbers must agree with its
 // world file and metadata: 10.5845 m x 10.5839 m pixels. The world file gives the CENTRE of the
 // first pixel (-54831.98, 48224.95); the GeoTIFF tag gives its corner, half a pixel further.
 func TestFAAHelicopterChartIfPresent(t *testing.T) {
-	p := filepath.Join("..", "..", "..", "samples", "heli", "Boston HEL.tif")
-	data, err := os.ReadFile(p)
+	// Arrange
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "samples", "heli", "Boston HEL.tif"))
 	if err != nil {
 		t.Skip("sample not present")
 	}
+
+	// Act
 	g, err := ReadGeoref(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if g.Width != 10491 || g.Height != 8691 {
-		t.Fatalf("size = %dx%d", g.Width, g.Height)
-	}
-	if math.Abs(g.DX-10.5845538695) > 1e-6 || math.Abs(g.DY+10.5839382341) > 1e-6 {
-		t.Errorf("pixel size = %v, %v", g.DX, g.DY)
-	}
-	if math.Abs(g.X0-(-54831.9854141097-g.DX/2)) > 0.01 || math.Abs(g.Y0-(48224.9517815849-g.DY/2)) > 0.01 {
-		t.Errorf("origin = %v, %v", g.X0, g.Y0)
-	}
-	if g.Projection.Kind != "lcc" || math.Abs(g.Projection.Lat0-42.36667) > 1e-4 || math.Abs(g.Projection.Lon0+71) > 1e-9 {
-		t.Errorf("projection = %+v", g.Projection)
-	}
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 10491, g.Width)
+	assert.Equal(t, 8691, g.Height)
+	assert.InDelta(t, 10.5845538695, g.DX, 1e-6)
+	assert.InDelta(t, -10.5839382341, g.DY, 1e-6)
+	assert.InDelta(t, -54831.9854141097-g.DX/2, g.X0, 0.01)
+	assert.InDelta(t, 48224.9517815849-g.DY/2, g.Y0, 0.01)
+	assert.Equal(t, "lcc", g.Projection.Kind)
+	assert.InDelta(t, 42.36667, g.Projection.Lat0, 1e-4)
+	assert.InDelta(t, -71, g.Projection.Lon0, 1e-9)
 }
