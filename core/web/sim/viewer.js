@@ -781,14 +781,21 @@
     } else {
       mapRot = 0;
     }
+    turnRose(headingUp ? mapRot : 0);
     orientBtn.className = headingUp ? 'active up' : '';
     orientBtn.title = headingUp ? t('orientHeading') : t('orientNorth');
     if (map) map.invalidateSize({ animate: false });
   }
 
+  function turnRose(deg) {
+    var g = el('orient-rose');
+    if (g) g.setAttribute('transform', 'rotate(' + deg.toFixed(1) + ' 16 16)');
+  }
+
   function setMapRotation(deg) {
     mapRot = deg;
     if (!headingUp) return;
+    turnRose(deg);
     var v = 'rotate(' + deg.toFixed(1) + 'deg)';
     var m = el('map');
     m.style.setProperty('transform', v, 'important');
