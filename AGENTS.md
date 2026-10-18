@@ -235,6 +235,14 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   (`...\StreamedPackages\fs24-fs-base-nav\content\minimal.fsarchive`, plain, BGL inside) was studied
   (`internal/sim/msfs2024/fsarchive`, `.../bgl`, `sim/msfs2024/cmd/fsainspect`): identifiers there are base-38 numbers, it holds
   about a third of the fixes only; it is not used yet.
+  A second look (probes `cmd/fsainspect` and `cmd/fsafind`, which finds where a name is mentioned by record id) at
+  `fs24-fs-base-nav` (141 MB, 1,748 BGL files: `atx#`, `nax#`, `nvx#`): fixes are record 0x0108 (section 0x13 or 0x22;
+  `nax` has 104k, `atx` 182k with repeats, 97,559 distinct names in all, each with a class number in the low bits of its
+  id); airports that have procedures are record 0x0113 of section 0x13 (14,768 records of about 3.7 KB, the airport's name
+  and the names of its procedures' fixes are inside; the other airports are in `fs24-fs-base-genericairports`); the airways
+  are inside the large blobs of section 0x22 (`atx`, about 128 KB each): they contain whole 0x0108 records and airway names
+  as a type byte (1 or 2) plus the characters ("UZ84"), but the container's structure is not decoded. Nothing of this is used
+  by the program except the names.
 - **Viewer flow:** the top box of the in-sim viewer stands for the route ("SBSJ > SBGR"); the route button opens a box
   to paste a route in (resolved by `POST /api/route/resolve` on Resolve, Enter, paste, or when the EFB's text dialog ends).
   Three drawers keep the screen for the map: the **route** (left; tap the box): one container per place with a three-dot
