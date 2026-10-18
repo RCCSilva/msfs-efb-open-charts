@@ -46,7 +46,7 @@ type KindHints interface {
 type Lookup struct {
 	store Store
 	src   Source
-	hints KindHints                                  // nil: every name is asked as all three kinds
+	hints KindHints                                 // nil: every name is asked as all three kinds
 	timer func(name string, d time.Duration, n int) // nil: nothing is measured
 }
 

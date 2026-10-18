@@ -80,7 +80,7 @@ func TestTheSeedIsCountedAndTheCheckedIdentsLeaveThePending(t *testing.T) {
 	d := openTemp(t)
 	_, err := d.CreateUserPoint(UserPoint{Ident: "MYPT1", Lat: 1, Lon: 1})
 	require.NoError(t, err)
-	require.NoError(t, d.SaveSeed([]SeedIdent{{Ident: "bobic", Classes: 1<<5, Lat: 1, Lon: 2}, {Ident: "VUPSA"}}))
+	require.NoError(t, d.SaveSeed([]SeedIdent{{Ident: "bobic", Classes: 1 << 5, Lat: 1, Lon: 2}, {Ident: "VUPSA"}}))
 
 	// Act
 	require.NoError(t, d.MarkIdentChecked("BOBIC", 1))
