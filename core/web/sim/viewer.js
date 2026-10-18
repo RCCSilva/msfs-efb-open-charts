@@ -56,6 +56,8 @@
       fixed: 'FIXED',
       simNote: 'FLIGHT SIMULATION ONLY - NOT FOR REAL-WORLD AVIATION',
       regionalTitle: 'Regional zoom (about 30 km around the aircraft)',
+      orientNorth: 'North up (tap: map turns with the aircraft)',
+      orientHeading: 'Aircraft up (tap: north up)',
       starPin: 'Pin this chart', starUnpin: 'Unpin this chart', remove: 'Unpin',
       multiTitle: 'Several charts on the map', multiOn: 'Several charts: on', multiOff: 'Several charts: off',
       scrollUp: 'Up', scrollDown: 'Down', focusChart: 'Show this chart on the map',
@@ -92,6 +94,8 @@
       fixed: 'FIXO',
       simNote: 'APENAS SIMULAÇÃO AÉREA - PROIBIDO O USO EM AVIAÇÃO REAL',
       regionalTitle: 'Zoom regional (cerca de 30 km ao redor da aeronave)',
+      orientNorth: 'Norte para cima (toque: o mapa gira com a aeronave)',
+      orientHeading: 'Aeronave para cima (toque: norte para cima)',
       starPin: 'Fixar esta carta', starUnpin: 'Desafixar esta carta', remove: 'Desafixar',
       multiTitle: 'Varias cartas no mapa', multiOn: 'Varias cartas: ligado', multiOff: 'Varias cartas: desligado',
       scrollUp: 'Subir', scrollDown: 'Descer', focusChart: 'Ir para esta carta no mapa',
@@ -118,6 +122,7 @@
   var kbdEl = el('kbd');
   var statusEl = el('status');
   var followBtn = el('btn-follow');
+  var orientBtn = el('btn-orient');
   var multiBtn = el('btn-multi');
   var viewOverlayBtn = el('view-overlay');
   var viewChartBtn = el('view-chart');
@@ -203,6 +208,7 @@
   var pinned = [];              // chart objects of the current group, in pin order
   var follow = true;
   var followJustEnabled = false;
+  var headingUp = store('orient') === 'heading';  // the map turns with the aircraft (it stays north-up otherwise)
   var lastKey = null;
   var lastFix = null;
   var lastStatusText = null;
@@ -605,6 +611,7 @@
     marker = L.marker([0, 0], { icon: icon, interactive: false, keyboard: false, zIndexOffset: 1000 });
     map.on('dragstart', function () { setFollow(false); pendingRegional = false; });
     setFollow(follow);
+    applyOrientation();
     if (mode === 'chart') map.on('zoomend', refineChartLevel);
     map.on('move', function () { bump('mapMove'); });
     map.on('zoomend', function () { bump('mapZoomEnd'); });
@@ -737,6 +744,7 @@
     if (on && !follow) followJustEnabled = true;
     follow = on;
     followBtn.className = on ? 'active' : '';
+    if (!on && headingUp) setHeadingUp(false);   // the map turns only while it follows the aircraft
     // While following, pinch and wheel zoom around the centre of the screen (where the aircraft is):
     // zooming around the finger moved the aircraft away from the centre and every position update
     // then pulled the map back, which looked like flicker. Leaflet reads these options at each gesture.
@@ -744,6 +752,56 @@
       map.options.touchZoom = on ? 'center' : true;
       map.options.scrollWheelZoom = on ? 'center' : true;
     }
+  }
+
+  // ---- orientation: north up, or heading up (the map turns so the aircraft always points up) ----
+  var mapRot = 0;   // degrees the map is turned by (clockwise)
+
+  // Heading up: #map is made a square that holds the whole screen, centred on it, so that turning it
+  // leaves no empty corner; the controls and the status are outside #map and stay upright.
+  function applyOrientation() {
+    var m = el('map');
+    var props = ['left', 'top', 'right', 'bottom', 'width', 'height', 'transform', '-webkit-transform', 'transform-origin'];
+    props.forEach(function (k) { m.style.removeProperty(k); });
+    if (map) {
+      if (headingUp) map.dragging.disable(); else map.dragging.enable();
+    }
+    if (headingUp) {
+      var r = m.getBoundingClientRect();   // the normal place of the map, under the header band
+      var d = Math.ceil(Math.sqrt(r.width * r.width + r.height * r.height));
+      var put = function (k, v) { m.style.setProperty(k, v, 'important'); };
+      put('left', Math.round(r.left + r.width / 2 - d / 2) + 'px');
+      put('top', Math.round(r.top + r.height / 2 - d / 2) + 'px');
+      put('right', 'auto');
+      put('bottom', 'auto');
+      put('width', d + 'px');
+      put('height', d + 'px');
+      put('transform-origin', '50% 50%');
+      setMapRotation(mapRot);
+    } else {
+      mapRot = 0;
+    }
+    orientBtn.className = headingUp ? 'active up' : '';
+    orientBtn.title = headingUp ? t('orientHeading') : t('orientNorth');
+    if (map) map.invalidateSize({ animate: false });
+  }
+
+  function setMapRotation(deg) {
+    mapRot = deg;
+    if (!headingUp) return;
+    var v = 'rotate(' + deg.toFixed(1) + 'deg)';
+    var m = el('map');
+    m.style.setProperty('transform', v, 'important');
+    m.style.setProperty('-webkit-transform', v, 'important');
+  }
+
+  function setHeadingUp(on) {
+    headingUp = on;
+    store('orient', on ? 'heading' : 'north');
+    if (on) setFollow(true);
+    applyOrientation();
+    lastKey = null;                     // redraw the aircraft, and turn the map to its heading
+    if (lastFix) showAircraft(lastFix);
   }
 
   function rotatePlane(deg) {
@@ -798,6 +856,7 @@
       bump('markerMoved');
       marker.setLatLng(ll);
       rotatePlane(rot);
+      if (headingUp) setMapRotation(-rot);
     }
     // Short on purpose: the status tab may use only 30% of the width. The chart's name is the
     // highlighted chip in the strip, so it is not repeated here.
@@ -1918,7 +1977,7 @@
       lastW = w;
       lastH = h;
       if (map) {
-        map.invalidateSize({ animate: false });
+        applyOrientation();
         if (needsFit) fitInitial();
       }
     }
@@ -2040,6 +2099,7 @@
   el('btn-zoom-in').addEventListener('click', function () { map.zoomIn(1, { animate: false }); });
   el('btn-zoom-out').addEventListener('click', function () { map.zoomOut(1, { animate: false }); });
   followBtn.addEventListener('click', function () { setFollow(!follow); });
+  orientBtn.addEventListener('click', function () { setHeadingUp(!headingUp); });
   el('btn-fit').addEventListener('click', function () { setFollow(false); pendingRegional = false; fitChart(); });
   el('btn-regional').title = t('regionalTitle');
   el('btn-regional').addEventListener('click', function () {

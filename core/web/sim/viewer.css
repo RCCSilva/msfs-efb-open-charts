@@ -392,3 +392,8 @@ html.noband .drawer { top: 58px; }
   background: #f59e0b; color: #fff; font-size: 18px; font-weight: bold; line-height: 30px; text-align: center; }
 .dlist .rtchip .rtbang.done { background: #8a96a3; }
 .rtmenu { min-width: 200px; max-width: 300px; }
+
+/* Map orientation button: an N while north is up, the aircraft while the map turns with it. */
+#btn-orient .o-plane { display: none; }
+#btn-orient.up .o-north { display: none; }
+#btn-orient.up .o-plane { display: inline; }
