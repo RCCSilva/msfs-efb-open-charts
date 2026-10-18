@@ -49,9 +49,9 @@ func ParseMode(s string) Mode {
 // 5 ms for each request and each identifier is three requests, so the batch only changes the fixed
 // cost of a call. In a controlled test a bigger batch looked faster (19.4 ms per identifier at 40,
 // 16.9 at 100, 15.3 at 300), but in a real load there was no measurable difference (18.6 ms at 40,
-// 18.4 at 100). A hundred is 300 requests, the most the simulator answers in one round; a call then
-// takes under two seconds, which is how long the route page and Stop may wait for it.
-const IdentBatch = 100
+// 18.4 at 100). So it stays at 40: a call takes about 0.6 s, which is how long the route page and
+// Stop may wait for it (a batch of 100 takes 1.6 s for the same speed).
+const IdentBatch = 40
 
 // ErrRunning is returned when a load is already running.
 var ErrRunning = errors.New("a load is already running")
