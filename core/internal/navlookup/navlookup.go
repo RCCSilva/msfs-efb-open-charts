@@ -6,6 +6,7 @@ package navlookup
 import (
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
@@ -37,6 +38,24 @@ type Source interface {
 type Lookup struct {
 	store Store
 	src   Source
+	timer func(name string, d time.Duration, n int) // nil: nothing is measured
+}
+
+// WithTimer makes the Lookup report how long its calls to the simulator and to the database take.
+func (l *Lookup) WithTimer(f func(name string, d time.Duration, n int)) *Lookup {
+	l.timer = f
+	return l
+}
+
+// timed reports one run of a step that handled n items.
+func (l *Lookup) timed(name string, n int, f func()) {
+	if l.timer == nil {
+		f()
+		return
+	}
+	start := time.Now()
+	f()
+	l.timer(name, time.Since(start), n)
 }
 
 // New builds a Lookup.
@@ -140,24 +159,34 @@ func (l *Lookup) LoadIdentsCount(idents []string, markEmpty bool) (int, error) {
 	if l.src == nil || len(idents) == 0 {
 		return 0, nil
 	}
-	found, err := l.src.LookupFixes(idents)
+	var found []navdata.Fix
+	var err error
+	l.timed("sim.lookupFixes", len(idents), func() { found, err = l.src.LookupFixes(idents) })
 	if err != nil {
 		return 0, err // not asked: nothing is marked, the next time asks again
 	}
 	if len(found) == 0 && !markEmpty {
 		return 0, nil
 	}
-	if err := l.store.SaveFixes(found); err != nil {
-		return 0, err
+	var saveErr error
+	l.timed("db.saveFixes", len(found), func() { saveErr = l.store.SaveFixes(found) })
+	if saveErr != nil {
+		return 0, saveErr
 	}
 	count := map[string]int{}
 	for _, f := range found {
 		count[strings.ToUpper(f.Ident)]++
 	}
-	for _, id := range idents {
-		if err := l.store.MarkIdentChecked(id, count[strings.ToUpper(id)]); err != nil {
-			return 0, err
+	var markErr error
+	l.timed("db.markChecked", len(idents), func() {
+		for _, id := range idents {
+			if markErr = l.store.MarkIdentChecked(id, count[strings.ToUpper(id)]); markErr != nil {
+				return
+			}
 		}
+	})
+	if markErr != nil {
+		return 0, markErr
 	}
 	return len(found), nil
 }

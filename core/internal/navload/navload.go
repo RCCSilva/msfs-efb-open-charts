@@ -80,6 +80,10 @@ type Deps struct {
 	// Turn is taken around each question to the simulator, so that whatever else asks it (the route
 	// page) and the load take turns.
 	Turn sync.Locker
+	// Timings and Logf, when set, measure the load: where its time goes is logged as it runs and
+	// when it ends.
+	Timings *Timings
+	Logf    func(format string, args ...any)
 }
 
 // View is the state of the load, as the page shows it.
@@ -184,8 +188,11 @@ func (j *Job) Restore(m Meta) {
 
 // Loader does a load.
 type Loader struct {
-	job *Job
-	d   Deps
+	job       *Job
+	d         Deps
+	began     time.Time
+	stepStart time.Time
+	lastLog   time.Time
 }
 
 // New builds a Loader that reports on job.
@@ -196,6 +203,8 @@ var icaoRe = regexp.MustCompile(`^[A-Z0-9]{2,8}$`)
 // Run does the load and returns when it ends. The job must have been started (Job.Begin). prefix
 // limits the airports to the codes that start with it ("SB"); empty: every airport.
 func (l *Loader) Run(mode Mode, prefix string) {
+	l.began = time.Now()
+	l.logf("started (mode %s, prefix %q)", mode, prefix)
 	if mode != Airports {
 		if !l.loadFixes(mode) {
 			return
@@ -209,7 +218,26 @@ func (l *Loader) Run(mode Mode, prefix string) {
 	l.finish("done", "")
 }
 
+func (l *Loader) logf(format string, args ...any) {
+	if l.d.Logf != nil {
+		l.d.Logf("load: "+format, args...)
+	}
+}
+
+// timed runs f as one run of the step name that handled n items.
+func (l *Loader) timed(name string, n int, f func()) { l.d.Timings.Time(name, n, f) }
+
+// progress logs how far the load is, at most every 30 seconds.
+func (l *Loader) progress(what string, done int) {
+	if l.d.Logf == nil || time.Since(l.lastLog) < 30*time.Second {
+		return
+	}
+	l.lastLog = time.Now()
+	l.logf("%s: %d done, %.1f per second since the step began", what, done, float64(done)/time.Since(l.stepStart).Seconds())
+}
+
 func (l *Loader) finish(phase, msg string) {
+	l.logf("%s (%s) after %s\n%s", phase, msg, time.Since(l.began).Round(time.Second), l.d.Timings.Report())
 	l.job.set(func(v *View) { v.Running, v.Phase, v.Message, v.Ended = false, phase, msg, time.Now() })
 	l.job.Save(l.d.Store)
 }
@@ -229,9 +257,13 @@ func (l *Loader) loadFixes(mode Mode) bool {
 	// 1. the identifiers, from the simulator's files
 	paths := l.seedFiles()
 	if len(paths) > 0 {
-		list, err := l.d.Seed.Read(paths, func(done, total int) bool {
-			l.job.set(func(v *View) { v.Total, v.Done = total, done })
-			return !l.job.stopped()
+		var list []navdb.SeedIdent
+		var err error
+		l.timed("files.read", 0, func() {
+			list, err = l.d.Seed.Read(paths, func(done, total int) bool {
+				l.job.set(func(v *View) { v.Total, v.Done = total, done })
+				return !l.job.stopped()
+			})
 		})
 		if err != nil {
 			if l.job.stopped() {
@@ -241,7 +273,9 @@ func (l *Loader) loadFixes(mode Mode) bool {
 			l.finish("error", err.Error())
 			return false
 		}
-		if err := store.SaveSeed(list); err != nil {
+		var saveErr error
+		l.timed("files.save", len(list), func() { saveErr = store.SaveSeed(list) })
+		if err := saveErr; err != nil {
 			l.finish("error", err.Error())
 			return false
 		}
@@ -269,12 +303,15 @@ func (l *Loader) loadFixes(mode Mode) bool {
 	const batch = 40
 	answered, empty := false, 0
 	neighbours := false
+	l.stepStart = time.Now()
 	for {
 		if l.job.stopped() {
 			l.finish("stopped", "")
 			return false
 		}
-		idents, err := store.SeedPending(batch)
+		var idents []string
+		var err error
+		l.timed("db.seedPending", 0, func() { idents, err = store.SeedPending(batch) })
 		if err != nil {
 			l.finish("error", err.Error())
 			return false
@@ -282,7 +319,7 @@ func (l *Loader) loadFixes(mode Mode) bool {
 		if len(idents) == 0 {
 			// the names of the files are done: the fixes that airways cite and the files did not
 			// have are asked too, until no airway leads to a place the database does not have
-			idents, err = store.MissingNeighbors(batch)
+			l.timed("db.missingNeighbors", 0, func() { idents, err = store.MissingNeighbors(batch) })
 			if err != nil {
 				l.finish("error", err.Error())
 				return false
@@ -294,12 +331,15 @@ func (l *Loader) loadFixes(mode Mode) bool {
 				// a second step, whose size nobody knows: every answer may name places that an airway
 				// cites and the database lacks. The page shows how many were asked, not a percentage.
 				neighbours = true
+				l.stepStart = time.Now()
+				l.logf("the names of the files are asked; now the places the airways cite")
 				l.job.set(func(v *View) { v.Phase, v.Total, v.Done = "neighbours", 0, 0 })
 			}
 		}
 		// the route page and the load take turns: a batch holds the lock, then lets it go
+		var n int
 		l.d.Turn.Lock()
-		n, err := l.d.Idents.LoadIdentsCount(idents, answered)
+		l.timed("ask.batch (sim+db)", len(idents), func() { n, err = l.d.Idents.LoadIdentsCount(idents, answered) })
 		l.d.Turn.Unlock()
 		if err != nil {
 			l.finish("error", err.Error())
@@ -317,7 +357,8 @@ func (l *Loader) loadFixes(mode Mode) bool {
 			}
 		}
 		l.job.set(func(v *View) { v.Done += len(idents) })
-		l.job.Save(l.d.Store)
+		l.timed("db.saveJob", 0, func() { l.job.Save(l.d.Store) })
+		l.progress("asking", l.job.Snapshot().Done)
 	}
 }
 
@@ -330,7 +371,9 @@ func (l *Loader) loadAirports(prefix string) bool {
 	}
 	l.job.set(func(v *View) { v.Phase, v.Message, v.Total, v.Done = "listing", "", 0, 0 })
 	l.job.Save(l.d.Store)
-	all, err := l.d.Airports.ListAirports()
+	var all []sim.AirportRef
+	var err error
+	l.timed("airports.list (sim)", 0, func() { all, err = l.d.Airports.ListAirports() })
 	if err != nil {
 		l.finish("error", err.Error())
 		return false
@@ -351,6 +394,8 @@ func (l *Loader) loadAirports(prefix string) bool {
 		todo = append(todo, icao)
 	}
 	sort.Strings(todo)
+	l.stepStart = time.Now()
+	l.logf("%d airports to ask", len(todo))
 	l.job.set(func(v *View) { v.Phase, v.Total, v.Done = "airports", len(todo), 0 })
 	l.job.Save(l.d.Store)
 	// the simulator answers each request after a fixed delay, so many are asked at once
@@ -363,14 +408,16 @@ func (l *Loader) loadAirports(prefix string) bool {
 		}
 		codes := todo[from:min(len(todo), from+chunk)]
 		l.d.Turn.Lock()
-		answers, err := l.d.Airports.Airports(codes)
+		var answers []sim.AirportResult
+		var err error
+		l.timed("airports.ask (sim)", len(codes), func() { answers, err = l.d.Airports.Airports(codes) })
 		if err == nil && len(answers) != len(codes) {
 			err = errors.New("the simulator answered a different number of airports than asked")
 		}
 		if err == nil {
 			for _, ans := range answers {
 				if ans.Err == nil {
-					ans.Err = l.d.Store.SaveAirport(ans.Airport)
+					l.timed("airports.save (db)", 1, func() { ans.Err = l.d.Store.SaveAirport(ans.Airport) })
 				}
 				switch {
 				case ans.Err == nil:
@@ -392,6 +439,7 @@ func (l *Loader) loadAirports(prefix string) bool {
 		}
 		l.job.set(func(v *View) { v.Done = from + len(codes) })
 		l.job.Save(l.d.Store)
+		l.progress("airports", from+len(codes))
 	}
 	return true
 }

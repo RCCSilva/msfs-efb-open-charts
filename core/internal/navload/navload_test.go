@@ -2,8 +2,11 @@ package navload_test
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -380,4 +383,58 @@ func TestTheStateIsKeptWithTheDatabase(t *testing.T) {
 
 	// Assert
 	meta.AssertExpectations(t)
+}
+
+func TestALoadWritesWhereItsTimeWentToTheLog(t *testing.T) {
+	// Arrange
+	f := newFixture()
+	f.seed.On("Locate").Return(nil)
+	f.store.On("Counts").Return(navdb.Counts{SeedIdents: 2, SeedPending: 2}, nil)
+	f.store.On("SeedPending", 40).Return([]string{"AAAAA", "BBBBB"}, nil).Once()
+	f.store.On("SeedPending", 40).Return(nil, nil)
+	f.store.On("MissingNeighbors", 40).Return(nil, nil)
+	f.idents.On("LoadIdentsCount", mock.Anything, mock.Anything).Return(2, nil)
+	var lines []string
+	timings := navload.NewTimings()
+	deps := navload.Deps{Store: f.store, Airports: f.nav, Seed: f.seed, Idents: f.idents, Turn: new(sync.Mutex),
+		Timings: timings, Logf: func(format string, args ...any) { lines = append(lines, fmt.Sprintf(format, args...)) }}
+	require.NoError(t, f.job.Begin())
+
+	// Act
+	navload.New(f.job, deps).Run(navload.Fixes, "")
+
+	// Assert
+	log := strings.Join(lines, "\n")
+	assert.Contains(t, log, "load: started")
+	assert.Contains(t, log, "load: done")
+	assert.Contains(t, log, "ask.batch (sim+db)")
+	assert.Contains(t, log, "2 items")
+}
+
+func TestTimingsAddUpEachStepAndListTheSlowestFirst(t *testing.T) {
+	// Arrange
+	timings := navload.NewTimings()
+	timings.Add("quick", 10*time.Millisecond, 5)
+	timings.Add("slow", 2*time.Second, 40)
+	timings.Add("slow", 1*time.Second, 40)
+
+	// Act
+	report := timings.Report()
+
+	// Assert
+	assert.Less(t, strings.Index(report, "slow"), strings.Index(report, "quick"), "the slowest first")
+	assert.Contains(t, report, "3s in     2 runs")
+	assert.Contains(t, report, "80 items")
+	assert.Contains(t, report, "37.5 ms per item")
+}
+
+func TestNoTimingsRecordNothingAndDoNotFail(t *testing.T) {
+	// Arrange
+	var timings *navload.Timings
+
+	// Act
+	timings.Add("x", time.Second, 1)
+
+	// Assert
+	assert.Empty(t, timings.Report())
 }

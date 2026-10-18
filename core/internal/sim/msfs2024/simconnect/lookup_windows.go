@@ -21,6 +21,7 @@ func LookupFixes(dllPath string, idents []string, wait time.Duration) ([]navdata
 	}
 	facilityMu.Lock()
 	defer facilityMu.Unlock()
+	tr := newTracer("lookup")
 
 	f, err := loadFacilities(dllPath)
 	if err != nil {
@@ -37,6 +38,7 @@ func LookupFixes(dllPath string, idents []string, wait time.Duration) ([]navdata
 	if err := defineFixes(f, h); err != nil {
 		return nil, err
 	}
+	tr.mark("connect+define")
 
 	deadline := time.Now().Add(wait)
 	var first []navdata.FixRef
@@ -66,6 +68,7 @@ func LookupFixes(dllPath string, idents []string, wait time.Duration) ([]navdata
 			}
 		}
 	}
+	tr.mark(fmt.Sprintf("round 1 (%d requests)", len(first)))
 	for start := 0; start < len(second); start += batch {
 		end := min(len(second), start+batch)
 		got, _, err := fetchFixBatch(f, h, second[start:end], 100000+start, deadline)
@@ -74,5 +77,7 @@ func LookupFixes(dllPath string, idents []string, wait time.Duration) ([]navdata
 		}
 		out = append(out, got...)
 	}
+	tr.mark(fmt.Sprintf("round 2 (%d requests)", len(second)))
+	tr.done(fmt.Sprintf("%d identifiers, %d found", len(idents), len(out)))
 	return out, nil
 }

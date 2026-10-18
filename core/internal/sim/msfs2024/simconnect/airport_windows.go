@@ -351,6 +351,7 @@ func FetchAirport(dllPath, icao string, wait time.Duration) (*navdata.Airport, e
 func FetchAirports(dllPath string, icaos []string, wait time.Duration) ([]AirportResult, error) {
 	facilityMu.Lock()
 	defer facilityMu.Unlock()
+	tr := newTracer("airports")
 
 	f, err := loadFacilities(dllPath)
 	if err != nil {
@@ -364,6 +365,7 @@ func FetchAirports(dllPath string, icaos []string, wait time.Duration) ([]Airpor
 	if err := defineAirport(f, h); err != nil {
 		return nil, err
 	}
+	tr.mark("connect+define")
 
 	res := make([]AirportResult, len(icaos))
 	builds := make([]*airportBuild, len(icaos))
@@ -381,6 +383,7 @@ func FetchAirports(dllPath string, icaos []string, wait time.Duration) ([]Airpor
 		pending++
 	}
 
+	tr.mark(fmt.Sprintf("send %d requests", pending))
 	ended := map[uint32]bool{}
 	exceptions := 0 // an unknown airport answers with an exception and no end message
 	lastException := uint32(0)
@@ -416,6 +419,8 @@ func FetchAirports(dllPath string, icaos []string, wait time.Duration) ([]Airpor
 				binary.LittleEndian.Uint32(msg[24:28]), &fieldReader{data: msg[facilityDataOffset:]})
 		}
 	}
+	tr.mark("receive")
+	tr.done(fmt.Sprintf("%d airports asked, %d answered", len(icaos), len(ended)))
 	for i, b := range builds {
 		switch {
 		case b == nil:

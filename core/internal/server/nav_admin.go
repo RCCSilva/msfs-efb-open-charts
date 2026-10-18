@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -303,8 +304,10 @@ func (s *Server) handleNavLoadStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.nav.job.Save(db)
+	timings := navload.NewTimings() // where the time of this load goes, written to the log when it ends
 	loader := navload.New(&s.nav.job, navload.Deps{
-		Store: db, Airports: s.sim.Nav, Seed: s.sim.Seed, Idents: navlookup.New(db, s.sim.Nav), Turn: &s.nav.mu,
+		Store: db, Airports: s.sim.Nav, Seed: s.sim.Seed, Idents: navlookup.New(db, s.sim.Nav).WithTimer(timings.Add), Turn: &s.nav.mu,
+		Timings: timings, Logf: log.Printf,
 	})
 	go loader.Run(mode, body.Prefix)
 	writeJSON(w, 202, s.nav.job.Snapshot())
