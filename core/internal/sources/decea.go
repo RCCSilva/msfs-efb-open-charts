@@ -69,6 +69,9 @@ var (
 	deceaVisualName = regexp.MustCompile(`^(.+)_([a-z]+)_(\d{8})$`)
 )
 
+// deceaNoAerodrome is the code the full package gives to what is not about one aerodrome.
+const deceaNoAerodrome = "SBXX"
+
 func (decea) Recognize(stem string) (naming.Info, bool) {
 	base := strings.TrimSuffix(strings.ToLower(stem), ".pdf")
 	if m := deceaPackageName.FindStringSubmatch(base); m != nil {
@@ -76,6 +79,13 @@ func (decea) Recognize(stem string) (naming.Info, bool) {
 		// "sbsp-adc" repeats ICAO + type: nothing more to say.
 		if strings.EqualFold(in.Title, in.ICAO+" "+in.Type) {
 			in.Title = ""
+		}
+		// "sbxx" is not an aerodrome: the package files its charts that belong to none (the en-route
+		// ones, for example) under it. The type then opens the title once: "enrc-h5" is the chart H5.
+		if in.ICAO == deceaNoAerodrome {
+			in.ICAO = ""
+			in.Title = strings.TrimSpace(strings.TrimPrefix(in.Title, in.Type+" "))
+			in.Sure = true
 		}
 		return in, true
 	}

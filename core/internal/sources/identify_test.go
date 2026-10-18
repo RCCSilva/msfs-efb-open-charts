@@ -41,3 +41,25 @@ func TestIdentifyTitle(t *testing.T) {
 		})
 	}
 }
+
+// The full package files what is about no aerodrome (the en-route charts) under "sbxx".
+func TestAnEnRouteChartOfThePackageHasNoAerodrome(t *testing.T) {
+	// Act
+	id := Identify("decea-br", "sbxx_enrc-h5_enrc_20261001", "sbxx_enrc-h5_enrc_20261001.pdf", "")
+
+	// Assert
+	assert.Empty(t, id.ICAO, "SBXX is not an aerodrome")
+	assert.Equal(t, "ENRC", id.Type)
+	assert.Equal(t, "H5", id.Title, "the type is not said twice")
+	assert.Equal(t, "2026-10-01", id.Validity)
+	assert.True(t, id.Confident)
+}
+
+func TestAnEnRouteChartFromMyPDFsIsReadTheSameWay(t *testing.T) {
+	// Act
+	id := Identify("manual", "sbxx_enrc-h5_enrc_20261001", "sbxx_enrc-h5_enrc_20261001.pdf", "")
+
+	// Assert
+	assert.Empty(t, id.ICAO)
+	assert.Equal(t, "H5", id.Title)
+}

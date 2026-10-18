@@ -121,6 +121,8 @@ func TypeWords(typ string) string {
 		return "area terminal terminal area chart vfr"
 	case "HEL":
 		return "helicoptero helicopter route chart vfr"
+	case "ENRC":
+		return "carta de rota enroute ifr baixa alta low high altitude"
 	case "ENR":
 		return "enroute rota ifr baixa alta low high altitude"
 	case "ODP":
