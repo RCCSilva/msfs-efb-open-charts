@@ -31,14 +31,15 @@ const (
 // chart of this kind has so many metres in a pixel that it is blurred when the map is zoomed in;
 // drawing it sharper makes a pyramid of many more tiles (see internal/importer/detail.go).
 const (
-	LargeStandard = "standard" // the automatic resolution: light and fast (the default)
-	LargeBalanced = "balanced" // sharp to map zoom 11: 70 metres per pixel at the finest level
+	LargeStandard = "standard" // the automatic resolution: light and fast, but blurred when zoomed in
+	LargeBalanced = "balanced" // sharp to map zoom 11: 70 metres per pixel at the finest level (the default)
 	LargeSharp    = "sharp"    // sharp to map zoom 12: 35 metres per pixel at the finest level
+	LargeMaximum  = "maximum"  // sharp to map zoom 13: 17.5 metres per pixel, for the few that want it
 )
 
 // ValidLargeCharts reports whether s is one of the levels above.
 func ValidLargeCharts(s string) bool {
-	return s == LargeStandard || s == LargeBalanced || s == LargeSharp
+	return s == LargeStandard || s == LargeBalanced || s == LargeSharp || s == LargeMaximum
 }
 
 // DetailMPerPx is the ground resolution asked for at the finest level of a large chart, in metres
@@ -49,6 +50,8 @@ func DetailMPerPx(level string) float64 {
 		return 70
 	case LargeSharp:
 		return 35
+	case LargeMaximum:
+		return 17.5
 	}
 	return 0
 }
@@ -130,7 +133,7 @@ type Settings struct {
 
 // Default returns the settings of a fresh installation (a new key is generated).
 func Default() Settings {
-	return Settings{Port: DefaultPort, LAN: false, Token: NewToken(), Detail: DetailNormal, LargeCharts: LargeStandard, Basemap: BasemapStandard,
+	return Settings{Port: DefaultPort, LAN: false, Token: NewToken(), Detail: DetailNormal, LargeCharts: LargeBalanced, Basemap: BasemapStandard,
 		Aircraft: AircraftPlane, AircraftColor: DefaultAircraftColor}
 }
 

@@ -184,24 +184,40 @@ func TestAnUnknownAircraftSymbolFallsBackToTheDefaults(t *testing.T) {
 	assert.Equal(t, "yellow", s.AircraftColor)
 }
 
-func TestLargeChartsDefaultToStandardAndMeanTheAutomaticResolution(t *testing.T) {
+func TestLargeChartsDefaultToBalanced(t *testing.T) {
 	// Act
 	s := Load(t.TempDir())
 
 	// Assert
-	assert.Equal(t, LargeStandard, s.LargeCharts)
-	assert.Zero(t, DetailMPerPx(s.LargeCharts))
+	assert.Equal(t, LargeBalanced, s.LargeCharts)
+	assert.Equal(t, 70.0, DetailMPerPx(s.LargeCharts))
+}
+
+func TestStandardLargeChartsMeanTheAutomaticResolution(t *testing.T) {
+	assert.Zero(t, DetailMPerPx(LargeStandard))
 }
 
 func TestEachLargeChartsLevelAsksForAGroundResolution(t *testing.T) {
 	assert.Equal(t, 70.0, DetailMPerPx(LargeBalanced))
 	assert.Equal(t, 35.0, DetailMPerPx(LargeSharp))
+	assert.Equal(t, 17.5, DetailMPerPx(LargeMaximum))
 	assert.Zero(t, DetailMPerPx("whatever"))
 }
 
-func TestAnUnknownLargeChartsLevelFallsBackToStandard(t *testing.T) {
+func TestAnUnknownLargeChartsLevelFallsBackToTheDefault(t *testing.T) {
 	// Arrange
 	dir := writeSettings(t, `{"port": 43210, "largeCharts": "ultra"}`)
+
+	// Act
+	s := Load(dir)
+
+	// Assert
+	assert.Equal(t, LargeBalanced, s.LargeCharts)
+}
+
+func TestAStoredStandardLevelIsKept(t *testing.T) {
+	// Arrange
+	dir := writeSettings(t, `{"port": 43210, "largeCharts": "standard"}`)
 
 	// Act
 	s := Load(dir)

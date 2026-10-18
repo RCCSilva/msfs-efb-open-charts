@@ -67,8 +67,8 @@
       baseHelp: 'What is drawn under the chart in the viewer. Light is a quiet grey version of OpenStreetMap: lighter to load and easier on the chart. Reload the viewer to see the change.',
       detailTitle: 'Chart detail', detailNormal: 'Normal', detailHigh: 'High',
       catGeneral: 'General', catSimulator: 'Simulator', catNetwork: 'Network', catDisplay: 'Map and aircraft', catCharts: 'Charts', catData: 'Navigation data', catDiag: 'Diagnostics',
-      largeTitle: 'Large charts (WAC, en-route)', largeStandard: 'Standard', largeBalanced: 'Sharp to zoom 11', largeSharp: 'Sharp to zoom 12',
-      largeHelp: 'Charts that cover a lot of ground (the WACs and the en-route charts) look blurred when the map is zoomed in. The sharper levels draw them in more detail, as many more tiles. Measured on a WAC: Standard is about 22 MB and 6 seconds to import; Sharp to zoom 12 is about 165 MB and 50 seconds. Sharp to zoom 11 is in between. It applies to charts imported from now on: import a chart again to redraw it.',
+      largeTitle: 'Large charts (WAC, en-route)', largeStandard: 'Light', largeBalanced: 'Balanced (default)', largeSharp: 'Sharp', largeMaximum: 'Maximum',
+      largeHelp: 'Charts that cover a lot of ground (the WACs and the en-route charts) look blurred when the map is zoomed in, so they are drawn in more detail, as many more tiles. Measured on a WAC: Light stays sharp to map zoom 9 (about 22 MB); Balanced to zoom 11 (about 80 MB, the default); Sharp to zoom 12 (about 170 MB, 1 minute to import); Maximum to zoom 13 (about 700 MB, several minutes, only for those who really need it). An en-route chart is bigger and takes longer. It applies to charts imported from now on: import a chart again to redraw it.',
       detailHelp: 'Applies to charts imported from now on. High is sharper when you zoom in (phones, large screens) but makes bigger files and takes longer. To change charts already in the library, delete and add them again.',
       netTitle: 'Port and local network', portTitle: 'Server port', lanTitle: 'Local network (tablet and phone)', portLabel: 'Port', apply: 'Apply', portApplied: 'Port changed',
       portHelp: 'Default {n}. Change it if another program uses it. Afterwards update the EFB app and restart the simulator.',
@@ -175,8 +175,8 @@
       baseHelp: 'O que aparece embaixo da carta no visualizador. O Claro é uma versão discreta, em cinza, do OpenStreetMap: carrega mais leve e não disputa atenção com a carta. Recarregue o visualizador para ver a mudança.',
       detailTitle: 'Detalhe das cartas', detailNormal: 'Normal', detailHigh: 'Alto',
       catGeneral: 'Geral', catSimulator: 'Simulador', catNetwork: 'Rede', catDisplay: 'Mapa e aeronave', catCharts: 'Cartas', catData: 'Dados de navegação', catDiag: 'Diagnóstico',
-      largeTitle: 'Cartas grandes (WAC, em rota)', largeStandard: 'Padrão', largeBalanced: 'Nítido até o zoom 11', largeSharp: 'Nítido até o zoom 12',
-      largeHelp: 'As cartas que cobrem muito terreno (as WAC e as de rota) ficam borradas quando o mapa é aproximado. Os níveis mais nítidos as desenham com mais detalhe, em muito mais tiles. Medido numa WAC: o Padrão tem uns 22 MB e leva 6 segundos para importar; Nítido até o zoom 12 tem uns 165 MB e leva 50 segundos. O zoom 11 fica no meio. Vale para as cartas importadas daqui para a frente: importe a carta de novo para redesenhá-la.',
+      largeTitle: 'Cartas grandes (WAC, em rota)', largeStandard: 'Leve', largeBalanced: 'Equilibrado (padrão)', largeSharp: 'Nítido', largeMaximum: 'Máximo',
+      largeHelp: 'As cartas que cobrem muito terreno (as WAC e as de rota) ficam borradas quando o mapa é aproximado, então são desenhadas com mais detalhe, em muito mais tiles. Medido numa WAC: o Leve fica nítido até o zoom 9 do mapa (uns 22 MB); o Equilibrado até o zoom 11 (uns 80 MB, o padrão); o Nítido até o zoom 12 (uns 170 MB, 1 minuto para importar); o Máximo até o zoom 13 (uns 700 MB, vários minutos, só para quem precisa mesmo). Uma carta de rota é maior e demora mais. Vale para as cartas importadas daqui para a frente: importe a carta de novo para redesenhá-la.',
       detailHelp: 'Vale para as cartas importadas daqui em diante. Alto fica mais nítido ao dar zoom (celular, telas grandes), mas gera arquivos maiores e demora mais. Para mudar as cartas que já estão na biblioteca, exclua e adicione de novo.',
       netTitle: 'Porta e rede local', portTitle: 'Porta do servidor', lanTitle: 'Rede local (tablet e celular)', portLabel: 'Porta', apply: 'Aplicar', portApplied: 'Porta alterada',
       portHelp: 'Padrão {n}. Troque se outro programa usar. Depois, atualize o app do EFB e reinicie o simulador.',
@@ -1386,7 +1386,7 @@
         renderSetup();
       } }, label);
     return h('div', { class: 'card' }, h('h3', null, t('largeTitle')),
-      h('div', { class: 'row' }, pick('standard', t('largeStandard')), pick('balanced', t('largeBalanced')), pick('sharp', t('largeSharp'))),
+      h('div', { class: 'row' }, pick('standard', t('largeStandard')), pick('balanced', t('largeBalanced')), pick('sharp', t('largeSharp')), pick('maximum', t('largeMaximum'))),
       h('div', { class: 'muted', style: 'margin-top:8px' }, t('largeHelp')));
   }
 
@@ -2317,13 +2317,57 @@
     ctx.restore();
   }
 
+  // The pictures of a chart's pyramid, kept a while: a pan reuses them.
+  const pyrImages = {};
+  const pyrOrder = [];
+  function pyrImage(url, cb) {
+    let rec = pyrImages[url];
+    if (rec) { if (rec.ok) cb(rec.img); else rec.waiting.push(cb); return; }
+    rec = pyrImages[url] = { img: new Image(), ok: false, waiting: [cb] };
+    pyrOrder.push(url);
+    if (pyrOrder.length > 150) delete pyrImages[pyrOrder.shift()];
+    const finish = (img) => { const w = rec.waiting; rec.waiting = []; w.forEach((f) => f(img)); };
+    rec.img.onload = () => { rec.ok = true; finish(rec.img); };
+    rec.img.onerror = () => { delete pyrImages[url]; finish(null); };
+    rec.img.src = url;
+  }
+
+  // The part of pyramid level z (picture pixels = overview pixels * 2^z) that a map tile needs, put
+  // together in one canvas; calls back with it and its origin in level pixels, or null.
+  function pyramidRegion(meta, z, x0, y0, x1, y1, cb) {
+    const t = meta.tiles;
+    const k = Math.pow(2, z);
+    const rx0 = Math.max(0, Math.floor(x0 * k));
+    const ry0 = Math.max(0, Math.floor(y0 * k));
+    const rx1 = Math.min(Math.ceil(x1 * k), Math.ceil(t.width / Math.pow(2, t.maxZoom - z)));
+    const ry1 = Math.min(Math.ceil(y1 * k), Math.ceil(t.height / Math.pow(2, t.maxZoom - z)));
+    if (rx1 <= rx0 || ry1 <= ry0) { cb(null); return; }
+    const cv = document.createElement('canvas');
+    cv.width = rx1 - rx0; cv.height = ry1 - ry0;
+    const cx = cv.getContext('2d');
+    const c0 = Math.floor(rx0 / t.size), c1 = Math.floor((rx1 - 1) / t.size);
+    const r0 = Math.floor(ry0 / t.size), r1 = Math.floor((ry1 - 1) / t.size);
+    let pending = (c1 - c0 + 1) * (r1 - r0 + 1);
+    for (let row = r0; row <= r1; row++) {
+      for (let col = c0; col <= c1; col++) {
+        pyrImage('/charts/' + encodeURIComponent(meta.id) + '/tiles/' + z + '/' + col + '/' + row + '.png', (img) => {
+          if (img) cx.drawImage(img, col * t.size - rx0, row * t.size - ry0);
+          pending -= 1;
+          if (pending === 0) cb({ canvas: cv, x: rx0, y: ry0, k });
+        });
+      }
+    }
+  }
+
   function chartWarpLayer(L, meta, img, opacity) {
     const MESH = 8;
     const Layer = L.GridLayer.extend({
       createTile(coords, done) {
         const T = 256;
+        const dpr = Math.min(2, window.devicePixelRatio || 1);   // drawn at device pixels: crisp lines
+        const TP = Math.round(T * dpr);
         const tile = document.createElement('canvas');
-        tile.width = T; tile.height = T;
+        tile.width = TP; tile.height = TP;
         const fr = meta.mapFramePx;
         const n = Math.pow(2, coords.z);
         const ll = (x, y) => {
@@ -2339,25 +2383,48 @@
           for (let i = 0; i <= MESH; i++) {
             const p = ll(coords.x + i / MESH, coords.y + j / MESH);
             const px = window.LMMGeo.toPixel(meta, p.lat, p.lon);
-            src[j][i] = { x: px.px * k, y: px.py * k };
+            src[j][i] = { x: px.px, y: px.py };   // in overview pixels
             minX = Math.min(minX, px.px); maxX = Math.max(maxX, px.px);
             minY = Math.min(minY, px.py); maxY = Math.max(maxY, px.py);
           }
         }
         const inside = !(maxX < fr.left || minX > fr.right || maxY < fr.top || minY > fr.bottom);
-        if (inside) {
-          const ctx = tile.getContext('2d');
-          ctx.imageSmoothingEnabled = true;
-          const step = T / MESH;
-          const frame = { left: fr.left * k, top: fr.top * k, right: fr.right * k, bottom: fr.bottom * k };
+        const step = TP / MESH;
+        const ctx = tile.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+        // draw the triangles of the tile from a picture whose pixels are `kk` times the overview's
+        const paint = (pic, kk, ox, oy, frame) => {
           for (let j = 0; j < MESH; j++) {
             for (let i = 0; i < MESH; i++) {
+              const q = (a, b) => ({ x: src[a][b].x * kk - ox, y: src[a][b].y * kk - oy });
               const p00 = { x: i * step, y: j * step }, p10 = { x: (i + 1) * step, y: j * step };
               const p11 = { x: (i + 1) * step, y: (j + 1) * step }, p01 = { x: i * step, y: (j + 1) * step };
-              drawTri(ctx, img, src[j][i], src[j][i + 1], src[j + 1][i + 1], p00, p10, p11, frame);
-              drawTri(ctx, img, src[j][i], src[j + 1][i + 1], src[j + 1][i], p00, p11, p01, frame);
+              drawTri(ctx, pic, q(j, i), q(j, i + 1), q(j + 1, i + 1), p00, p10, p11, frame);
+              drawTri(ctx, pic, q(j, i), q(j + 1, i + 1), q(j + 1, i), p00, p11, p01, frame);
             }
           }
+        };
+        if (inside && meta.tiles) {
+          // the level that gives about one picture pixel to each screen pixel
+          const edge = Math.hypot(src[0][MESH].x - src[0][0].x, src[0][MESH].y - src[0][0].y) || 1;
+          let lz = Math.min(Math.ceil(Math.log(TP / edge) / Math.LN2 - 0.2), meta.tiles.maxZoom);
+          // never a region bigger than a few screens of pixels
+          while (lz > 0 && Math.max(maxX - minX, maxY - minY) * Math.pow(2, lz) > TP * 3) lz -= 1;
+          if (lz > 0) {
+            pyramidRegion(meta, lz, Math.max(fr.left, minX) - 1, Math.max(fr.top, minY) - 1,
+              Math.min(fr.right, maxX) + 1, Math.min(fr.bottom, maxY) + 1, (region) => {
+                if (region) {
+                  const whole = { left: 0, top: 0, right: region.canvas.width, bottom: region.canvas.height };
+                  paint(region.canvas, region.k, region.x, region.y, whole);
+                }
+                setTimeout(() => done(null, tile), 0);
+              });
+            return tile;
+          }
+        }
+        if (inside) {
+          paint(img, k, 0, 0, { left: fr.left * k, top: fr.top * k, right: fr.right * k, bottom: fr.bottom * k });
         }
         setTimeout(() => done(null, tile), 0);
         return tile;

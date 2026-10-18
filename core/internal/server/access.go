@@ -370,7 +370,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	// how sharp big-area charts are drawn does not depend on the listen address
 	if body.LargeCharts != nil && body.Port == nil && body.LAN == nil && body.Detail == nil && body.Basemap == nil && body.Aircraft == nil && body.AircraftColor == nil {
 		if !settings.ValidLargeCharts(*body.LargeCharts) {
-			writeErr(w, 400, errors.New("largeCharts must be standard, balanced or sharp"))
+			writeErr(w, 400, errors.New("largeCharts must be standard, balanced, sharp or maximum"))
 			return
 		}
 		s.net.mu.Lock()
