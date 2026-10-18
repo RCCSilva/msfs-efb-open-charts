@@ -1667,9 +1667,9 @@
       loadHow: 'Two steps, always in this order: (1) the names of every waypoint, VOR and NDB are read from the navigation files the simulator keeps on this computer; (2) each name is asked to the simulator through SimConnect, which brings its region, position and airways. The simulator must be running with a flight loaded. You can stop and continue later.',
       filesFound: 'Simulator files found', filesNone: 'No simulator navigation files found: only step 2 applies, for the names a route cites.',
       noLink: 'SimConnect.dll was not found: the simulator cannot be asked.',
-      pending: 'names still to ask', loadAll: 'Load everything', loadFiles: 'Only read the names from the files', stop: 'Stop',
+      asked: 'asked so far', pending: 'names still to ask', loadAll: 'Load everything', loadFiles: 'Only read the names from the files', stop: 'Stop',
       loadAirportsOnly: 'Only airports', airportPrefix: 'Airports: only codes starting with', airportPrefixHint: 'e.g. SB (Brazil); empty = every airport of the simulator, which takes a long time',
-      phase: { listing: 'Asking the simulator for its list of airports', airports: 'Loading airports (with their procedures)', interrupted: 'Interrupted: the program was restarted while loading. Press Load to continue.', idle: 'Idle', reading: 'Reading the simulator files', asking: 'Asking the simulator', done: 'Finished', stopped: 'Stopped', error: 'Stopped by an error' },
+      phase: { listing: 'Asking the simulator for its list of airports', airports: 'Loading airports (with their procedures)', interrupted: 'Interrupted: the program was restarted while loading. Press Load to continue.', idle: 'Idle', reading: 'Reading the simulator files', asking: 'Step 1 of 2: asking the simulator for the names in its files', neighbours: 'Step 2 of 2: asking for the places that airways cite and the files did not have (the total is not known: each answer may name more)', done: 'Finished', stopped: 'Stopped', error: 'Stopped by an error' },
       tabAirports: 'Airports', tabFixes: 'Fixes', tabAirways: 'Airways', tabPoints: 'My points',
       search: 'Search by name...', all: 'All', kindW: 'Waypoint', kindV: 'VOR', kindN: 'NDB',
       ident: 'Name', region: 'Region', kind: 'Type', pos: 'Position', name: 'Description', lat: 'Latitude', lon: 'Longitude', note: 'Note',
@@ -1692,9 +1692,9 @@
       loadHow: 'Dois passos, sempre nesta ordem: (1) os nomes de todos os waypoints, VORs e NDBs são lidos dos arquivos de navegação que o simulador guarda neste computador; (2) cada nome é perguntado ao simulador pelo SimConnect, que traz a região, a posição e as aerovias. O simulador precisa estar aberto com um voo carregado. Dá para parar e continuar depois.',
       filesFound: 'Arquivos do simulador encontrados', filesNone: 'Nenhum arquivo de navegação do simulador encontrado: vale só o passo 2, para os nomes que uma rota cita.',
       noLink: 'O SimConnect.dll não foi encontrado: não dá para perguntar ao simulador.',
-      pending: 'nomes ainda para perguntar', loadAll: 'Carregar tudo', loadFiles: 'Só ler os nomes dos arquivos', stop: 'Parar',
+      asked: 'já perguntados', pending: 'nomes ainda para perguntar', loadAll: 'Carregar tudo', loadFiles: 'Só ler os nomes dos arquivos', stop: 'Parar',
       loadAirportsOnly: 'Só aeroportos', airportPrefix: 'Aeroportos: só os códigos que começam com', airportPrefixHint: 'ex.: SB (Brasil); vazio = todos os aeroportos do simulador, o que demora bastante',
-      phase: { listing: 'Pedindo ao simulador a lista de aeroportos', airports: 'Carregando aeroportos (com os procedimentos)', interrupted: 'Interrompido: o programa foi reiniciado durante a carga. Aperte Carregar tudo para continuar.', idle: 'Parado', reading: 'Lendo os arquivos do simulador', asking: 'Perguntando ao simulador', done: 'Concluído', stopped: 'Interrompido', error: 'Interrompido por um erro' },
+      phase: { listing: 'Pedindo ao simulador a lista de aeroportos', airports: 'Carregando aeroportos (com os procedimentos)', interrupted: 'Interrompido: o programa foi reiniciado durante a carga. Aperte Carregar tudo para continuar.', idle: 'Parado', reading: 'Lendo os arquivos do simulador', asking: 'Etapa 1 de 2: perguntando ao simulador os nomes dos arquivos dele', neighbours: 'Etapa 2 de 2: perguntando os pontos que as aerovias citam e os arquivos não tinham (o total não é conhecido: cada resposta pode citar mais)', done: 'Concluído', stopped: 'Interrompido', error: 'Interrompido por um erro' },
       tabAirports: 'Aeroportos', tabFixes: 'Fixos', tabAirways: 'Aerovias', tabPoints: 'Meus pontos',
       search: 'Buscar pelo nome...', all: 'Todos', kindW: 'Waypoint', kindV: 'VOR', kindN: 'NDB',
       ident: 'Nome', region: 'Região', kind: 'Tipo', pos: 'Posição', name: 'Descrição', lat: 'Latitude', lon: 'Longitude', note: 'Nota',
@@ -1772,7 +1772,9 @@
   }
 
   function navPhaseText(job, pct) {
-    return `${nv('phase')[job.phase] || job.phase}${job.total ? ` - ${fmtNum(job.done)} / ${fmtNum(job.total)} (${pct}%)` : ''}`;
+    const name = nv('phase')[job.phase] || job.phase;
+    if (job.phase === 'neighbours') return `${name} - ${fmtNum(job.done)} ${nv('asked')}`;
+    return `${name}${job.total ? ` - ${fmtNum(job.done)} / ${fmtNum(job.total)} (${pct}%)` : ''}`;
   }
   const navPendingText = (c) => `${fmtNum(c.seedPending)} ${nv('pending')} (${fmtNum(c.seedIdents)} ${nv('total')})`;
 

@@ -249,8 +249,8 @@ func TestTheIdentifiersAreAskedInBatchesThenTheNeighboursTheAirwaysCite(t *testi
 
 	// Assert
 	assert.Equal(t, "done", v.Phase)
-	assert.Equal(t, 81, v.Total, "the neighbours are added to what is to be asked")
-	assert.Equal(t, 4, v.Done)
+	assert.Zero(t, v.Total, "the neighbours are a step of unknown size: there is no total")
+	assert.Equal(t, 1, v.Done, "how many neighbours were asked")
 	f.idents.AssertNumberOfCalls(t, "LoadIdentsCount", 3)
 	f.idents.AssertCalled(t, "LoadIdentsCount", first, false) // nothing answered yet: an empty answer is not recorded
 	f.idents.AssertCalled(t, "LoadIdentsCount", second, true) // the simulator has answered before

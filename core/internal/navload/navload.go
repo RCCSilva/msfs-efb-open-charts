@@ -85,7 +85,7 @@ type Deps struct {
 // View is the state of the load, as the page shows it.
 type View struct {
 	Running bool      `json:"running"`
-	Phase   string    `json:"phase"` // idle, interrupted, reading, asking, listing, airports, done, stopped, error
+	Phase   string    `json:"phase"` // idle, interrupted, reading, asking, neighbours, listing, airports, done, stopped, error
 	Message string    `json:"message"`
 	Total   int       `json:"total"`
 	Done    int       `json:"done"`
@@ -268,6 +268,7 @@ func (l *Loader) loadFixes(mode Mode) bool {
 	l.job.set(func(v *View) { v.Phase, v.Total, v.Done = "asking", c.SeedIdents, c.SeedIdents-c.SeedPending })
 	const batch = 40
 	answered, empty := false, 0
+	neighbours := false
 	for {
 		if l.job.stopped() {
 			l.finish("stopped", "")
@@ -289,7 +290,12 @@ func (l *Loader) loadFixes(mode Mode) bool {
 			if len(idents) == 0 {
 				return true
 			}
-			l.job.set(func(v *View) { v.Total += len(idents) })
+			if !neighbours {
+				// a second step, whose size nobody knows: every answer may name places that an airway
+				// cites and the database lacks. The page shows how many were asked, not a percentage.
+				neighbours = true
+				l.job.set(func(v *View) { v.Phase, v.Total, v.Done = "neighbours", 0, 0 })
+			}
 		}
 		// the route page and the load take turns: a batch holds the lock, then lets it go
 		l.d.Turn.Lock()

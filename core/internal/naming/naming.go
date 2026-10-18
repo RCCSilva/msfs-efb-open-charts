@@ -113,8 +113,6 @@ func TypeWords(typ string) string {
 		return "rotas especiais ultraleve ultralight"
 	case "WAC":
 		return "carta aeronautica mundial world aeronautical"
-	case "CNAV", "CINAV":
-		return "navegacao visual visual navigation"
 	case "SEC":
 		return "seccional sectional vfr carta visual"
 	case "TAC":
