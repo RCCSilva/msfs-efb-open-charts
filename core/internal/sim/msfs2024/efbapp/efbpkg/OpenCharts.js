@@ -22,7 +22,7 @@
 
   var APP_NAME = 'Open Charts';
   var INTERNAL_NAME = 'OpenCharts';
-  var VERSION = '0.5.0';
+  var VERSION = '0.6.0';
   var EFB_API_VERSION = '1.0.3';
   var BASE_URL = 'coui://html_ui/efb_ui/efb_apps/' + INTERNAL_NAME;
 
