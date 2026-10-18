@@ -219,7 +219,7 @@
   try { lang = localStorage.getItem('oc.lang') || ((navigator.language || 'en').toLowerCase().startsWith('pt') ? 'pt' : 'en'); } catch (e) { /* ignore */ }
   const qLang = new URLSearchParams(location.search).get('lang');
   if (qLang === 'pt' || qLang === 'en') lang = qLang;
-  let VERSION = '0.6.3 Open Beta';   // replaced by what the running program reports (/api/version): '0.1.1-8fa9b5b' while developing
+  let VERSION = '0.7.0 Open Beta';   // replaced by what the running program reports (/api/version): '0.1.1-8fa9b5b' while developing
   const REPO = 'https://github.com/RCCSilva/msfs-efb-open-charts';
   const t = (k) => STR[lang][k] || STR.en[k] || k;
   const fill = (text, vars) => text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));

@@ -1,11 +1,11 @@
 <#
   Builds Open Charts and, when Inno Setup 6 is installed, the installer.
 
-  Usage:  powershell -File installer\build.ps1 [-Version 0.6.3]
+  Usage:  powershell -File installer\build.ps1 [-Version 0.7.0]
 
   Output: build\opencharts.exe, build\SimConnect.dll and dist\OpenCharts-Setup-<version>.exe
 #>
-param([string]$Version = '0.6.3', [string]$Label = 'Open Beta')
+param([string]$Version = '0.7.0', [string]$Label = 'Open Beta')
 
 $ErrorActionPreference = 'Stop'
 $root  = Split-Path -Parent $PSScriptRoot
