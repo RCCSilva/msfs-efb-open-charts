@@ -14,6 +14,7 @@ package navload
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
@@ -43,6 +44,14 @@ func ParseMode(s string) Mode {
 	}
 	return All
 }
+
+// IdentBatch is how many identifiers are asked to the simulator at once. The simulator takes about
+// 5 ms for each request and each identifier is three requests, so the batch only changes the fixed
+// cost of a call. In a controlled test a bigger batch looked faster (19.4 ms per identifier at 40,
+// 16.9 at 100, 15.3 at 300), but in a real load there was no measurable difference (18.6 ms at 40,
+// 18.4 at 100). A hundred is 300 requests, the most the simulator answers in one round; a call then
+// takes under two seconds, which is how long the route page and Stop may wait for it.
+const IdentBatch = 100
 
 // ErrRunning is returned when a load is already running.
 var ErrRunning = errors.New("a load is already running")
@@ -192,6 +201,7 @@ type Loader struct {
 	d         Deps
 	began     time.Time
 	stepStart time.Time
+	stepDone  int // what was already done when the step began (a resumed load)
 	lastLog   time.Time
 }
 
@@ -233,7 +243,7 @@ func (l *Loader) progress(what string, done int) {
 		return
 	}
 	l.lastLog = time.Now()
-	l.logf("%s: %d done, %.1f per second since the step began", what, done, float64(done)/time.Since(l.stepStart).Seconds())
+	l.logf("%s: %d done, %.1f per second since the step began", what, done, float64(done-l.stepDone)/time.Since(l.stepStart).Seconds())
 }
 
 func (l *Loader) finish(phase, msg string) {
@@ -300,10 +310,10 @@ func (l *Loader) loadFixes(mode Mode) bool {
 		return false
 	}
 	l.job.set(func(v *View) { v.Phase, v.Total, v.Done = "asking", c.SeedIdents, c.SeedIdents-c.SeedPending })
-	const batch = 40
+	const batch = IdentBatch
 	answered, empty := false, 0
 	neighbours := false
-	l.stepStart = time.Now()
+	l.stepStart, l.stepDone = time.Now(), c.SeedIdents-c.SeedPending
 	for {
 		if l.job.stopped() {
 			l.finish("stopped", "")
@@ -331,7 +341,7 @@ func (l *Loader) loadFixes(mode Mode) bool {
 				// a second step, whose size nobody knows: every answer may name places that an airway
 				// cites and the database lacks. The page shows how many were asked, not a percentage.
 				neighbours = true
-				l.stepStart = time.Now()
+				l.stepStart, l.stepDone = time.Now(), 0
 				l.logf("the names of the files are asked; now the places the airways cite")
 				l.job.set(func(v *View) { v.Phase, v.Total, v.Done = "neighbours", 0, 0 })
 			}
@@ -352,7 +362,7 @@ func (l *Loader) loadFixes(mode Mode) bool {
 			// menu, not in a flight. Nothing was marked as "does not exist"; stop instead of doing so.
 			empty++
 			if empty >= 3 {
-				l.finish("error", "the simulator answered nothing for 120 identifiers in a row: load a flight and try again")
+				l.finish("error", fmt.Sprintf("the simulator answered nothing for %d identifiers in a row: load a flight and try again", 3*batch))
 				return false
 			}
 		}
@@ -394,7 +404,7 @@ func (l *Loader) loadAirports(prefix string) bool {
 		todo = append(todo, icao)
 	}
 	sort.Strings(todo)
-	l.stepStart = time.Now()
+	l.stepStart, l.stepDone = time.Now(), 0
 	l.logf("%d airports to ask", len(todo))
 	l.job.set(func(v *View) { v.Phase, v.Total, v.Done = "airports", len(todo), 0 })
 	l.job.Save(l.d.Store)

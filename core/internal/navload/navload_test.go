@@ -240,11 +240,11 @@ func TestTheIdentifiersAreAskedInBatchesThenTheNeighboursTheAirwaysCite(t *testi
 	first := []string{"AAAAA", "BBBBB"}
 	second := []string{"CCCCC"}
 	neighbours := []string{"NNNNN"}
-	f.store.On("SeedPending", 40).Return(first, nil).Once()
-	f.store.On("SeedPending", 40).Return(second, nil).Once()
-	f.store.On("SeedPending", 40).Return(nil, nil)
-	f.store.On("MissingNeighbors", 40).Return(neighbours, nil).Once()
-	f.store.On("MissingNeighbors", 40).Return(nil, nil)
+	f.store.On("SeedPending", navload.IdentBatch).Return(first, nil).Once()
+	f.store.On("SeedPending", navload.IdentBatch).Return(second, nil).Once()
+	f.store.On("SeedPending", navload.IdentBatch).Return(nil, nil)
+	f.store.On("MissingNeighbors", navload.IdentBatch).Return(neighbours, nil).Once()
+	f.store.On("MissingNeighbors", navload.IdentBatch).Return(nil, nil)
 	f.idents.On("LoadIdentsCount", mock.Anything, mock.Anything).Return(2, nil)
 
 	// Act
@@ -264,7 +264,7 @@ func TestThreeEmptyAnswersInARowMeanTheSimulatorIsAtItsMenu(t *testing.T) {
 	f := newFixture()
 	f.seed.On("Locate").Return(nil)
 	f.store.On("Counts").Return(navdb.Counts{SeedIdents: 500, SeedPending: 500}, nil)
-	f.store.On("SeedPending", 40).Return([]string{"AAAAA"}, nil)
+	f.store.On("SeedPending", navload.IdentBatch).Return([]string{"AAAAA"}, nil)
 	f.idents.On("LoadIdentsCount", mock.Anything, false).Return(0, nil)
 
 	// Act
@@ -295,8 +295,8 @@ func TestAllDoesTheIdentifiersAndThenTheAirports(t *testing.T) {
 	f := newFixture()
 	f.seed.On("Locate").Return(nil)
 	f.store.On("Counts").Return(navdb.Counts{SeedIdents: 1}, nil)
-	f.store.On("SeedPending", 40).Return(nil, nil)
-	f.store.On("MissingNeighbors", 40).Return(nil, nil)
+	f.store.On("SeedPending", navload.IdentBatch).Return(nil, nil)
+	f.store.On("MissingNeighbors", navload.IdentBatch).Return(nil, nil)
 	f.nav.On("ListAirports").Return(refs("SBAA"), nil)
 	f.store.On("Airports", "").Return([]navdb.Summary{}, nil)
 	f.store.On("SaveAirport", mock.Anything).Return(nil)
@@ -390,9 +390,9 @@ func TestALoadWritesWhereItsTimeWentToTheLog(t *testing.T) {
 	f := newFixture()
 	f.seed.On("Locate").Return(nil)
 	f.store.On("Counts").Return(navdb.Counts{SeedIdents: 2, SeedPending: 2}, nil)
-	f.store.On("SeedPending", 40).Return([]string{"AAAAA", "BBBBB"}, nil).Once()
-	f.store.On("SeedPending", 40).Return(nil, nil)
-	f.store.On("MissingNeighbors", 40).Return(nil, nil)
+	f.store.On("SeedPending", navload.IdentBatch).Return([]string{"AAAAA", "BBBBB"}, nil).Once()
+	f.store.On("SeedPending", navload.IdentBatch).Return(nil, nil)
+	f.store.On("MissingNeighbors", navload.IdentBatch).Return(nil, nil)
 	f.idents.On("LoadIdentsCount", mock.Anything, mock.Anything).Return(2, nil)
 	var lines []string
 	timings := navload.NewTimings()
