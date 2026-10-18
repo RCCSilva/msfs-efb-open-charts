@@ -33,6 +33,7 @@ func main() {
 	dll := flag.String("dll", "", "path to SimConnect.dll")
 	per := flag.Int("per", 120, "names to ask for each class")
 	check := flag.Int("check", 0, "instead, check the class-to-kind rule on this many names across all classes")
+	pending := flag.Int("pending", 0, "instead, ask for the first N names the load would ask the simulator for (in its order) and say how many it knows")
 	airports := flag.String("airports", "", "instead, time asking the simulator for these airports (a comma list, or @file)")
 	bench := flag.Int("bench", 0, "instead, time this many names asked as three kinds and by class")
 	flag.Parse()
@@ -113,6 +114,37 @@ func main() {
 		}
 		sort.Strings(ks)
 		return strings.Join(ks, "+")
+	}
+	if *pending > 0 {
+		var names []string
+		for n := range classes {
+			mask := 0
+			for c := range classes[n] {
+				mask |= 1 << c
+			}
+			if len(navdb.KindsToAsk(n, mask)) != 1 {
+				names = append(names, n)
+			}
+		}
+		sort.Strings(names)
+		fmt.Printf("%d names need the simulator; the first ones: %v\n", len(names), names[:min(15, len(names))])
+		known := 0
+		for i := 0; i < min(*pending, len(names)); i += 40 {
+			part := names[i:min(len(names), i+40, *pending)]
+			fixes, err := simconnect.LookupFixes(*dll, part, 3*time.Minute)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			got := map[string]bool{}
+			for _, f := range fixes {
+				got[f.Ident] = true
+			}
+			known += len(got)
+			fmt.Printf("batch of %d starting at %s: %d known\n", len(part), part[0], len(got))
+		}
+		fmt.Printf("%d of the first %d are known to the simulator\n", known, *pending)
+		return
 	}
 	if *bench > 0 {
 		all := make([]string, 0, len(classes))

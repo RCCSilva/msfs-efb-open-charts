@@ -307,7 +307,7 @@ func TestTheIdentifiersAreAskedInBatchesThenTheNeighboursTheAirwaysCite(t *testi
 	f.idents.AssertCalled(t, "LoadIdentsCount", second, true) // the simulator has answered before
 }
 
-func TestThreeEmptyAnswersInARowMeanTheSimulatorIsAtItsMenu(t *testing.T) {
+func TestASimulatorThatNeverAnswersEndsTheLoadAfterSeveralAttemptsAndSaysSo(t *testing.T) {
 	// Arrange
 	f := newFixture()
 	f.seed.On("Locate").Return(nil)
@@ -320,8 +320,28 @@ func TestThreeEmptyAnswersInARowMeanTheSimulatorIsAtItsMenu(t *testing.T) {
 
 	// Assert
 	assert.Equal(t, "error", v.Phase)
-	assert.Contains(t, v.Message, "load a flight")
-	f.idents.AssertNumberOfCalls(t, "LoadIdentsCount", 3)
+	assert.Contains(t, v.Message, "answered nothing")
+	assert.NotContains(t, v.Message, "flight", "a flight is not what the simulator needs for this")
+	f.idents.AssertNumberOfCalls(t, "LoadIdentsCount", navload.MaxEmptyBatches)
+}
+
+func TestASimulatorThatAnswersAfterAFewSilentCallsLetsTheLoadGoOn(t *testing.T) {
+	// Arrange
+	f := newFixture()
+	f.seed.On("Locate").Return(nil)
+	f.store.On("Counts").Return(navdb.Counts{SeedIdents: 3, SeedPending: 3}, nil)
+	f.store.On("SeedPending", navload.IdentBatch).Return([]string{"AAAAA"}, nil).Times(5)
+	f.store.On("SeedPending", navload.IdentBatch).Return(nil, nil)
+	f.store.On("MissingNeighbors", navload.IdentBatch).Return(nil, nil)
+	f.idents.On("LoadIdentsCount", mock.Anything, false).Return(0, nil).Times(4)
+	f.idents.On("LoadIdentsCount", mock.Anything, false).Return(2, nil).Once()
+
+	// Act
+	v := f.run(t, navload.Fixes, "")
+
+	// Assert
+	assert.Equal(t, "done", v.Phase)
+	f.idents.AssertNumberOfCalls(t, "LoadIdentsCount", 5)
 }
 
 func TestWithNoIdentifiersToAskTheLoadSaysSo(t *testing.T) {

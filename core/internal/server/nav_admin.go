@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/lnmpoints"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
@@ -307,7 +308,7 @@ func (s *Server) handleNavLoadStart(w http.ResponseWriter, r *http.Request) {
 	timings := navload.NewTimings() // where the time of this load goes, written to the log when it ends
 	loader := navload.New(&s.nav.job, navload.Deps{
 		Store: db, Airports: s.sim.Nav, Seed: s.sim.Seed, Idents: navlookup.New(db, s.sim.Nav).WithTimer(timings.Add).WithKindHints(db), Turn: &s.nav.mu,
-		Timings: timings, Logf: log.Printf,
+		Timings: timings, Logf: log.Printf, RetryPause: 3 * time.Second,
 	})
 	go loader.Run(mode, body.Prefix)
 	writeJSON(w, 202, s.nav.job.Snapshot())

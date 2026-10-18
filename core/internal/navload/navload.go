@@ -53,6 +53,11 @@ func ParseMode(s string) Mode {
 // Stop may wait for it (a batch of 100 takes 1.6 s for the same speed).
 const IdentBatch = 40
 
+// MaxEmptyBatches is how many calls in a row may get no answer at all, before the first answer of
+// the load, until the load gives up. With the pause between them (Deps.RetryPause) it is about a
+// minute, long enough for a simulator whose connection dropped for a moment.
+const MaxEmptyBatches = 8
+
 // ImportBatch is how many fixes of the files are stored in one transaction.
 const ImportBatch = 2000
 
@@ -95,6 +100,8 @@ type Deps struct {
 	// Turn is taken around each question to the simulator, so that whatever else asks it (the route
 	// page) and the load take turns.
 	Turn sync.Locker
+	// RetryPause is how long to wait before asking again when the simulator answered nothing at all.
+	RetryPause time.Duration
 	// Timings and Logf, when set, measure the load: where its time goes is logged as it runs and
 	// when it ends.
 	Timings *Timings
@@ -438,12 +445,18 @@ func (l *Loader) loadFixes(mode Mode) bool {
 		if n > 0 {
 			answered = true
 		} else if !answered {
-			// nothing came back and nothing ever did in this load: the simulator is probably at its
-			// menu, not in a flight. Nothing was marked as "does not exist"; stop instead of doing so.
+			// nothing came back and nothing ever did in this load: the simulator is not answering (it
+			// may be starting, or its connection dropped for a moment). Nothing was marked as "does
+			// not exist", so the same names are asked again after a pause; only a simulator that
+			// stays silent for MaxEmptyBatches calls ends the load.
 			empty++
-			if empty >= 3 {
-				l.finish("error", fmt.Sprintf("the simulator answered nothing for %d identifiers in a row: load a flight and try again", 3*batch))
+			l.logf("the simulator answered nothing for %d names (attempt %d of %d)", len(idents), empty, MaxEmptyBatches)
+			if empty >= MaxEmptyBatches {
+				l.finish("error", fmt.Sprintf("the simulator answered nothing for %d names in a row, over %d attempts. What the files held was stored; try again when the simulator answers", empty*batch, empty))
 				return false
+			}
+			if l.d.RetryPause > 0 {
+				time.Sleep(l.d.RetryPause)
 			}
 		}
 		l.job.set(func(v *View) { v.Done += len(idents) })
