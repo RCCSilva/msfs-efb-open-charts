@@ -46,6 +46,12 @@ func (m *Nav) LookupFixes(idents []string) ([]navdata.Fix, error) {
 	return f, args.Error(1)
 }
 
+func (m *Nav) LookupFixKinds(asks []navdata.FixRef) ([]navdata.Fix, error) {
+	args := m.Called(asks)
+	f, _ := args.Get(0).([]navdata.Fix)
+	return f, args.Error(1)
+}
+
 // Seed is a mock of sim.SeedSource.
 type Seed struct{ mock.Mock }
 

@@ -269,3 +269,48 @@ func TestLoadIdentsWithoutASimulatorDoesNothing(t *testing.T) {
 	assert.NoError(t, err)
 	store.AssertNotCalled(t, "SaveFixes")
 }
+
+func TestLoadIdentsCountAsksOnlyTheKindsTheHintsGive(t *testing.T) {
+	// Arrange
+	hints := new(navdbmock.Hints)
+	hints.On("SeedKinds", []string{"LONGWP", "BAD", "NEW"}).Return(map[string][]byte{
+		"LONGWP": {navdata.FixWaypoint},
+		"BAD":    {navdata.FixWaypoint, navdata.FixVOR, navdata.FixNDB},
+	}, nil)
+	store := new(navdbmock.Store)
+	store.On("SaveFixes", mock.Anything).Return(nil)
+	store.On("MarkIdentChecked", mock.Anything, mock.Anything).Return(nil)
+	nav := new(simmock.Nav)
+	wantAsks := []navdata.FixRef{
+		{Ident: "LONGWP", Kind: navdata.FixWaypoint},
+		{Ident: "BAD", Kind: navdata.FixWaypoint}, {Ident: "BAD", Kind: navdata.FixVOR}, {Ident: "BAD", Kind: navdata.FixNDB},
+		{Ident: "NEW", Kind: navdata.FixWaypoint}, {Ident: "NEW", Kind: navdata.FixVOR}, {Ident: "NEW", Kind: navdata.FixNDB},
+	}
+	nav.On("LookupFixKinds", wantAsks).Return([]navdata.Fix{{Ident: "LONGWP"}}, nil)
+
+	// Act
+	_, err := navlookup.New(store, nav).WithKindHints(hints).LoadIdentsCount([]string{"LONGWP", "BAD", "NEW"}, true)
+
+	// Assert
+	require.NoError(t, err)
+	nav.AssertExpectations(t)
+	nav.AssertNotCalled(t, "LookupFixes")
+}
+
+func TestLoadIdentsCountAsksAllKindsWhenTheHintsFail(t *testing.T) {
+	// Arrange
+	hints := new(navdbmock.Hints)
+	hints.On("SeedKinds", []string{"AAAAA"}).Return(nil, errBoom)
+	store := new(navdbmock.Store)
+	store.On("SaveFixes", mock.Anything).Return(nil)
+	store.On("MarkIdentChecked", "AAAAA", 0).Return(nil)
+	nav := new(simmock.Nav)
+	nav.On("LookupFixes", []string{"AAAAA"}).Return([]navdata.Fix{}, nil)
+
+	// Act
+	_, err := navlookup.New(store, nav).WithKindHints(hints).LoadIdentsCount([]string{"AAAAA"}, true)
+
+	// Assert
+	require.NoError(t, err)
+	nav.AssertExpectations(t)
+}

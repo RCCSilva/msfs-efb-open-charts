@@ -16,7 +16,19 @@ import (
 //
 // An identifier the simulator does not know is simply absent from the result.
 func LookupFixes(dllPath string, idents []string, wait time.Duration) ([]navdata.Fix, error) {
-	if len(idents) == 0 {
+	var asks []navdata.FixRef
+	for _, id := range idents {
+		for _, k := range []byte{navdata.FixWaypoint, navdata.FixVOR, navdata.FixNDB} {
+			asks = append(asks, navdata.FixRef{Ident: id, Kind: k})
+		}
+	}
+	return LookupFixKinds(dllPath, asks, wait)
+}
+
+// LookupFixKinds is LookupFixes for when the kinds to ask for each identifier are known: only those
+// are asked (each ref is an identifier and a kind, with no region).
+func LookupFixKinds(dllPath string, first []navdata.FixRef, wait time.Duration) ([]navdata.Fix, error) {
+	if len(first) == 0 {
 		return nil, nil
 	}
 	facilityMu.Lock()
@@ -41,12 +53,6 @@ func LookupFixes(dllPath string, idents []string, wait time.Duration) ([]navdata
 	tr.mark("connect+define")
 
 	deadline := time.Now().Add(wait)
-	var first []navdata.FixRef
-	for _, id := range idents {
-		for _, k := range []byte{navdata.FixWaypoint, navdata.FixVOR, navdata.FixNDB} {
-			first = append(first, navdata.FixRef{Ident: id, Kind: k})
-		}
-	}
 	var out []navdata.Fix
 	var second []navdata.FixRef
 	asked := map[navdata.FixRef]bool{}
@@ -78,6 +84,6 @@ func LookupFixes(dllPath string, idents []string, wait time.Duration) ([]navdata
 		out = append(out, got...)
 	}
 	tr.mark(fmt.Sprintf("round 2 (%d requests)", len(second)))
-	tr.done(fmt.Sprintf("%d identifiers, %d found", len(idents), len(out)))
+	tr.done(fmt.Sprintf("%d requests, %d found", len(first), len(out)))
 	return out, nil
 }

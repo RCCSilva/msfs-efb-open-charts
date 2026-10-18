@@ -141,7 +141,7 @@ func TestOpeningAMigratedFileAgainChangesNothingAndCopiesNothing(t *testing.T) {
 
 // pinnedRoutes is a later migration that adds a column and fills it.
 func pinnedRoutes() migration {
-	return migration{version: 2, name: "pinned routes", up: func(tx *sql.Tx) error {
+	return migration{version: latestVersion() + 1, name: "pinned routes", up: func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`ALTER TABLE saved_route ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return err
 		}
@@ -154,6 +154,7 @@ func pinnedRoutes() migration {
 func TestLaterMigrationConvertsTheData(t *testing.T) {
 	// Arrange
 	path := openLegacy(t, "3")
+	before := latestVersion()
 	withMigrations(t, append(append([]migration{}, migrations...), pinnedRoutes()))
 
 	// Act
@@ -163,10 +164,10 @@ func TestLaterMigrationConvertsTheData(t *testing.T) {
 	require.NoError(t, err)
 	defer d.Close()
 	m := d.Migrated()
-	assert.Equal(t, 1, m.From)
-	assert.Equal(t, 2, m.To)
+	assert.Equal(t, before, m.From)
+	assert.Equal(t, before+1, m.To)
 	v, _ := d.SchemaVersion()
-	assert.Equal(t, 2, v)
+	assert.Equal(t, before+1, v)
 	var pinned int
 	require.NoError(t, d.db.QueryRow(`SELECT pinned FROM saved_route`).Scan(&pinned))
 	assert.Equal(t, 1, pinned, "the data was converted")
@@ -199,7 +200,8 @@ func TestFailedMigrationLeavesTheFileAsItWas(t *testing.T) {
 	// Arrange
 	path := openLegacy(t, "3")
 	base := migrations
-	withMigrations(t, append(append([]migration{}, base...), migration{version: 2, name: "broken", up: func(tx *sql.Tx) error {
+	before := latestVersion()
+	withMigrations(t, append(append([]migration{}, base...), migration{version: before + 1, name: "broken", up: func(tx *sql.Tx) error {
 		if _, err := tx.Exec(`CREATE TABLE half_done (x INTEGER)`); err != nil {
 			return err
 		}
@@ -219,7 +221,7 @@ func TestFailedMigrationLeavesTheFileAsItWas(t *testing.T) {
 	require.NoError(t, err)
 	defer d.Close()
 	v, _ := d.SchemaVersion()
-	assert.Equal(t, 1, v)
+	assert.Equal(t, before, v)
 	assert.Equal(t, 1, count(t, d, "saved_route"), "the route is still there")
 	_, err = d.db.Exec(`SELECT * FROM half_done`)
 	assert.Error(t, err, "what the migration did before failing was undone")

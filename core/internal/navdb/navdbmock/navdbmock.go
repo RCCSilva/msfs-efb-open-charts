@@ -212,3 +212,12 @@ func (m *Database) Migrated() navdb.Migration {
 	v, _ := args.Get(0).(navdb.Migration)
 	return v
 }
+
+// Hints is a mock of navlookup.KindHints.
+type Hints struct{ mock.Mock }
+
+func (m *Hints) SeedKinds(idents []string) (map[string][]byte, error) {
+	args := m.Called(idents)
+	k, _ := args.Get(0).(map[string][]byte)
+	return k, args.Error(1)
+}

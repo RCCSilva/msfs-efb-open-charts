@@ -74,6 +74,9 @@ type NavSource interface {
 	// LookupFixes asks for waypoints, VORs and NDBs as a whole: every place with that identifier, in
 	// every region.
 	LookupFixes(idents []string) ([]navdata.Fix, error)
+	// LookupFixKinds is LookupFixes when the kinds to ask for each identifier are known: each ask is
+	// an identifier and one kind (no region), and only those are put to the simulator.
+	LookupFixKinds(asks []navdata.FixRef) ([]navdata.Fix, error)
 }
 
 // SeedSource reads the identifiers of the navigation data from the files the simulator keeps on this

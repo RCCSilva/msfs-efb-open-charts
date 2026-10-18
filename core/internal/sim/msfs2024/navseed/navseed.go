@@ -112,12 +112,18 @@ func Read(paths []string, progress func(done, total int) bool) ([]navdb.SeedIden
 						if ident == "" {
 							continue
 						}
-						if _, ok := seen[ident]; !ok {
-							seen[ident] = navdb.SeedIdent{
-								Ident: ident, Kind: int(id1 & 0x3f),
-								Lat: 90 - float64(latU)*(180.0/0x20000000),
-								Lon: float64(lonU)*(360.0/0x30000000) - 180,
-							}
+						// a name can be several fixes (a VOR and a waypoint of the same name), each
+						// of its own class: Classes holds one bit per class found
+						bit := 1 << (id1 & 0x3f)
+						if s, ok := seen[ident]; ok {
+							s.Classes |= bit
+							seen[ident] = s
+							continue
+						}
+						seen[ident] = navdb.SeedIdent{
+							Ident: ident, Classes: bit,
+							Lat: 90 - float64(latU)*(180.0/0x20000000),
+							Lon: float64(lonU)*(360.0/0x30000000) - 180,
 						}
 					}
 				}

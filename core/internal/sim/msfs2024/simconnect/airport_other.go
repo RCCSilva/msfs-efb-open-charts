@@ -13,6 +13,11 @@ func LookupFixes(dllPath string, idents []string, wait time.Duration) ([]navdata
 	return nil, errUnsupported
 }
 
+// LookupFixKinds needs the simulator's SimConnect library, which exists on Windows only.
+func LookupFixKinds(dllPath string, asks []navdata.FixRef, wait time.Duration) ([]navdata.Fix, error) {
+	return nil, errUnsupported
+}
+
 // FetchFixes needs the simulator's SimConnect library, which exists on Windows only.
 func FetchFixes(dllPath string, refs []navdata.FixRef, wait time.Duration) ([]navdata.Fix, error) {
 	return nil, errUnsupported

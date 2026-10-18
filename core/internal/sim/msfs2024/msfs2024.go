@@ -82,6 +82,10 @@ func (n nav) LookupFixes(idents []string) ([]navdata.Fix, error) {
 	return simconnect.LookupFixes(n.dll, idents, fixesWait)
 }
 
+func (n nav) LookupFixKinds(asks []navdata.FixRef) ([]navdata.Fix, error) {
+	return simconnect.LookupFixKinds(n.dll, asks, fixesWait)
+}
+
 // seed reads the identifiers from the navigation packages the simulator streams to this computer.
 type seed struct{}
 

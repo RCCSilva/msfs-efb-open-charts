@@ -31,6 +31,14 @@ type Source interface {
 	Airport(icao string) (*navdata.Airport, error)
 	// LookupFixes asks for waypoints, VORs and NDBs as a whole: every place with that identifier.
 	LookupFixes(idents []string) ([]navdata.Fix, error)
+	// LookupFixKinds asks only for the kind given with each identifier.
+	LookupFixKinds(asks []navdata.FixRef) ([]navdata.Fix, error)
+}
+
+// KindHints says which kinds of fix to ask the simulator for names that are known from its files. A
+// name it does not know is absent.
+type KindHints interface {
+	SeedKinds(idents []string) (map[string][]byte, error)
 }
 
 // Lookup answers from a Store and, for what it does not have, from a Source (nil: there is no
@@ -38,7 +46,37 @@ type Source interface {
 type Lookup struct {
 	store Store
 	src   Source
+	hints KindHints                                  // nil: every name is asked as all three kinds
 	timer func(name string, d time.Duration, n int) // nil: nothing is measured
+}
+
+// WithKindHints makes the Lookup ask each name only for the kinds the hints give (when they give
+// any), which takes fewer questions to the simulator.
+func (l *Lookup) WithKindHints(h KindHints) *Lookup {
+	l.hints = h
+	return l
+}
+
+// ask puts the names to the simulator: with hints, each as the kinds they give; any other as all three.
+func (l *Lookup) ask(idents []string) ([]navdata.Fix, error) {
+	if l.hints == nil {
+		return l.src.LookupFixes(idents)
+	}
+	known, err := l.hints.SeedKinds(idents)
+	if err != nil {
+		return l.src.LookupFixes(idents) // no hint is better than no answer
+	}
+	var asks []navdata.FixRef
+	for _, id := range idents {
+		kinds := known[strings.ToUpper(id)]
+		if len(kinds) == 0 {
+			kinds = []byte{navdata.FixWaypoint, navdata.FixVOR, navdata.FixNDB}
+		}
+		for _, k := range kinds {
+			asks = append(asks, navdata.FixRef{Ident: id, Kind: k})
+		}
+	}
+	return l.src.LookupFixKinds(asks)
 }
 
 // WithTimer makes the Lookup report how long its calls to the simulator and to the database take.
@@ -161,7 +199,7 @@ func (l *Lookup) LoadIdentsCount(idents []string, markEmpty bool) (int, error) {
 	}
 	var found []navdata.Fix
 	var err error
-	l.timed("sim.lookupFixes", len(idents), func() { found, err = l.src.LookupFixes(idents) })
+	l.timed("sim.lookupFixes", len(idents), func() { found, err = l.ask(idents) })
 	if err != nil {
 		return 0, err // not asked: nothing is marked, the next time asks again
 	}

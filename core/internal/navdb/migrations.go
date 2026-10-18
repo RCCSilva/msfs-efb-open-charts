@@ -50,6 +50,13 @@ type migration struct {
 // migrations is every change of the schema, in order.
 var migrations = []migration{
 	{version: 1, name: "baseline: the schema of 0.3 and 0.4", up: migrateBaseline},
+	{version: 2, name: "seed identifiers keep the classes of their fixes", up: migrateSeedClasses},
+}
+
+// migrateSeedClasses adds the classes the simulator's files give each name. The names already stored
+// have 0 (unknown), which is asked the way it always was; reading the files again fills them in.
+func migrateSeedClasses(tx *sql.Tx) error {
+	return addColumns(tx, "seed_ident", []column{{"classes", "INTEGER NOT NULL DEFAULT 0"}})
 }
 
 // Migration says what Open did to bring the file up to date. From == To when nothing was needed.

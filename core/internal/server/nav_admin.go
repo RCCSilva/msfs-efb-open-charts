@@ -306,7 +306,7 @@ func (s *Server) handleNavLoadStart(w http.ResponseWriter, r *http.Request) {
 	s.nav.job.Save(db)
 	timings := navload.NewTimings() // where the time of this load goes, written to the log when it ends
 	loader := navload.New(&s.nav.job, navload.Deps{
-		Store: db, Airports: s.sim.Nav, Seed: s.sim.Seed, Idents: navlookup.New(db, s.sim.Nav).WithTimer(timings.Add), Turn: &s.nav.mu,
+		Store: db, Airports: s.sim.Nav, Seed: s.sim.Seed, Idents: navlookup.New(db, s.sim.Nav).WithTimer(timings.Add).WithKindHints(db), Turn: &s.nav.mu,
 		Timings: timings, Logf: log.Printf,
 	})
 	go loader.Run(mode, body.Prefix)

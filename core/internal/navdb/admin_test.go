@@ -80,7 +80,7 @@ func TestTheSeedIsCountedAndTheCheckedIdentsLeaveThePending(t *testing.T) {
 	d := openTemp(t)
 	_, err := d.CreateUserPoint(UserPoint{Ident: "MYPT1", Lat: 1, Lon: 1})
 	require.NoError(t, err)
-	require.NoError(t, d.SaveSeed([]SeedIdent{{Ident: "bobic", Kind: 1, Lat: 1, Lon: 2}, {Ident: "VUPSA"}}))
+	require.NoError(t, d.SaveSeed([]SeedIdent{{Ident: "bobic", Classes: 1<<5, Lat: 1, Lon: 2}, {Ident: "VUPSA"}}))
 
 	// Act
 	require.NoError(t, d.MarkIdentChecked("BOBIC", 1))
@@ -443,4 +443,39 @@ func TestAirwaysPageFiltersByTheStartOfTheName(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, total)
 	assert.Len(t, page, 2)
+}
+
+func TestKindsToAskIsOneForALongNameThatTheFilesGiveAsAWaypoint(t *testing.T) {
+	// Act
+	got := KindsToAsk("BOBIC", 1<<5)
+
+	// Assert
+	assert.Equal(t, []byte{navdata.FixWaypoint}, got)
+}
+
+func TestKindsToAskIsAllThreeWhenTheFilesDoNotTell(t *testing.T) {
+	// Act / Assert
+	assert.Len(t, KindsToAsk("BOBIC", 0), 3, "unknown classes")
+	assert.Len(t, KindsToAsk("BAD", 1<<5), 3, "a short name can be a VOR elsewhere")
+	assert.Len(t, KindsToAsk("BOBIC", 1<<5|1<<2), 3, "the files give it as a VOR too")
+	assert.Len(t, KindsToAsk("BOBIC", 1<<3), 3, "an NDB")
+}
+
+func TestSavingTheSeedAgainBringsTheClassesUpToDateAndKeepsWhatWasAsked(t *testing.T) {
+	// Arrange
+	d := openTemp(t)
+	require.NoError(t, d.SaveSeed([]SeedIdent{{Ident: "BOBIC"}}))
+	require.NoError(t, d.MarkIdentChecked("BOBIC", 1))
+
+	// Act
+	require.NoError(t, d.SaveSeed([]SeedIdent{{Ident: "BOBIC", Classes: 1 << 5}}))
+	kinds, err := d.SeedKinds([]string{"bobic", "NOPE"})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, []byte{navdata.FixWaypoint}, kinds["BOBIC"])
+	assert.NotContains(t, kinds, "NOPE")
+	pending, err := d.SeedPending(10)
+	require.NoError(t, err)
+	assert.Empty(t, pending, "it stays checked")
 }
