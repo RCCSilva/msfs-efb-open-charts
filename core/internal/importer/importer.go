@@ -27,6 +27,21 @@ import (
 // written with 4 decimals (~11 m), so a few metres is the precision floor of the chart itself.
 const MaxGroundErrorMeters = 15.0
 
+// MaxCoarseGroundErrorMeters is the limit for a chart whose control points are written with only
+// 3 decimals (the chart's own rounding is up to about 55 m on the ground, so a fit of a few tens of
+// metres is what a correct chart gives). The residual is still recorded in the chart's georef.
+const MaxCoarseGroundErrorMeters = 60.0
+
+// coarsePoints tells whether every control point has at most 3 decimals.
+func coarsePoints(gpts []float64) bool {
+	for _, v := range gpts {
+		if math.Abs(v*1000-math.Round(v*1000)) > 1e-6 {
+			return false
+		}
+	}
+	return len(gpts) > 0
+}
+
 // Renderer owns the PDFium (WebAssembly) pool. Create once, reuse for every import.
 type Renderer struct {
 	pool     pdfium.Pool
@@ -160,8 +175,9 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 	if unref && !opt.ViewOnly {
 		return nil, ErrNotGeoreferenced
 	}
-	if pg.Rotate != 0 && !unref {
-		return nil, fmt.Errorf("rotated pages (/Rotate %d) are not supported yet", pg.Rotate)
+	view, err := newPageView(pg.Box, pg.Rotate)
+	if err != nil {
+		return nil, err
 	}
 	var (
 		vp   pdfgeo.Viewport
@@ -195,7 +211,7 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 
 	// --- render
 	dpi := opt.DPI
-	boxW, boxH := pg.Box[2]-pg.Box[0], pg.Box[3]-pg.Box[1]
+	boxW, boxH := view.W, view.H // the page as it is shown: turned pages swap their sides
 	if dpi <= 0 {
 		long := math.Max(boxW, boxH)
 		target := float64(opt.LongEdgePx)
@@ -258,12 +274,9 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 	bx0, by0, bx1, by1 := vp.BBox[0], vp.BBox[1], vp.BBox[2], vp.BBox[3]
 	if !unref {
 		bw, bh := bx1-bx0, by1-by0
-		m.ToPixel.A = bw * sx * aff.A
-		m.ToPixel.B = bw * sx * aff.B
-		m.ToPixel.C = (bx0-pg.Box[0])*sx + bw*sx*aff.C
-		m.ToPixel.D = -bh * sy * aff.D
-		m.ToPixel.E = -bh * sy * aff.E
-		m.ToPixel.F = (pg.Box[3]-by0)*sy - bh*sy*aff.F
+		// (E,N) -> (U,V) normalised in the viewport -> user space (x,y) -> shown page (u,v) -> pixels
+		t := view.compose(aff, [4]float64{bx0, by0, bw, bh}, sx, sy)
+		m.ToPixel.A, m.ToPixel.B, m.ToPixel.C, m.ToPixel.D, m.ToPixel.E, m.ToPixel.F = t.A, t.B, t.C, t.D, t.E, t.F
 
 		toPx := func(e, n float64) (float64, float64) {
 			return m.ToPixel.A*e + m.ToPixel.B*n + m.ToPixel.C, m.ToPixel.D*e + m.ToPixel.E*n + m.ToPixel.F
@@ -274,8 +287,8 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 		var worst float64
 		for i := 0; i < n; i++ {
 			px, py := toPx(xy[i][0], xy[i][1])
-			wantX := (bx0 + uv[i][0]*bw - pg.Box[0]) * sx
-			wantY := (pg.Box[3] - (by0 + uv[i][1]*bh)) * sy
+			u, v := view.point(bx0+uv[i][0]*bw, by0+uv[i][1]*bh)
+			wantX, wantY := u*sx, v*sy
 			worst = math.Max(worst, math.Hypot(px-wantX, py-wantY))
 			m.GeoCorners = append(m.GeoCorners, Corner{
 				Lat: vp.GPTS[2*i], Lon: vp.GPTS[2*i+1],
@@ -283,7 +296,11 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 			})
 		}
 		errM = worst * mPerPx
-		if errM > MaxGroundErrorMeters {
+		limit := MaxGroundErrorMeters
+		if coarsePoints(vp.GPTS) {
+			limit = MaxCoarseGroundErrorMeters
+		}
+		if errM > limit {
 			return nil, fmt.Errorf("georeference does not fit an affine map (%.1f m): refusing to guess", errM)
 		}
 	}
@@ -309,10 +326,13 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 		m.Name = firstNonEmpty(opt.Name, naming.Display(opt.ICAO, opt.Type, title))
 	} else {
 		m.Projection = proj.JSON()
-		m.MapFramePx.Left = (bx0 - pg.Box[0]) * sx
-		m.MapFramePx.Right = (bx1 - pg.Box[0]) * sx
-		m.MapFramePx.Top = (pg.Box[3] - by1) * sy
-		m.MapFramePx.Bottom = (pg.Box[3] - by0) * sy
+		// the viewport's corners as they are shown: the frame is their box
+		u0, v0 := view.point(bx0, by0)
+		u1, v1 := view.point(bx1, by1)
+		m.MapFramePx.Left = math.Min(u0, u1) * sx
+		m.MapFramePx.Right = math.Max(u0, u1) * sx
+		m.MapFramePx.Top = math.Min(v0, v1) * sy
+		m.MapFramePx.Bottom = math.Max(v0, v1) * sy
 	}
 	m.Scale.X, m.Scale.Y = sx, sy
 	if !unref {
