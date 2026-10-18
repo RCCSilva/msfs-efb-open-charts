@@ -69,13 +69,52 @@ var (
 	deceaVisualName = regexp.MustCompile(`^(.+)_([a-z]+)_(\d{8})$`)
 )
 
+var (
+	runwayWord = regexp.MustCompile(`^\d{2}[LRC]?$`)
+	// "RWY 17R 17L": the two ends of the runways the procedure serves
+	runwayPair = regexp.MustCompile(`RWY (\d{2}[LRC]?) (\d{2}[LRC]?)$`)
+)
+
+// deceaTitle reads the title of a package file name. The name writes " - " as "---" and "/" as "-", as
+// every space, so the title is only tidied; two things are recovered where the name leaves no doubt:
+// "---" between two procedures is " - " ("anise-1a---ibdal-2a"), and exactly two runways at the end
+// ("rwy-17r-17l") are one pair ("RWY 17R/17L"). A name in which they could be read in other ways
+// ("17l---17r-35l---35r") is only tidied.
+func deceaTitle(slug string) string {
+	parts := strings.Split(slug, "---")
+	for _, p := range parts {
+		if allRunways(p) {
+			return naming.Tidy(slug)
+		}
+	}
+	for i, p := range parts {
+		t := naming.Tidy(p)
+		if m := runwayPair.FindStringSubmatchIndex(t); m != nil && strings.Count(t, "RWY") == 1 {
+			t = t[:m[0]] + "RWY " + t[m[2]:m[3]] + "/" + t[m[4]:m[5]]
+		}
+		parts[i] = t
+	}
+	return strings.Join(parts, " - ")
+}
+
+// allRunways tells whether a piece of a name is only runway designators ("17r-35l").
+func allRunways(p string) bool {
+	w := strings.FieldsFunc(strings.ToUpper(p), func(r rune) bool { return r == '-' || r == '_' || r == ' ' })
+	for _, x := range w {
+		if !runwayWord.MatchString(x) {
+			return false
+		}
+	}
+	return len(w) > 0
+}
+
 // deceaNoAerodrome is the code the full package gives to what is not about one aerodrome.
 const deceaNoAerodrome = "SBXX"
 
 func (decea) Recognize(stem string) (naming.Info, bool) {
 	base := strings.TrimSuffix(strings.ToLower(stem), ".pdf")
 	if m := deceaPackageName.FindStringSubmatch(base); m != nil {
-		in := naming.Info{ICAO: strings.ToUpper(m[1]), Type: strings.ToUpper(m[3]), Validity: naming.ParseDate(m[4]), Title: naming.Tidy(m[2])}
+		in := naming.Info{ICAO: strings.ToUpper(m[1]), Type: strings.ToUpper(m[3]), Validity: naming.ParseDate(m[4]), Title: deceaTitle(m[2])}
 		// "sbsp-adc" repeats ICAO + type: nothing more to say.
 		if strings.EqualFold(in.Title, in.ICAO+" "+in.Type) {
 			in.Title = ""

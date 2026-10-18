@@ -63,3 +63,32 @@ func TestAnEnRouteChartFromMyPDFsIsReadTheSameWay(t *testing.T) {
 	assert.Empty(t, id.ICAO)
 	assert.Equal(t, "H5", id.Title)
 }
+
+func TestAnAerodromeChartHasNoTitleBeyondItsTypeAndAerodrome(t *testing.T) {
+	// Act
+	id := Identify("decea-br", "sbsp_sbsp-adc_adc_20261001", "sbsp_sbsp-adc_adc_20261001.pdf", "")
+
+	// Assert
+	assert.Equal(t, "SBSP", id.ICAO)
+	assert.Equal(t, "ADC", id.Type)
+	assert.Empty(t, id.Title)
+}
+
+func TestTheTitleOfAPackageFileKeepsWhatItsNameSaysWithoutDoubt(t *testing.T) {
+	cases := map[string]string{
+		"sbsp_rnav-baian-3a-rwy-17r-17l_sid_20261001":             "RNAV BAIAN 3A RWY 17R/17L",
+		"sbsp_rnav-anise-1a---ibdal-2a-rwy-35r-35l_star_20260903": "RNAV ANISE 1A - IBDAL 2A RWY 35R/35L",
+		"sbsp_ils-x-rwy-17r_iac_20260806":                         "ILS X RWY 17R",
+		"sbsp_rwy-17l-17r-35l-35r_vac_20260416":                   "RWY 17L 17R 35L 35R",
+		"sbsp_omni-rwy-17l---17r-35l---35r_sid_20260806":          "OMNI RWY 17L 17R 35L 35R",
+	}
+	for stem, want := range cases {
+		t.Run(stem, func(t *testing.T) {
+			// Act
+			id := Identify("decea-br", stem, stem+".pdf", "")
+
+			// Assert
+			assert.Equal(t, want, id.Title)
+		})
+	}
+}

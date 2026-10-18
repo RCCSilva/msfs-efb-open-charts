@@ -54,7 +54,9 @@ func IdentifyWith(sourceID, stem, file, viewport string, user *naming.Info) Iden
 		// keep the title from the file name
 	case !naming.IsGenericTitle(viewport):
 		id.Title = viewport
-	case id.Title == "":
+	case id.Title == "" && !(by != "" && id.ICAO != "" && id.Type != ""):
+		// nothing at all said what the chart is: the file name, tidied. A package chart whose name says
+		// only its aerodrome and type ("sbsp-adc") has nothing more to say, and says so.
 		id.Title = naming.Tidy(stem)
 	}
 
