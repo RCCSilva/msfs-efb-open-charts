@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vector chart POC</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  html, body { margin: 0; height: 100%; font: 13px system-ui, sans-serif; }
+  #map { position: absolute; inset: 0; }
+  #hud { position: absolute; z-index: 1000; left: 52px; top: 10px; background: rgba(255,255,255,.92); padding: 8px 10px; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,.3); line-height: 1.5; max-width: 360px; }
+  #hud label { display: block; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="hud">
+  <strong>Vector chart POC</strong> (WAC São Paulo)<br>
+  <span id="info">loading…</span>
+  <label>Opacity <input id="op" type="range" min="0" max="1" step="0.05" value="0.8"></label>
+  <label><input id="skip" type="checkbox" checked> skip paths smaller than 0.4 px</label>
+  <label><input id="base" type="checkbox" checked> base map</label>
+  <span id="stats"></span>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  var info = document.getElementById('info');
+  var stats = document.getElementById('stats');
+  var map = L.map('map', { zoomSnap: 1, maxZoom: 17 }).setView([-23.3, -46.9], 9);
+  var base = L.tileLayer('http://127.0.0.1:43212/tiles/{z}/{x}/{y}.png', { maxZoom: 17, maxNativeZoom: 16, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+  document.getElementById('base').addEventListener('change', function (e) { if (e.target.checked) base.addTo(map); else map.removeLayer(base); });
+
+  var V = null;      // the parsed file
+  var drawn = { tiles: 0, ms: 0, paths: 0 };
+
+  function parse(buf) {
+    var dv = new DataView(buf);
+    var hl = dv.getUint32(0, true);
+    var h = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hl)));
+    var off = 4 + hl;
+    off = (off + 3) & ~3;
+    var P = h.paths;
+    var styles = new Uint8Array(buf, off, P * 13);
+    var styleDv = new DataView(buf, off, P * 13);
+    off += P * 13;
+    var opsPer = new Uint32Array(buf.slice(off, off + P * 4));
+    off += P * 4;
+    var ops = new Uint8Array(buf, off, h.ops);
+    off += h.ops;
+    off = (off + 3) & ~3;
+    var pts = new Float32Array(buf.slice(off, off + h.points * 8));
+    // each path: where its ops and points start, and its bounding box (world px, relative to the origin)
+    var opStart = new Uint32Array(P), ptStart = new Uint32Array(P);
+    var bb = new Float32Array(P * 4);
+    var o = 0, p = 0;
+    for (var i = 0; i < P; i++) {
+      opStart[i] = o; ptStart[i] = p;
+      var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (var j = 0; j < opsPer[i]; j++) {
+        var op = ops[o + j];
+        var n = op === 0 || op === 1 ? 1 : op === 2 ? 3 : 0;
+        for (var k = 0; k < n; k++) {
+          var x = pts[2 * (p + k)], y = pts[2 * (p + k) + 1];
+          if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        }
+        p += n;
+      }
+      o += opsPer[i];
+      bb[4 * i] = x0; bb[4 * i + 1] = y0; bb[4 * i + 2] = x1; bb[4 * i + 3] = y1;
+    }
+    return { h: h, styles: styles, styleDv: styleDv, opsPer: opsPer, ops: ops, pts: pts, opStart: opStart, ptStart: ptStart, bb: bb };
+  }
+
+  var VectorLayer = L.GridLayer.extend({
+    createTile: function (coords, done) {
+      var t0 = performance.now();
+      var dpr = Math.min(2, window.devicePixelRatio || 1);
+      var size = 256;
+      var tile = document.createElement('canvas');
+      tile.width = tile.height = Math.round(size * dpr);
+      var ctx = tile.getContext('2d');
+      var k = Math.pow(2, coords.z - V.h.zoom) * dpr;        // pixels per world pixel of the file
+      var wx0 = coords.x * size / Math.pow(2, coords.z - V.h.zoom) - V.h.origin[0];   // tile origin, relative to the file's origin
+      var wy0 = coords.y * size / Math.pow(2, coords.z - V.h.zoom) - V.h.origin[1];
+      var wx1 = wx0 + size / Math.pow(2, coords.z - V.h.zoom), wy1 = wy0 + size / Math.pow(2, coords.z - V.h.zoom);
+      var skip = document.getElementById('skip').checked;
+      var minSide = 0.4 / k;   // in file pixels
+      var pts = V.pts, ops = V.ops, bb = V.bb, st = V.styles, sd = V.styleDv;
+      var count = 0;
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      var fr = V.h.frame;
+      ctx.beginPath();
+      for (var q = 0; q < 4; q++) { var fx = (fr[q][0] - wx0) * k, fy = (fr[q][1] - wy0) * k; if (q === 0) ctx.moveTo(fx, fy); else ctx.lineTo(fx, fy); }
+      ctx.closePath(); ctx.clip();
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, tile.width, tile.height);   // the paper: the PDF has no object for it
+      for (var i = 0, P = V.h.paths; i < P; i++) {
+        var bx0 = bb[4 * i], by0 = bb[4 * i + 1], bx1 = bb[4 * i + 2], by1 = bb[4 * i + 3];
+        var pad = 0;
+        if (bx1 < wx0 - pad || bx0 > wx1 + pad || by1 < wy0 - pad || by0 > wy1 + pad) continue;
+        var flags = st[13 * i + 8];
+        var width = sd.getFloat32(13 * i + 9, true);
+        var small = (bx1 - bx0) < minSide && (by1 - by0) < minSide;
+        if (skip && small && width * k < 0.4) continue;
+        var o = V.opStart[i], p = V.ptStart[i], n = V.opsPer[i];
+        ctx.beginPath();
+        for (var j = 0; j < n; j++) {
+          var op = ops[o + j];
+          if (op === 0) { ctx.moveTo((pts[2 * p] - wx0) * k, (pts[2 * p + 1] - wy0) * k); p += 1; }
+          else if (op === 1) { ctx.lineTo((pts[2 * p] - wx0) * k, (pts[2 * p + 1] - wy0) * k); p += 1; }
+          else if (op === 2) {
+            ctx.bezierCurveTo((pts[2 * p] - wx0) * k, (pts[2 * p + 1] - wy0) * k, (pts[2 * p + 2] - wx0) * k, (pts[2 * p + 3] - wy0) * k, (pts[2 * p + 4] - wx0) * k, (pts[2 * p + 5] - wy0) * k);
+            p += 3;
+          } else ctx.closePath();
+        }
+        if (flags & 2) {
+          ctx.fillStyle = 'rgba(' + st[13 * i] + ',' + st[13 * i + 1] + ',' + st[13 * i + 2] + ',' + (st[13 * i + 3] / 255) + ')';
+          ctx.fill((flags & 4) ? 'evenodd' : 'nonzero');
+        }
+        if (flags & 1) {
+          ctx.strokeStyle = 'rgba(' + st[13 * i + 4] + ',' + st[13 * i + 5] + ',' + st[13 * i + 6] + ',' + (st[13 * i + 7] / 255) + ')';
+          ctx.lineWidth = Math.max(0.5, width * k);
+          ctx.stroke();
+        }
+        count++;
+      }
+      var ms = performance.now() - t0;
+      drawn.tiles += 1; drawn.ms += ms; drawn.paths += count;
+      stats.textContent = 'tiles ' + drawn.tiles + ' · avg ' + (drawn.ms / drawn.tiles).toFixed(0) + ' ms/tile · avg ' + Math.round(drawn.paths / drawn.tiles) + ' paths/tile · last ' + ms.toFixed(0) + ' ms';
+      setTimeout(function () { done(null, tile); }, 0);
+      return tile;
+    }
+  });
+
+  var t0 = performance.now();
+  fetch('wac.vec').then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+    var t1 = performance.now();
+    V = parse(buf);
+    var layer = new VectorLayer({ opacity: 0.8, tileSize: 256, minZoom: 5, maxZoom: 17, updateWhenIdle: true, keepBuffer: 1 }).addTo(map);
+    document.getElementById('op').addEventListener('input', function (e) { layer.setOpacity(parseFloat(e.target.value)); });
+    info.textContent = (buf.byteLength / 1e6).toFixed(1) + ' MB loaded in ' + (t1 - t0).toFixed(0) + ' ms, parsed in ' + (performance.now() - t1).toFixed(0) + ' ms; ' + V.h.paths + ' paths';
+    var b = V.h.bounds;
+    map.fitBounds([[b[1], b[0]], [b[3], b[2]]]);
+  }).catch(function (e) { info.textContent = 'failed: ' + e; });
+})();
+</script>
+</body>
+</html>
