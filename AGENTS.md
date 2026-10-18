@@ -256,7 +256,20 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   Positions equal the SimConnect ones to every digit. Names: 155,137 distinct (the first reading found 97,559: the blobs
   were skipped). A fix repeats many times across blobs: dedupe by (name, region, class). The stored region of an en-route
   waypoint is "" while the files say "SB": reconcile before storing. The load asks SimConnect with `KindsToAsk` (one
-  request instead of three for names the files give as waypoint only). Files are not used to fill the database yet.
+  request instead of three for names the files give as waypoint only).
+  **Used now** (`navload.importFixes`, `navseed.Waypoints`, `navdb.SaveFileFixes`): the load reads the files first and stores their
+  waypoints and airways (fix.source = 'files'; migration 3) without asking the simulator. It only adds: a fix with the same name
+  and kind at the same place (0.0005 degrees) is left as it is, so nothing from SimConnect is changed, and a later SaveFixes from
+  the simulator replaces a file fix. VORs/NDBs are not taken from the files (no names or frequencies). A neighbour on an airway
+  that the files have no record of is kept by name at 0,0 (queries skip 0,0) and its position is filled by
+  `FillRoutePositions` once the simulator has been asked for it (the "neighbours" step). Names the files give as waypoint only
+  (and are longer than 3 letters) are marked checked (`MarkIdentsCovered`), so only ~5,400 names go to the simulator.
+  Measured: files read 4 s, saved 10 s; full load into an empty database 7 min 53 s (was ~45 min for the names alone), of which
+  airports are ~4 min (still asked to the simulator); the files-only load over a database that already has simulator data takes
+  22 s. Against the simulator's own data (same listing logic): 87,381 neighbour pairs equal, 4,575 only from the simulator
+  (5%, fixes with no record in the streamed files), 1,271 only from the files; 73% of the airways are identical. The segment of an
+  airway is stored from both ends and the simulator and the files do not always agree on which end says it (prev/next are swapped
+  for some fixes), so `AirwaySegments` reads both and lists a segment once.
 - **Viewer flow:** the top box of the in-sim viewer stands for the route ("SBSJ > SBGR"); the route button opens a box
   to paste a route in (resolved by `POST /api/route/resolve` on Resolve, Enter, paste, or when the EFB's text dialog ends).
   Three drawers keep the screen for the map: the **route** (left; tap the box): one container per place with a three-dot

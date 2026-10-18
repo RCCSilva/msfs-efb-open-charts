@@ -95,6 +95,10 @@ func (seed) Read(files []string, progress func(done, total int) bool) ([]navdb.S
 	return navseed.Read(files, progress)
 }
 
+func (seed) Waypoints(files []string, progress func(done, total int) bool) ([]navdata.Fix, error) {
+	return navseed.Waypoints(files, progress)
+}
+
 // plans loads a flight plan file through SimConnect.
 type plans struct{ dll string }
 

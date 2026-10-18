@@ -33,6 +33,9 @@ type FileRef struct {
 	Region string
 }
 
+// key is the fix a reference points to.
+func (r FileRef) key() fixKey { return fixKey{r.Ident, r.Region, r.Class} }
+
 // FileAirway is one airway through a fix, with the fix before and the fix after on it.
 type FileAirway struct {
 	Name    string

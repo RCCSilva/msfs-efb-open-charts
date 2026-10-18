@@ -104,6 +104,20 @@ func (m *Load) SaveSeed(list []navdb.SeedIdent) error {
 	return m.Called(list).Error(0)
 }
 
+func (m *Load) SaveFileFixes(fixes []navdata.Fix) (int, error) {
+	args := m.Called(fixes)
+	return args.Int(0), args.Error(1)
+}
+
+func (m *Load) MarkIdentsCovered(idents []string) error {
+	return m.Called(idents).Error(0)
+}
+
+func (m *Load) FillRoutePositions() (int, error) {
+	args := m.Called()
+	return args.Int(0), args.Error(1)
+}
+
 func (m *Load) Counts() (navdb.Counts, error) {
 	args := m.Called()
 	c, _ := args.Get(0).(navdb.Counts)

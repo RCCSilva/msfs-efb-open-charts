@@ -53,12 +53,18 @@ func ParseMode(s string) Mode {
 // Stop may wait for it (a batch of 100 takes 1.6 s for the same speed).
 const IdentBatch = 40
 
+// ImportBatch is how many fixes of the files are stored in one transaction.
+const ImportBatch = 2000
+
 // ErrRunning is returned when a load is already running.
 var ErrRunning = errors.New("a load is already running")
 
 // Store is the navigation database as the load uses it.
 type Store interface {
 	SaveSeed(list []navdb.SeedIdent) error
+	SaveFileFixes(fixes []navdata.Fix) (int, error)
+	MarkIdentsCovered(idents []string) error
+	FillRoutePositions() (int, error)
 	Counts() (navdb.Counts, error)
 	SeedPending(n int) ([]string, error)
 	MissingNeighbors(n int) ([]string, error)
@@ -98,7 +104,7 @@ type Deps struct {
 // View is the state of the load, as the page shows it.
 type View struct {
 	Running bool      `json:"running"`
-	Phase   string    `json:"phase"` // idle, interrupted, reading, asking, neighbours, listing, airports, done, stopped, error
+	Phase   string    `json:"phase"` // idle, interrupted, reading, importing, asking, neighbours, listing, airports, done, stopped, error
 	Message string    `json:"message"`
 	Total   int       `json:"total"`
 	Done    int       `json:"done"`
@@ -259,6 +265,77 @@ func (l *Loader) seedFiles() []string {
 	return l.d.Seed.Locate()
 }
 
+// importFixes brings the waypoints that the simulator's files hold into the database, with their
+// airways, without asking the simulator anything: only what the database does not have is added. The
+// names the files give as waypoints only are then known as a whole, so the simulator is not asked
+// about them. It returns false when the load ended (finish was called).
+func (l *Loader) importFixes(paths []string, seed []navdb.SeedIdent) bool {
+	l.job.set(func(v *View) { v.Phase, v.Total, v.Done = "importing", 0, 0 })
+	var fixes []navdata.Fix
+	var err error
+	l.timed("files.waypoints", 0, func() {
+		fixes, err = l.d.Seed.Waypoints(paths, func(done, total int) bool {
+			l.job.set(func(v *View) { v.Total, v.Done = total, done })
+			return !l.job.stopped()
+		})
+	})
+	if err != nil {
+		if l.job.stopped() {
+			l.finish("stopped", "")
+		} else {
+			l.finish("error", err.Error())
+		}
+		return false
+	}
+	l.job.set(func(v *View) { v.Total, v.Done = len(fixes), 0 })
+	added := 0
+	for start := 0; start < len(fixes); start += ImportBatch {
+		if l.job.stopped() {
+			l.finish("stopped", "")
+			return false
+		}
+		part := fixes[start:min(len(fixes), start+ImportBatch)]
+		var n int
+		l.timed("db.saveFileFixes", len(part), func() { n, err = l.d.Store.SaveFileFixes(part) })
+		if err != nil {
+			l.finish("error", err.Error())
+			return false
+		}
+		added += n
+		l.job.set(func(v *View) { v.Done = start + len(part) })
+	}
+	var covered []string
+	for _, s := range seed {
+		if k := navdb.KindsToAsk(s.Ident, s.Classes); len(k) == 1 && k[0] == navdata.FixWaypoint {
+			covered = append(covered, s.Ident)
+		}
+	}
+	for start := 0; start < len(covered); start += ImportBatch {
+		part := covered[start:min(len(covered), start+ImportBatch)]
+		l.timed("db.markCovered", len(part), func() { err = l.d.Store.MarkIdentsCovered(part) })
+		if err != nil {
+			l.finish("error", err.Error())
+			return false
+		}
+	}
+	l.fillPositions()
+	l.logf("the files gave %d waypoints, %d of them new; %d names need no question to the simulator", len(fixes), added, len(covered))
+	return true
+}
+
+// fillPositions gives the neighbours of the airways that the files named but could not place the
+// position of the fix that is stored for them by now.
+func (l *Loader) fillPositions() {
+	var n int
+	var err error
+	l.timed("db.fillPositions", 0, func() { n, err = l.d.Store.FillRoutePositions() })
+	if err != nil {
+		l.logf("filling the positions of the airways failed: %v", err)
+		return
+	}
+	l.logf("%d positions of airway neighbours filled in", n)
+}
+
 // loadFixes is steps 1 and 2: the identifiers from the simulator's files, then each of them asked
 // to the simulator as a whole. It returns false when the load ended (finish was called).
 func (l *Loader) loadFixes(mode Mode) bool {
@@ -287,6 +364,9 @@ func (l *Loader) loadFixes(mode Mode) bool {
 		l.timed("files.save", len(list), func() { saveErr = store.SaveSeed(list) })
 		if err := saveErr; err != nil {
 			l.finish("error", err.Error())
+			return false
+		}
+		if !l.importFixes(paths, list) {
 			return false
 		}
 	}

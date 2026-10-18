@@ -205,24 +205,46 @@ type AirwaySegment struct {
 	ToLon float64 `json:"toLon"`
 }
 
-// AirwaySegments lists the segments stored for one airway (each fix lists the stretch that follows it).
+// AirwaySegments lists the segments stored for one airway. A segment is stored from both of its ends
+// (the fix before lists the next one, the fix after lists the previous one) and the simulator and
+// its files do not always agree on which end says it, so both are read and a segment is listed once.
 func (d *DB) AirwaySegments(name string) ([]AirwaySegment, error) {
-	rows, err := d.db.Query(`SELECT r.ident, r.next_ident, f.lat, f.lon, r.next_lat, r.next_lon FROM route r
-		JOIN fix f ON f.ident = r.ident AND f.region = r.region AND f.kind = r.kind
-		WHERE r.airway = ? AND r.next_ident <> '' ORDER BY r.ident`, strings.ToUpper(name))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
 	out := []AirwaySegment{}
-	for rows.Next() {
-		var s AirwaySegment
-		if err := rows.Scan(&s.From, &s.To, &s.Lat, &s.Lon, &s.ToLat, &s.ToLon); err != nil {
+	seen := map[[2]string]bool{}
+	for _, q := range []string{
+		`SELECT r.ident, r.next_ident, f.lat, f.lon, r.next_lat, r.next_lon FROM route r
+			JOIN fix f ON f.ident = r.ident AND f.region = r.region AND f.kind = r.kind
+			WHERE r.airway = ? AND r.next_ident <> '' AND NOT (r.next_lat = 0 AND r.next_lon = 0) ORDER BY r.ident`,
+		`SELECT r.prev_ident, r.ident, r.prev_lat, r.prev_lon, f.lat, f.lon FROM route r
+			JOIN fix f ON f.ident = r.ident AND f.region = r.region AND f.kind = r.kind
+			WHERE r.airway = ? AND r.prev_ident <> '' AND NOT (r.prev_lat = 0 AND r.prev_lon = 0) ORDER BY r.ident`,
+	} {
+		rows, err := d.db.Query(q, strings.ToUpper(name))
+		if err != nil {
 			return nil, err
 		}
-		out = append(out, s)
+		for rows.Next() {
+			var s AirwaySegment
+			if err := rows.Scan(&s.From, &s.To, &s.Lat, &s.Lon, &s.ToLat, &s.ToLon); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			key := [2]string{s.From, s.To}
+			if s.From > s.To {
+				key = [2]string{s.To, s.From}
+			}
+			if !seen[key] {
+				seen[key] = true
+				out = append(out, s)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // Meta reads a small value kept with the database (empty when there is none).
@@ -823,10 +845,10 @@ func (d *DB) InArea(minLat, minLon, maxLat, maxLon float64, maxFixes, maxSegment
 		for _, q := range []string{
 			`SELECT r.airway, r.ident, r.next_ident, f.lat, f.lon, r.next_lat, r.next_lon
 				FROM fix f JOIN route r ON r.ident = f.ident AND r.region = f.region AND r.kind = f.kind
-				WHERE f.lat BETWEEN ? AND ? AND f.lon BETWEEN ? AND ? AND r.next_ident <> '' AND r.airway <> ''`,
+				WHERE f.lat BETWEEN ? AND ? AND f.lon BETWEEN ? AND ? AND r.next_ident <> '' AND r.airway <> '' AND NOT (r.next_lat = 0 AND r.next_lon = 0)`,
 			`SELECT r.airway, r.prev_ident, r.ident, r.prev_lat, r.prev_lon, f.lat, f.lon
 				FROM fix f JOIN route r ON r.ident = f.ident AND r.region = f.region AND r.kind = f.kind
-				WHERE f.lat BETWEEN ? AND ? AND f.lon BETWEEN ? AND ? AND r.prev_ident <> '' AND r.airway <> ''`,
+				WHERE f.lat BETWEEN ? AND ? AND f.lon BETWEEN ? AND ? AND r.prev_ident <> '' AND r.airway <> '' AND NOT (r.prev_lat = 0 AND r.prev_lon = 0)`,
 		} {
 			rows, err := d.db.Query(q, args...)
 			if err != nil {

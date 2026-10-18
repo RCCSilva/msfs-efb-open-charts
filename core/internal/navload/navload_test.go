@@ -70,6 +70,7 @@ type fixture struct {
 func newFixture() *fixture {
 	f := &fixture{job: new(navload.Job), store: new(navdbmock.Load), nav: new(echoNav), idents: new(identsMock), seed: new(simmock.Seed)}
 	f.store.On("SetMeta", mock.Anything, mock.Anything).Return(nil)
+	f.store.On("FillRoutePositions").Return(0, nil).Maybe()
 	return f
 }
 
@@ -205,10 +206,12 @@ func TestAirportsWithoutASimulatorToAskIsAnError(t *testing.T) {
 func TestTheFilesStepReadsTheIdentifiersAndStops(t *testing.T) {
 	// Arrange
 	f := newFixture()
-	seed := []navdb.SeedIdent{{Ident: "GERTU"}}
+	seed := []navdb.SeedIdent{{Ident: "GERTU", Classes: 1 << 5}}
 	f.seed.On("Locate").Return([]string{"a.fsarchive"})
 	f.seed.On("Read", []string{"a.fsarchive"}, mock.Anything).Return(seed, nil)
+	f.seed.On("Waypoints", []string{"a.fsarchive"}, mock.Anything).Return(nil, nil)
 	f.store.On("SaveSeed", seed).Return(nil)
+	f.store.On("MarkIdentsCovered", []string{"GERTU"}).Return(nil)
 
 	// Act
 	v := f.run(t, navload.Files, "")
@@ -217,6 +220,51 @@ func TestTheFilesStepReadsTheIdentifiersAndStops(t *testing.T) {
 	assert.Equal(t, "done", v.Phase)
 	f.store.AssertCalled(t, "SaveSeed", seed)
 	f.store.AssertNotCalled(t, "Counts")
+}
+
+func TestTheWaypointsOfTheFilesAreStoredAndTheirNamesNeedNoQuestionToTheSimulator(t *testing.T) {
+	// Arrange
+	f := newFixture()
+	seed := []navdb.SeedIdent{
+		{Ident: "GERTU", Classes: 1 << 5},       // a waypoint only, and not a short name: covered
+		{Ident: "PTL", Classes: 1 << 2},         // a VOR: the simulator has its name and frequency
+		{Ident: "BAD", Classes: 1 << 5},         // short: may be a VOR of a region the files lack
+		{Ident: "LONGVR", Classes: 1<<5 | 1<<2}, // also a VOR
+	}
+	fixes := []navdata.Fix{{Ident: "GERTU", Region: "SB", Kind: navdata.FixWaypoint}}
+	f.seed.On("Locate").Return([]string{"a.fsarchive"})
+	f.seed.On("Read", mock.Anything, mock.Anything).Return(seed, nil)
+	f.seed.On("Waypoints", mock.Anything, mock.Anything).Return(fixes, nil)
+	f.store.On("SaveSeed", seed).Return(nil)
+	f.store.On("SaveFileFixes", fixes).Return(1, nil)
+	f.store.On("MarkIdentsCovered", []string{"GERTU"}).Return(nil)
+
+	// Act
+	v := f.run(t, navload.Files, "")
+
+	// Assert
+	assert.Equal(t, "done", v.Phase)
+	f.store.AssertCalled(t, "SaveFileFixes", fixes)
+	f.store.AssertCalled(t, "MarkIdentsCovered", []string{"GERTU"})
+	f.store.AssertCalled(t, "FillRoutePositions")
+}
+
+func TestAnErrorReadingTheWaypointsEndsTheLoad(t *testing.T) {
+	// Arrange
+	f := newFixture()
+	seed := []navdb.SeedIdent{{Ident: "GERTU"}}
+	f.seed.On("Locate").Return([]string{"a.fsarchive"})
+	f.seed.On("Read", mock.Anything, mock.Anything).Return(seed, nil)
+	f.seed.On("Waypoints", mock.Anything, mock.Anything).Return(nil, errors.New("unreadable"))
+	f.store.On("SaveSeed", seed).Return(nil)
+
+	// Act
+	v := f.run(t, navload.Files, "")
+
+	// Assert
+	assert.Equal(t, "error", v.Phase)
+	assert.Contains(t, v.Message, "unreadable")
+	f.store.AssertNotCalled(t, "SaveFileFixes")
 }
 
 func TestTheFilesStepWithoutFilesIsAnError(t *testing.T) {

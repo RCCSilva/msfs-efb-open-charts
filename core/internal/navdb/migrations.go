@@ -51,6 +51,13 @@ type migration struct {
 var migrations = []migration{
 	{version: 1, name: "baseline: the schema of 0.3 and 0.4", up: migrateBaseline},
 	{version: 2, name: "seed identifiers keep the classes of their fixes", up: migrateSeedClasses},
+	{version: 3, name: "fixes say where they came from", up: migrateFixSource},
+}
+
+// migrateFixSource adds where a fix came from: the simulator (every fix stored until now) or the
+// simulator's own files (see SaveFileFixes).
+func migrateFixSource(tx *sql.Tx) error {
+	return addColumns(tx, "fix", []column{{"source", "TEXT NOT NULL DEFAULT 'sim'"}})
 }
 
 // migrateSeedClasses adds the classes the simulator's files give each name. The names already stored

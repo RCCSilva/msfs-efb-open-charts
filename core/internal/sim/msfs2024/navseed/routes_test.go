@@ -149,3 +149,25 @@ func TestScanBlobIgnoresWhatDoesNotLookLikeAFix(t *testing.T) {
 	// Assert
 	assert.Zero(t, called)
 }
+
+func TestWaypointsKeepTheirRegionAndKeepByNameNeighboursTheFilesDoNotHave(t *testing.T) {
+	// Arrange
+	a := FileFix{FileRef: FileRef{Ident: "AAAAA", Class: 5, Region: "SB"}, Lat: 1, Lon: 2, Airways: []FileAirway{
+		{Name: "UZ1", Type: 2, Next: FileRef{Ident: "BBBBB", Class: 5, Region: "SB"}, HasNext: true,
+			Prev: FileRef{Ident: "GONE", Class: 5, Region: "SB"}, HasPrev: true}}}
+	b := FileFix{FileRef: FileRef{Ident: "BBBBB", Class: 5, Region: "SB"}, Lat: 3, Lon: 4}
+	vor := FileFix{FileRef: FileRef{Ident: "PTL", Class: 2, Region: "SB"}}
+
+	// Act
+	got := waypoints([]FileFix{a, b, vor})
+
+	// Assert
+	require.Len(t, got, 2, "the VOR is not taken")
+	assert.Equal(t, "SB", got[0].Region)
+	require.Len(t, got[0].Routes, 1)
+	r := got[0].Routes[0]
+	assert.Equal(t, "BBBBB", r.NextIdent)
+	assert.Equal(t, 3.0, r.NextLat)
+	assert.Equal(t, "GONE", r.PrevIdent, "the airway still goes there")
+	assert.Zero(t, r.PrevLat, "but the files do not say where")
+}

@@ -204,3 +204,109 @@ func runwayThreshold(a *navdata.Airport, name string) ([2]float64, bool) {
 	}
 	return [2]float64{}, false
 }
+
+// SourceFiles marks a fix that was read from the simulator's own files; the fixes the simulator
+// answered for are marked SourceSim.
+const (
+	SourceSim   = "sim"
+	SourceFiles = "files"
+)
+
+// sameSpot is how near, in degrees, two fixes of the same name and kind are taken to be one place
+// (the simulator and its files give the same position to every digit).
+const sameSpot = 0.0005
+
+// SaveFileFixes stores fixes read from the simulator's files, and only adds: a fix the database has
+// already (same name and kind, in the same place, whatever its region) is left as it is, with the
+// airways the simulator gave it, so nothing that came from the simulator is lost or changed. It says
+// how many were added.
+func (d *DB) SaveFileFixes(fixes []navdata.Fix) (int, error) {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	has, err := tx.Prepare(`SELECT 1 FROM fix WHERE ident = ? AND kind = ? AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ? LIMIT 1`)
+	if err != nil {
+		return 0, err
+	}
+	defer has.Close()
+	now := time.Now().UTC().Format(time.RFC3339)
+	added := 0
+	for _, f := range fixes {
+		kind := string(rune(f.Kind))
+		var one int
+		switch err := has.QueryRow(f.Ident, kind, f.Lat-sameSpot, f.Lat+sameSpot, f.Lon-sameSpot, f.Lon+sameSpot).Scan(&one); {
+		case err == nil:
+			continue
+		case !errors.Is(err, sql.ErrNoRows):
+			return 0, err
+		}
+		res, err := tx.Exec(`INSERT OR IGNORE INTO fix (ident, region, kind, lat, lon, alt_m, freq_hz, name, fetched_at, source) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+			f.Ident, f.Region, kind, f.Lat, f.Lon, f.AltM, f.FreqHz, f.Name, now, SourceFiles)
+		if err != nil {
+			return 0, err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			continue // the same name, region and kind is there at another place: the simulator's wins
+		}
+		added++
+		for _, r := range f.Routes {
+			if _, err := tx.Exec(`INSERT INTO route (ident, region, kind, airway, type, next_ident, next_region, next_kind, next_lat, next_lon,
+				prev_ident, prev_region, prev_kind, prev_lat, prev_lon) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+				f.Ident, f.Region, kind, r.Airway, r.Type, r.NextIdent, r.NextRegion, kindString(r.NextKind), r.NextLat, r.NextLon,
+				r.PrevIdent, r.PrevRegion, kindString(r.PrevKind), r.PrevLat, r.PrevLon); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return added, tx.Commit()
+}
+
+// MarkIdentsCovered records that the names are known as a whole without asking the simulator: the
+// files gave every fix there is for them. Names already marked are left as they are.
+func (d *DB) MarkIdentsCovered(idents []string) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	st, err := tx.Prepare(`INSERT OR IGNORE INTO ident_check (ident, found, checked_at)
+		VALUES (?, (SELECT COUNT(*) FROM fix WHERE ident = ?), ?)`)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, id := range idents {
+		id = strings.ToUpper(id)
+		if _, err := st.Exec(id, id, now); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// FillRoutePositions gives the airways' neighbours the position they lack. A route read from the
+// simulator's files can name a neighbour that the files have no record of (so its position is 0, 0);
+// once the simulator has been asked for that fix it is stored, and this copies its position into the
+// routes. Of homonyms the nearest one to the fix the route belongs to is taken. It says how many
+// routes it changed.
+func (d *DB) FillRoutePositions() (int, error) {
+	total := 0
+	for _, side := range []string{"next", "prev"} {
+		res, err := d.db.Exec(`UPDATE route SET ` + side + `_lat = n.lat, ` + side + `_lon = n.lon
+			FROM (SELECT r.id AS rid, g.lat AS lat, g.lon AS lon,
+				ROW_NUMBER() OVER (PARTITION BY r.id ORDER BY (g.lat - f.lat) * (g.lat - f.lat) + (g.lon - f.lon) * (g.lon - f.lon)) AS rank
+				FROM route r JOIN fix f ON f.ident = r.ident AND f.region = r.region AND f.kind = r.kind
+				JOIN fix g ON g.ident = r.` + side + `_ident AND g.kind = r.` + side + `_kind
+				WHERE r.` + side + `_ident <> '' AND r.` + side + `_lat = 0 AND r.` + side + `_lon = 0) n
+			WHERE route.id = n.rid AND n.rank = 1`)
+		if err != nil {
+			return total, err
+		}
+		c, _ := res.RowsAffected()
+		total += int(c)
+	}
+	return total, nil
+}

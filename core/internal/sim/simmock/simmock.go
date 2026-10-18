@@ -67,6 +67,12 @@ func (m *Seed) Read(files []string, progress func(done, total int) bool) ([]navd
 	return l, args.Error(1)
 }
 
+func (m *Seed) Waypoints(files []string, progress func(done, total int) bool) ([]navdata.Fix, error) {
+	args := m.Called(files, progress)
+	l, _ := args.Get(0).([]navdata.Fix)
+	return l, args.Error(1)
+}
+
 // Plans is a mock of sim.FlightPlanLoader.
 type Plans struct{ mock.Mock }
 

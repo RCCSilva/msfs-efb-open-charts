@@ -143,14 +143,3 @@ func Read(paths []string, progress func(done, total int) bool) ([]navdb.SeedIden
 	}
 	return out, nil
 }
-
-// ReadFixes reads every fix of the archives with its region and the airways through it.
-func ReadFixes(paths []string, progress func(done, total int) bool) ([]FileFix, error) {
-	var out []FileFix
-	err := walk(paths, progress, func(b []byte) {
-		if f, ok := parseFix(b); ok {
-			out = append(out, f)
-		}
-	})
-	return out, err
-}

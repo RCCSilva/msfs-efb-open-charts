@@ -86,6 +86,9 @@ type SeedSource interface {
 	Locate() []string
 	// Read reads them. progress is called now and then and stops the reading by returning false.
 	Read(files []string, progress func(done, total int) bool) ([]navdb.SeedIdent, error)
+	// Waypoints reads the waypoints in them, with their region and airways (VORs and NDBs are not
+	// taken: the files do not have their names and frequencies).
+	Waypoints(files []string, progress func(done, total int) bool) ([]navdata.Fix, error)
 }
 
 // FlightPlanLoader asks the simulator to load a flight plan file.
