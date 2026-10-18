@@ -393,10 +393,11 @@ html.noband .drawer { top: 58px; }
 .dlist .rtchip .rtbang.done { background: #8a96a3; }
 .rtmenu { min-width: 200px; max-width: 300px; }
 
-/* Map orientation button: a compass. The ring turns with the map and the red needle points north;
-   while the map turns with the aircraft an aircraft shows in the middle (it always points up). */
+/* Map orientation button: a compass while north is up (the needle points north). While the map turns
+   with the aircraft the ring and its N stay (the ring turns, so N shows where north is), with an arrow in it (the aircraft always points up). */
 #btn-orient .o-needle { fill: #d32f2f; stroke: #d32f2f; }
 #btn-orient .o-n { fill: #111; stroke: none; font: bold 7px Arial, Helvetica, sans-serif; }
 #btn-orient.active .o-n { fill: #fff; }
-#btn-orient .o-plane { display: none; fill: #ffd54a; stroke: #111; stroke-width: 0.8; }
+#btn-orient .o-plane { display: none; fill: #ffd54a; stroke: #1a1a1a; stroke-width: 1.4; stroke-linejoin: round; }
+#btn-orient.up .o-needle, #btn-orient.up .o-south { display: none; }
 #btn-orient.up .o-plane { display: inline; }
