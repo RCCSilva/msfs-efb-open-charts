@@ -128,12 +128,20 @@ func (s *Server) handleNavAirways(w http.ResponseWriter, r *http.Request) {
 		navUnavailable(w)
 		return
 	}
-	list, err := db.Airways(r.URL.Query().Get("q"), 0)
+	q := r.URL.Query()
+	limit, offset := 25, 0
+	if v, err := strconv.Atoi(q.Get("limit")); err == nil && v > 0 {
+		limit = min(v, 500)
+	}
+	if v, err := strconv.Atoi(q.Get("offset")); err == nil && v > 0 {
+		offset = v
+	}
+	list, total, err := db.AirwaysPage(q.Get("q"), limit, offset)
 	if err != nil {
 		writeErr(w, 500, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"airways": list})
+	writeJSON(w, 200, map[string]any{"airways": list, "total": total})
 }
 
 // GET /api/nav/airway/{name}
@@ -160,12 +168,21 @@ func (s *Server) handleNavPoints(w http.ResponseWriter, r *http.Request) {
 		navUnavailable(w)
 		return
 	}
-	list, err := db.UserPoints(r.URL.Query().Get("q"))
+	// without limit: every point (the map planner draws them all); with it, a page and the total
+	q := r.URL.Query()
+	limit, offset := 0, 0
+	if v, err := strconv.Atoi(q.Get("limit")); err == nil && v > 0 {
+		limit = min(v, 500)
+	}
+	if v, err := strconv.Atoi(q.Get("offset")); err == nil && v > 0 {
+		offset = v
+	}
+	list, total, err := db.UserPointsPage(q.Get("q"), limit, offset)
 	if err != nil {
 		writeErr(w, 500, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"points": list})
+	writeJSON(w, 200, map[string]any{"points": list, "total": total})
 }
 
 // POST /api/nav/points and PUT /api/nav/points/{id}

@@ -1710,7 +1710,7 @@
     }
   };
   const nv = (k) => (NV[lang] && NV[lang][k]) || NV.en[k] || k;
-  const navState = { prefix: '', tab: 'airports', fixQ: '', fixKind: '', fixOffset: 0, airportOffset: 0, airportQ: '', airwayQ: '', edit: null, open: '' };
+  const navState = { prefix: '', tab: 'airports', fixQ: '', fixKind: '', fixOffset: 0, airportOffset: 0, airportQ: '', airwayQ: '', airwayOffset: 0, pointQ: '', pointOffset: 0, edit: null, open: '' };
   let navTimer = null;
 
   const fmtNum = (n) => Number(n || 0).toLocaleString(lang === 'pt' ? 'pt-BR' : 'en-US');
@@ -1784,10 +1784,20 @@
     return [input, h('button', { class: 'btn', onclick: () => onGo(input.value) }, '⌕')];
   }
 
+  // every list of the Navigation tab is shown 25 rows at a time
+  const NAV_PAGE = 25;
+  // the buttons and the counter under a list: offset is the first row shown, shown how many rows are
+  function navPager(key, shown, total) {
+    const last = navState[key] + shown;
+    return h('div', { class: 'row', style: 'margin-top:10px' },
+      h('button', { class: 'btn sm', disabled: navState[key] === 0, onclick: () => { navState[key] = Math.max(0, navState[key] - NAV_PAGE); navRefresh(); } }, nv('prev')),
+      h('span', { class: 'muted' }, total ? `${fmtNum(navState[key] + 1)}-${fmtNum(last)} / ${fmtNum(total)}` : ''),
+      h('button', { class: 'btn sm', disabled: last >= total, onclick: () => { navState[key] += NAV_PAGE; navRefresh(); } }, nv('next')));
+  }
+
   async function navAirports(body) {
-    const limit = 100;
+    const limit = NAV_PAGE;
     const r = await api('GET', `/api/nav/airports?q=${encodeURIComponent(navState.airportQ)}&limit=${limit}&offset=${navState.airportOffset}`);
-    const last = navState.airportOffset + r.airports.length;
     body.replaceChildren(
       h('div', { class: 'row' }, ...navSearch(navState.airportQ, nv('search'), (v) => { navState.airportQ = v.trim(); navState.airportOffset = 0; navRefresh(); })),
       h('div', { style: 'height:10px' }),
@@ -1801,20 +1811,16 @@
                 if (!confirm(nv('confirmDel'))) return;
                 await api('DELETE', '/api/nav/airport/' + encodeURIComponent(a.icao)); navRefresh(true);
               } }, nv('del'))))))),
-      h('div', { class: 'row', style: 'margin-top:10px' },
-        h('button', { class: 'btn sm', disabled: navState.airportOffset === 0, onclick: () => { navState.airportOffset = Math.max(0, navState.airportOffset - limit); navRefresh(); } }, nv('prev')),
-        h('span', { class: 'muted' }, r.total ? `${fmtNum(navState.airportOffset + 1)}-${fmtNum(last)} / ${fmtNum(r.total)}` : ''),
-        h('button', { class: 'btn sm', disabled: last >= r.total, onclick: () => { navState.airportOffset += limit; navRefresh(); } }, nv('next'))));
+      navPager('airportOffset', r.airports.length, r.total));
   }
 
   async function navFixes(body) {
-    const limit = 100;
+    const limit = NAV_PAGE;
     const r = await api('GET', `/api/nav/fixes?q=${encodeURIComponent(navState.fixQ)}&kind=${navState.fixKind}&limit=${limit}&offset=${navState.fixOffset}`);
     const kindSel = h('select', { onchange: (e) => { navState.fixKind = e.target.value; navState.fixOffset = 0; navRefresh(); } },
       h('option', { value: '' }, nv('all')), h('option', { value: 'W' }, nv('kindW')), h('option', { value: 'V' }, nv('kindV')), h('option', { value: 'N' }, nv('kindN')));
     kindSel.value = navState.fixKind;
     const kindName = { W: nv('kindW'), V: nv('kindV'), N: nv('kindN') };
-    const last = navState.fixOffset + r.fixes.length;
     body.replaceChildren(
       h('div', { class: 'row' }, ...navSearch(navState.fixQ, nv('search'), (v) => { navState.fixQ = v.trim(); navState.fixOffset = 0; navRefresh(); }), kindSel),
       r.fixes.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) : h('table', { style: 'margin-top:10px' },
@@ -1828,29 +1834,28 @@
             await api('DELETE', `/api/nav/fixes?ident=${encodeURIComponent(f.ident)}&region=${encodeURIComponent(f.region)}&kind=${f.kind}`);
             navRefresh(true);
           } }, nv('del'))))))),
-      h('div', { class: 'row', style: 'margin-top:10px' },
-        h('button', { class: 'btn sm', disabled: navState.fixOffset === 0, onclick: () => { navState.fixOffset = Math.max(0, navState.fixOffset - limit); navRefresh(); } }, nv('prev')),
-        h('span', { class: 'muted' }, r.total ? `${fmtNum(navState.fixOffset + 1)}-${fmtNum(last)} / ${fmtNum(r.total)}` : ''),
-        h('button', { class: 'btn sm', disabled: last >= r.total, onclick: () => { navState.fixOffset += limit; navRefresh(); } }, nv('next'))));
+      navPager('fixOffset', r.fixes.length, r.total));
   }
 
   async function navAirways(body) {
-    const r = await api('GET', '/api/nav/airways?q=' + encodeURIComponent(navState.airwayQ));
+    const r = await api('GET', `/api/nav/airways?q=${encodeURIComponent(navState.airwayQ)}&limit=${NAV_PAGE}&offset=${navState.airwayOffset}`);
     let segs = null;
     if (navState.open) segs = await api('GET', '/api/nav/airway/' + encodeURIComponent(navState.open));
     body.replaceChildren(
-      h('div', { class: 'row' }, ...navSearch(navState.airwayQ, nv('search'), (v) => { navState.airwayQ = v.trim(); navState.open = ''; navRefresh(); })),
+      h('div', { class: 'row' }, ...navSearch(navState.airwayQ, nv('search'), (v) => { navState.airwayQ = v.trim(); navState.airwayOffset = 0; navState.open = ''; navRefresh(); })),
       r.airways.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) : h('table', { style: 'margin-top:10px' },
         h('tbody', null, r.airways.map((a) => [
           h('tr', { class: 'clickable', onclick: () => { navState.open = navState.open === a.name ? '' : a.name; navRefresh(); } },
             h('td', null, h('strong', null, a.name)), h('td', { class: 'muted' }, `${a.segments} ${nv('airwaySegs')}`),
             h('td', { class: 'actions' }, navState.open === a.name ? nv('hideSegs') : nv('showSegs'))),
           navState.open === a.name && segs ? h('tr', null, h('td', { colspan: 3, class: 'muted' },
-            segs.segments.map((s) => `${s.from} > ${s.to}`).join('   '))) : null]))));
+            segs.segments.map((s) => `${s.from} > ${s.to}`).join('   '))) : null]))),
+      navPager('airwayOffset', r.airways.length, r.total));
   }
 
   async function navPoints(body) {
-    const r = await api('GET', '/api/nav/points');
+    const limit = NAV_PAGE;
+    const r = await api('GET', `/api/nav/points?q=${encodeURIComponent(navState.pointQ)}&limit=${limit}&offset=${navState.pointOffset}`);
     const e = navState.edit || { id: 0, ident: '', name: '', lat: '', lon: '', note: '' };
     const field = (key, label, extra) => h('label', { class: 'fld' }, h('span', { class: 'muted' }, label),
       h('input', Object.assign({ type: 'text', value: e[key] === undefined ? '' : String(e[key]), 'data-k': key }, extra || {})));
@@ -1872,6 +1877,8 @@
         } }, e.id ? nv('save') : nv('add')),
         e.id ? h('button', { class: 'btn', onclick: () => { navState.edit = null; navRefresh(); } }, nv('cancel')) : null));
     body.replaceChildren(h('p', { class: 'muted' }, nv('pointsIntro')), form,
+      h('div', { class: 'row' }, ...navSearch(navState.pointQ, nv('search'), (v) => { navState.pointQ = v.trim(); navState.pointOffset = 0; navRefresh(); })),
+      h('div', { style: 'height:10px' }),
       r.points.length === 0 ? h('p', { class: 'muted' }, nv('noRows')) : h('table', null,
         h('thead', null, h('tr', null, h('th', null, nv('ident')), h('th', null, nv('name')), h('th', null, nv('kind')), h('th', null, nv('pos')), h('th', null, nv('note')), h('th'))),
         h('tbody', null, r.points.map((p) => h('tr', null,
@@ -1881,7 +1888,8 @@
             h('button', { class: 'btn sm danger', onclick: async () => {
               if (!confirm(nv('confirmDel'))) return;
               await api('DELETE', '/api/nav/points/' + p.id); navRefresh(true);
-            } }, nv('del'))))))));
+            } }, nv('del'))))))),
+      navPager('pointOffset', r.points.length, r.total));
   }
 
   // ---- Routes: written here, validated here, and one tap in the viewer. The map below is only a

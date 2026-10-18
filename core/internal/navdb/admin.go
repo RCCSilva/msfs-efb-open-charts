@@ -167,26 +167,32 @@ type AirwayRow struct {
 	Segments int    `json:"segments"`
 }
 
-// Airways lists the stored airways whose name starts with q.
-func (d *DB) Airways(q string, limit int) ([]AirwayRow, error) {
-	if limit <= 0 || limit > 1000 {
-		limit = 200
+// AirwaysPage is a page of the airways whose name starts with q, with how many segments each has,
+// and how many airways match in all.
+func (d *DB) AirwaysPage(q string, limit, offset int) ([]AirwayRow, int, error) {
+	like := strings.ToUpper(strings.TrimSpace(q)) + "%"
+	var total int
+	if err := d.db.QueryRow(`SELECT COUNT(DISTINCT airway) FROM route WHERE airway <> '' AND airway LIKE ?`, like).Scan(&total); err != nil {
+		return nil, 0, err
 	}
-	rows, err := d.db.Query(`SELECT airway, COUNT(*) FROM route WHERE airway <> '' AND airway LIKE ? GROUP BY airway ORDER BY airway LIMIT ?`,
-		strings.ToUpper(strings.TrimSpace(q))+"%", limit)
+	if limit <= 0 {
+		limit = 25
+	}
+	rows, err := d.db.Query(`SELECT airway, COUNT(*) FROM route WHERE airway <> '' AND airway LIKE ? GROUP BY airway ORDER BY airway LIMIT ? OFFSET ?`,
+		like, limit, max(offset, 0))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	out := []AirwayRow{}
 	for rows.Next() {
 		var r AirwayRow
 		if err := rows.Scan(&r.Name, &r.Segments); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out = append(out, r)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
 }
 
 // AirwaySegment is one stretch of an airway: from one fix to the next.
@@ -278,10 +284,27 @@ func cleanPoint(p *UserPoint) error {
 
 // UserPoints lists the user's points whose identifier starts with q.
 func (d *DB) UserPoints(q string) ([]UserPoint, error) {
-	rows, err := d.db.Query(`SELECT id, ident, name, lat, lon, alt_ft, type, tags, note, created_at FROM user_point WHERE ident LIKE ? ORDER BY ident, id`,
-		strings.ToUpper(strings.TrimSpace(q))+"%")
+	list, _, err := d.UserPointsPage(q, 0, 0)
+	return list, err
+}
+
+// UserPointsPage is a page of the points whose identifier starts with q (limit <= 0: all of them),
+// and how many match in all.
+func (d *DB) UserPointsPage(q string, limit, offset int) ([]UserPoint, int, error) {
+	like := strings.ToUpper(strings.TrimSpace(q)) + "%"
+	var total int
+	if err := d.db.QueryRow(`SELECT COUNT(*) FROM user_point WHERE ident LIKE ?`, like).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	query := `SELECT id, ident, name, lat, lon, alt_ft, type, tags, note, created_at FROM user_point WHERE ident LIKE ? ORDER BY ident, id`
+	args := []any{like}
+	if limit > 0 {
+		query += ` LIMIT ? OFFSET ?`
+		args = append(args, limit, max(offset, 0))
+	}
+	rows, err := d.db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	out := []UserPoint{}
@@ -290,12 +313,12 @@ func (d *DB) UserPoints(q string) ([]UserPoint, error) {
 		var name, note, at, typ, tags sql.NullString
 		var alt sql.NullFloat64
 		if err := rows.Scan(&p.ID, &p.Ident, &name, &p.Lat, &p.Lon, &alt, &typ, &tags, &note, &at); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		p.Name, p.Note, p.CreatedAt, p.Type, p.Tags, p.AltFt = name.String, note.String, at.String, typ.String, tags.String, alt.Float64
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
 }
 
 // CreateUserPoint stores a point.

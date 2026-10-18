@@ -321,3 +321,48 @@ func TestANewerFileIsReportedAndNotChanged(t *testing.T) {
 	require.NoError(t, raw.QueryRow(`PRAGMA user_version`).Scan(&v))
 	assert.Equal(t, navdb.LatestSchema()+3, v, "the file was not touched")
 }
+
+func TestNavPointsAreListedAPageAtATimeWhenAskedFor(t *testing.T) {
+	// Arrange
+	d := newDBServer(t, nil)
+	for _, id := range []string{"P01", "P02", "P03"} {
+		_, err := d.cur.CreateUserPoint(navdb.UserPoint{Ident: id, Lat: 1, Lon: 1})
+		require.NoError(t, err)
+	}
+	req := httptest.NewRequest("GET", "/api/nav/points?limit=2&offset=2", nil)
+	w := httptest.NewRecorder()
+
+	// Act
+	d.handleNavPoints(w, req)
+
+	// Assert
+	require.Equal(t, 200, w.Code, w.Body.String())
+	var out struct {
+		Points []navdb.UserPoint `json:"points"`
+		Total  int               `json:"total"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+	assert.Equal(t, 3, out.Total)
+	require.Len(t, out.Points, 1)
+	assert.Equal(t, "P03", out.Points[0].Ident)
+}
+
+func TestNavPointsWithoutALimitAreAllOfThem(t *testing.T) {
+	// Arrange
+	d := newDBServer(t, nil)
+	for _, id := range []string{"P01", "P02", "P03"} {
+		_, err := d.cur.CreateUserPoint(navdb.UserPoint{Ident: id, Lat: 1, Lon: 1})
+		require.NoError(t, err)
+	}
+	w := httptest.NewRecorder()
+
+	// Act
+	d.handleNavPoints(w, httptest.NewRequest("GET", "/api/nav/points", nil))
+
+	// Assert
+	var out struct {
+		Points []navdb.UserPoint `json:"points"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+	assert.Len(t, out.Points, 3)
+}

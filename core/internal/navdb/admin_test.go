@@ -325,3 +325,122 @@ func TestAMissingNeighborAlreadyAskedIsNotAskedAgain(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"CCCCC"}, miss)
 }
+
+// pointsDB has the points P01 to P05, and OTHER.
+func pointsDB(t *testing.T) *DB {
+	t.Helper()
+	d := openTemp(t)
+	for _, id := range []string{"P01", "P02", "P03", "P04", "P05", "OTHER"} {
+		_, err := d.CreateUserPoint(UserPoint{Ident: id, Lat: 1, Lon: 1})
+		require.NoError(t, err)
+	}
+	return d
+}
+
+func TestUserPointsPageGivesTheFirstPageAndTheTotal(t *testing.T) {
+	// Arrange
+	d := pointsDB(t)
+
+	// Act
+	page, total, err := d.UserPointsPage("", 4, 0)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 6, total)
+	require.Len(t, page, 4)
+	assert.Equal(t, "OTHER", page[0].Ident)
+	assert.Equal(t, "P03", page[3].Ident)
+}
+
+func TestUserPointsPageGivesTheLastPageShort(t *testing.T) {
+	// Arrange
+	d := pointsDB(t)
+
+	// Act
+	page, _, err := d.UserPointsPage("", 4, 4)
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, page, 2)
+	assert.Equal(t, "P05", page[1].Ident)
+}
+
+func TestUserPointsPageFiltersByTheStartOfTheIdentifier(t *testing.T) {
+	// Arrange
+	d := pointsDB(t)
+
+	// Act
+	page, total, err := d.UserPointsPage("p0", 2, 0)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 5, total)
+	assert.Len(t, page, 2)
+}
+
+func TestUserPointsWithoutALimitGivesEveryPoint(t *testing.T) {
+	// Arrange
+	d := pointsDB(t)
+
+	// Act
+	all, err := d.UserPoints("")
+
+	// Assert
+	require.NoError(t, err)
+	assert.Len(t, all, 6)
+}
+
+// airwaysDB has the airways UZ1 (2 segments), UZ2 (1) and W5 (1).
+func airwaysDB(t *testing.T) *DB {
+	t.Helper()
+	d := openTemp(t)
+	route := func(airway, next string) navdata.Route {
+		return navdata.Route{Airway: airway, NextIdent: next, NextRegion: "SB", NextKind: navdata.FixWaypoint}
+	}
+	require.NoError(t, d.SaveFixes([]navdata.Fix{
+		{Ident: "AAAAA", Region: "SB", Kind: navdata.FixWaypoint, Routes: []navdata.Route{route("UZ1", "BBBBB"), route("UZ2", "BBBBB"), route("W5", "BBBBB")}},
+		{Ident: "BBBBB", Region: "SB", Kind: navdata.FixWaypoint, Routes: []navdata.Route{route("UZ1", "CCCCC")}},
+	}))
+	return d
+}
+
+func TestAirwaysPageGivesAPageAndHowManyAirwaysThereAre(t *testing.T) {
+	// Arrange
+	d := airwaysDB(t)
+
+	// Act
+	page, total, err := d.AirwaysPage("", 2, 0)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 3, total)
+	require.Len(t, page, 2)
+	assert.Equal(t, "UZ1", page[0].Name)
+	assert.Equal(t, 2, page[0].Segments)
+}
+
+func TestAirwaysPageGivesTheNextPage(t *testing.T) {
+	// Arrange
+	d := airwaysDB(t)
+
+	// Act
+	page, _, err := d.AirwaysPage("", 2, 2)
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, page, 1)
+	assert.Equal(t, "W5", page[0].Name)
+}
+
+func TestAirwaysPageFiltersByTheStartOfTheName(t *testing.T) {
+	// Arrange
+	d := airwaysDB(t)
+
+	// Act
+	page, total, err := d.AirwaysPage("uz", 25, 0)
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+	assert.Len(t, page, 2)
+}
