@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/logfile"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/server"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
@@ -98,7 +99,7 @@ func main() {
 
 	// Log to a file too: with the tray there is usually no console window.
 	_ = os.MkdirAll(*data, 0o755)
-	if lf, err := os.OpenFile(filepath.Join(*data, "opencharts.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
+	if lf, err := logfile.Open(filepath.Join(*data, "opencharts.log"), logfile.DefaultMaxBytes); err == nil {
 		log.SetOutput(io.MultiWriter(lf, os.Stderr))
 		defer lf.Close()
 	}

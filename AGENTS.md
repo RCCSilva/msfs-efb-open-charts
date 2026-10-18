@@ -371,3 +371,4 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
 - Do not add generated artifacts (`build/`, `dist/`) or user data to the repository.
 - Update `NOTICE.md` when adding a third-party component, and the README when behaviour that users
   see changes.
+- **Log file:** `opencharts.log` in the data folder is written through `internal/logfile`, which rotates it at 5 MB to `opencharts.log.1` (one older file kept, so at most about 10 MB). It used to grow without limit.
