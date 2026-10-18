@@ -711,6 +711,11 @@ type Area struct {
 	Segments    []AreaSegment `json:"segments"`
 	FixesCut    bool          `json:"fixesCut"`    // there are more fixes than were sent
 	SegmentsCut bool          `json:"segmentsCut"` // there are more segments than were sent
+	// What was left out because the view is too wide to show it (the caps above are for what is too
+	// much inside a view that is not): zoom in to see it.
+	AirportsHidden bool `json:"airportsHidden"`
+	FixesHidden    bool `json:"fixesHidden"`
+	SegmentsHidden bool `json:"segmentsHidden"`
 }
 
 // InArea returns the airports, the fixes and the airway segments inside the rectangle. Fixes and

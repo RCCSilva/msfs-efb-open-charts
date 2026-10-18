@@ -340,7 +340,7 @@ func (s *Server) handleNavArea(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, errors.New("minLat, minLon, maxLat and maxLon are required"))
 		return
 	}
-	a, err := db.InArea(minLat, minLon, maxLat, maxLon, 1500, 3000, q.Get("fixes") == "1", q.Get("segments") == "1")
+	a, err := db.InAreaView(minLat, minLon, maxLat, maxLon, 1500, 3000, q.Get("fixes") == "1", q.Get("segments") == "1")
 	if err != nil {
 		writeErr(w, 500, err)
 		return

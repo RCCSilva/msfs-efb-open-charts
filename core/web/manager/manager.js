@@ -2143,7 +2143,7 @@
       title: 'Map', hint: 'Click an airport or a fix to add it to the route. Click the origin, then the destination: what you add after that goes between them. Right-click an empty place to make a point of your own there.',
       route: 'Route', empty: 'The route is empty. Click airports and fixes on the map.', name: 'Name', save: 'Save', clear: 'Clear',
       validate: 'Validate', saved: 'Saved', failed: 'Could not do that', open: 'Open a saved route...', up: 'Move up', down: 'Move down',
-      remove: 'Remove', zoomIn: 'Zoom in to see fixes and airways.', cut: 'Too many here: zoom in to see them all.',
+      remove: 'Remove', zoomIn: 'Zoom in to see fixes and airways.', zoomInAll: 'Zoom in to see airports, fixes and airways.', cut: 'Too many here: zoom in to see them all.',
       airports: 'Airports', fixesLayer: 'Fixes', airwaysLayer: 'Airways', pointsLayer: 'My points', ok: 'All names were found.',
       problems: 'to check', newPoint: 'Identifier of the new point (letters and digits):', pointFailed: 'Could not make the point',
       noAirports: 'No airports are stored in this area yet. Load them in the Navigation tab.', places: 'places',
@@ -2168,7 +2168,7 @@
       title: 'Mapa', hint: 'Clique num aeroporto ou fixo para acrescentar à rota. Clique na origem e depois no destino: o que você acrescentar depois entra entre os dois. Clique com o botão direito num lugar vazio para criar um ponto seu ali.',
       route: 'Rota', empty: 'A rota está vazia. Clique em aeroportos e fixos no mapa.', name: 'Nome', save: 'Salvar', clear: 'Limpar',
       validate: 'Validar', saved: 'Salva', failed: 'Não foi possível', open: 'Abrir uma rota salva...', up: 'Subir', down: 'Descer',
-      remove: 'Remover', zoomIn: 'Aproxime para ver os fixos e as aerovias.', cut: 'Tem coisa demais aqui: aproxime para ver tudo.',
+      remove: 'Remover', zoomIn: 'Aproxime para ver os fixos e as aerovias.', zoomInAll: 'Aproxime para ver aeroportos, fixos e aerovias.', cut: 'Tem coisa demais aqui: aproxime para ver tudo.',
       airports: 'Aeroportos', fixesLayer: 'Fixos', airwaysLayer: 'Aerovias', pointsLayer: 'Meus pontos', ok: 'Todos os nomes foram encontrados.',
       problems: 'a conferir', newPoint: 'Identificador do novo ponto (letras e dígitos):', pointFailed: 'Não foi possível criar o ponto',
       noAirports: 'Ainda não há aeroportos guardados nesta área. Carregue-os na aba Navegação.', places: 'pontos',
@@ -2413,7 +2413,12 @@
 
     // With an airport at each end the route has its origin and destination: what is added after
     // goes between them. Until then, each place is added at the end.
+    // The map can be moved past the antimeridian (the world repeats): a place is kept at its real
+    // longitude (-180..180) and drawn at the copy of the world that is nearest to where the map looks.
+    const wrapLon = (lon) => ((lon + 180) % 360 + 360) % 360 - 180;
+    const nearLon = (lon, ref) => lon + 360 * Math.round((ref - lon) / 360);
     const add = (p) => {
+      p = Object.assign({}, p, { lon: wrapLon(p.lon) });
       const n = plan.points.length;
       const ends = n >= 2 && plan.points[0].kind === 'airport' && plan.points[n - 1].kind === 'airport';
       if (ends) plan.points.splice(n - 1, 0, p); else plan.points.push(p);
@@ -2428,14 +2433,22 @@
       nameIn.value = plan.name;
     }
 
-    function redrawPlan() {
+    // the route on the map: the first place at the copy of the world nearest to the view and each next
+    // one nearest to the one before, so that the line is not drawn across the whole world
+    function drawRouteLayer() {
       layers.route.clearLayers();
-      const pts = plan.points.map((p) => [p.lat, p.lon]);
+      let ref = map.getCenter().lng;
+      const lons = plan.points.map((p) => { ref = nearLon(p.lon, ref); return ref; });
+      const pts = plan.points.map((p, i) => [p.lat, lons[i]]);
       if (pts.length > 1) L.polyline(pts, { color: '#c2185b', weight: 4, opacity: 0.9, interactive: false }).addTo(layers.route);
       plan.points.forEach((p, i) => {
-        L.circleMarker([p.lat, p.lon], { radius: 6, color: '#c2185b', weight: 2, fillColor: '#fff', fillOpacity: 1, interactive: false })
+        L.circleMarker([p.lat, lons[i]], { radius: 6, color: '#c2185b', weight: 2, fillColor: '#fff', fillOpacity: 1, interactive: false })
           .bindTooltip(String(i + 1), { permanent: true, direction: 'top', offset: [0, -4], className: 'plannum' }).addTo(layers.route);
       });
+    }
+
+    function redrawPlan() {
+      drawRouteLayer();
       listHost.replaceChildren(...(plan.points.length === 0 ? [h('p', { class: 'muted' }, mp('empty'))] : [
         h('div', { class: 'planlist' }, plan.points.map((p, i) => h('div', { class: 'planrow' },
           h('span', { class: 'plannumb' }, String(i + 1)),
@@ -2561,7 +2574,7 @@
       const my = ++seq;
       const z = map.getZoom();
       const b = map.getBounds().pad(0.1);
-      const q = `minLat=${b.getSouth()}&minLon=${b.getWest()}&maxLat=${b.getNorth()}&maxLon=${b.getEast()}&fixes=${z >= 7 ? 1 : 0}&segments=${z >= 6 ? 1 : 0}`;
+      const q = `minLat=${b.getSouth()}&minLon=${b.getWest()}&maxLat=${b.getNorth()}&maxLon=${b.getEast()}&fixes=1&segments=1`;
       let a;
       try { a = await api('GET', '/api/nav/area?' + q); } catch (e) { return; }
       if (my !== seq) return;
@@ -2610,13 +2623,15 @@
       }
       let hint = '';
       if (chartsCut) hint = mp('chartsCut');
-      else if (z < 6) hint = mp('zoomIn');
+      else if (a.airportsHidden) hint = mp('zoomInAll');
+      else if (a.fixesHidden || a.segmentsHidden) hint = mp('zoomIn');
       else if (a.fixesCut || a.segmentsCut) hint = mp('cut');
-      else if (!a.airports.length && z >= 6) hint = mp('noAirports');
+      else if (!a.airports.length) hint = mp('noAirports');
       hintHost.textContent = hint;
     }
     const later = () => { clearTimeout(timer); timer = setTimeout(refresh, 250); };
     map.on('moveend', later);
+    map.on('moveend', () => { drawRouteLayer(); drawMine(); });
 
     // ---- charts over the map
     function drawChartList() {
@@ -2776,16 +2791,19 @@
     });
 
     // ---- the user's own points
-    const mineLayer = async () => {
+    const drawMine = () => {
       layers.mine.clearLayers();
-      const pts = (await api('GET', '/api/nav/points')).points;
-      known.mine = pts;
-      pts.forEach((p) => {
-        const m = L.circleMarker([p.lat, p.lon], { radius: 5, color: '#7c3aed', weight: 2, fillColor: '#ddd6fe', fillOpacity: 1 });
+      const c = map.getCenter().lng;
+      known.mine.forEach((p) => {
+        const m = L.circleMarker([p.lat, nearLon(p.lon, c)], { radius: 5, color: '#7c3aed', weight: 2, fillColor: '#ddd6fe', fillOpacity: 1 });
         m.bindTooltip(`${p.ident}${p.name ? ' ' + p.name : ''}`);
         m.on('click', (ev) => pickPlace(ev, minePlace(p)));
         m.addTo(layers.mine);
       });
+    };
+    const mineLayer = async () => {
+      known.mine = (await api('GET', '/api/nav/points')).points;
+      drawMine();
     };
     mineLayer();
     map.on('contextmenu', async (ev) => {
