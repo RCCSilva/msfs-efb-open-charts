@@ -270,6 +270,15 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   (5%, fixes with no record in the streamed files), 1,271 only from the files; 73% of the airways are identical. The segment of an
   airway is stored from both ends and the simulator and the files do not always agree on which end says it (prev/next are swapped
   for some fixes), so `AirwaySegments` reads both and lists a segment once.
+  **Airports in the files** (probes `cmd/fsals`, `cmd/fsacat`, `cmd/fsaextract`): only the 14,768 airports with procedures are on
+  disk, as record 0x0113 of `nax` (section 0x13). The header has lon/lat/alt exactly as fixes do (alt in millimetres), the ICAO
+  word and a region word; sub-records are `id u16, size u32` and fill the record to its last byte (0x19 name key, 0x11a
+  frequency: type + Hz, 0xd4 transition altitude in feet, 0x111/0x112/0x42/0x48 runways, procedures... not decoded). The
+  `genericairports` package has no BGL: only `bglindex.bout` (a table of localisation keys) and `en-us.locpak` (a JSON with the
+  names, city and state of 24,376 airports). The other ~70,000 airports (77,461 of the 84,341 in the database have no
+  procedures, 37,000 of them with 5-character codes) are streamed and not on disk. Measured through SimConnect: 10.8 ms per
+  airport with procedures and 13.8 ms without, in calls of 40 (the load's airports step runs at ~380 per second: 84,346 in about
+  3.8 minutes). So decoding the airports of the files would save at most ~40 seconds of that step; it was not done.
 - **Viewer flow:** the top box of the in-sim viewer stands for the route ("SBSJ > SBGR"); the route button opens a box
   to paste a route in (resolved by `POST /api/route/resolve` on Resolve, Enter, paste, or when the EFB's text dialog ends).
   Three drawers keep the screen for the map: the **route** (left; tap the box): one container per place with a three-dot

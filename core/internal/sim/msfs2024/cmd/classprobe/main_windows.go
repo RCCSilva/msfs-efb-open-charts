@@ -33,9 +33,40 @@ func main() {
 	dll := flag.String("dll", "", "path to SimConnect.dll")
 	per := flag.Int("per", 120, "names to ask for each class")
 	check := flag.Int("check", 0, "instead, check the class-to-kind rule on this many names across all classes")
+	airports := flag.String("airports", "", "instead, time asking the simulator for these airports (a comma list, or @file)")
 	bench := flag.Int("bench", 0, "instead, time this many names asked as three kinds and by class")
 	flag.Parse()
 
+	if *airports != "" {
+		list := *airports
+		if strings.HasPrefix(list, "@") {
+			b, err := os.ReadFile(list[1:])
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			list = string(b)
+		}
+		icaos := strings.Split(strings.TrimSpace(list), ",")
+		const call = 40
+		start, ok, procs := time.Now(), 0, 0
+		for i := 0; i < len(icaos); i += call {
+			res, err := simconnect.FetchAirports(*dll, icaos[i:min(len(icaos), i+call)], 3*time.Minute)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			for _, r := range res {
+				if r.Airport != nil {
+					ok++
+					procs += len(r.Airport.Procedures)
+				}
+			}
+		}
+		el := time.Since(start)
+		fmt.Printf("%d airports (%d answered, %d procedures): %s, %.1f ms per airport\n", len(icaos), ok, procs, el.Round(time.Millisecond), float64(el.Microseconds())/1000/float64(len(icaos)))
+		return
+	}
 	paths := navseed.Locate()
 	if len(paths) == 0 {
 		fmt.Fprintln(os.Stderr, "no simulator packages found")
