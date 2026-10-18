@@ -7,7 +7,6 @@
 package navseed
 
 import (
-	"encoding/binary"
 	"errors"
 	"os"
 	"path/filepath"
@@ -20,6 +19,10 @@ import (
 
 // recordFix is the BGL record that holds a waypoint, VOR or NDB of the navigation packages.
 const recordFix = 0x0108
+
+// sectionBlobs is the section whose records the structure reader cannot tell apart: they hold runs
+// of fix records of the airways (see scanBlob).
+const sectionBlobs = 0x22
 
 // the packages of the simulator that carry navigation data
 var packages = []string{"fs24-fs-base-nav", "fs24-fs-base-genericairports"}
@@ -64,17 +67,16 @@ func unpack38(v uint64) string {
 	return strings.TrimSpace(string(out))
 }
 
-// Read reads the identifiers of the given archives. progress, when set, is told how many files
-// were read out of how many; a false return from it stops the reading.
-func Read(paths []string, progress func(done, total int) bool) ([]navdb.SeedIdent, error) {
+// walk calls fn with the data of every fix record of the archives. progress, when set, is told how
+// many files were read out of how many; a false return from it stops the reading.
+func walk(paths []string, progress func(done, total int) bool, fn func(b []byte)) error {
 	if len(paths) == 0 {
-		return nil, errors.New("no navigation package of the simulator was found on this computer")
+		return errors.New("no navigation package of the simulator was found on this computer")
 	}
-	seen := map[string]navdb.SeedIdent{}
 	for _, path := range paths {
 		a, err := fsarchive.Open(path)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		var files []fsarchive.Entry
 		for _, e := range a.Entries {
@@ -85,7 +87,7 @@ func Read(paths []string, progress func(done, total int) bool) ([]navdb.SeedIden
 		for i, e := range files {
 			if progress != nil && !progress(i, len(files)) {
 				a.Close()
-				return nil, errors.New("stopped")
+				return errors.New("stopped")
 			}
 			data, err := a.Read(e)
 			if err != nil {
@@ -98,32 +100,11 @@ func Read(paths []string, progress func(done, total int) bool) ([]navdb.SeedIden
 			for _, s := range f.Sections {
 				for _, sub := range s.Subsections {
 					for _, r := range sub.Records {
-						if r.ID != recordFix {
-							continue
-						}
-						b := f.Bytes(r)
-						if len(b) < 30 {
-							continue
-						}
-						le := binary.LittleEndian
-						lonU, latU := le.Uint32(b[2:6]), le.Uint32(b[6:10])
-						id1 := le.Uint64(b[14:22])
-						ident := unpack38(id1 >> 6)
-						if ident == "" {
-							continue
-						}
-						// a name can be several fixes (a VOR and a waypoint of the same name), each
-						// of its own class: Classes holds one bit per class found
-						bit := 1 << (id1 & 0x3f)
-						if s, ok := seen[ident]; ok {
-							s.Classes |= bit
-							seen[ident] = s
-							continue
-						}
-						seen[ident] = navdb.SeedIdent{
-							Ident: ident, Classes: bit,
-							Lat: 90 - float64(latU)*(180.0/0x20000000),
-							Lon: float64(lonU)*(360.0/0x30000000) - 180,
+						switch {
+						case r.ID == recordFix:
+							fn(f.Bytes(r))
+						case s.Type == sectionBlobs:
+							scanBlob(f.Bytes(r), fn)
 						}
 					}
 				}
@@ -131,9 +112,45 @@ func Read(paths []string, progress func(done, total int) bool) ([]navdb.SeedIden
 		}
 		a.Close()
 	}
+	return nil
+}
+
+// Read reads the identifiers of the given archives. progress, when set, is told how many files
+// were read out of how many; a false return from it stops the reading.
+func Read(paths []string, progress func(done, total int) bool) ([]navdb.SeedIdent, error) {
+	seen := map[string]navdb.SeedIdent{}
+	err := walk(paths, progress, func(b []byte) {
+		f, ok := parseFix(b)
+		if !ok {
+			return
+		}
+		// a name can be several fixes (a VOR and a waypoint of the same name), each of its own
+		// class: Classes holds one bit per class found
+		bit := 1 << f.Class
+		if s, ok := seen[f.Ident]; ok {
+			s.Classes |= bit
+			seen[f.Ident] = s
+			return
+		}
+		seen[f.Ident] = navdb.SeedIdent{Ident: f.Ident, Classes: bit, Lat: f.Lat, Lon: f.Lon}
+	})
+	if err != nil {
+		return nil, err
+	}
 	out := make([]navdb.SeedIdent, 0, len(seen))
 	for _, s := range seen {
 		out = append(out, s)
 	}
 	return out, nil
+}
+
+// ReadFixes reads every fix of the archives with its region and the airways through it.
+func ReadFixes(paths []string, progress func(done, total int) bool) ([]FileFix, error) {
+	var out []FileFix
+	err := walk(paths, progress, func(b []byte) {
+		if f, ok := parseFix(b); ok {
+			out = append(out, f)
+		}
+	})
+	return out, err
 }

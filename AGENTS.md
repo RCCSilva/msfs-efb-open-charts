@@ -241,8 +241,22 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   id); airports that have procedures are record 0x0113 of section 0x13 (14,768 records of about 3.7 KB, the airport's name
   and the names of its procedures' fixes are inside; the other airports are in `fs24-fs-base-genericairports`); the airways
   are inside the large blobs of section 0x22 (`atx`, about 128 KB each): they contain whole 0x0108 records and airway names
-  as a type byte (1 or 2) plus the characters ("UZ84"), but the container's structure is not decoded. Nothing of this is used
-  by the program except the names.
+  as a type byte (1 or 2) plus the characters ("UZ84"), but the container's structure is not decoded.
+  **Decoded since** (`sim/msfs2024/navseed/routes.go`; probes `cmd/fsaextract`, `cmd/airwaycheck`, `cmd/classprobe`): the
+  blobs of section 0x22 are runs of 0x0108 records that the structure reader cannot split (it sees records with ids like
+  0xc018 and 0x0000 and sizes of 64 KB multiples), so they are scanned for `08 01 <size>` headers and each candidate is
+  validated (`scanBlob`, `plausibleFix`). A fix record is: 2 bytes (flags), lon and lat (uint32, formulas in `parseFix`),
+  a float32, the identifier word at 14 (name in `>>6`, class in the low 6 bits), the **region word** at 22 (two base-38
+  characters, "SB", "K1"), then entries of 49 bytes: type (1 low, 2 high, 3..7 other), the airway name (8 bytes ASCII), the
+  previous fix and the next fix (each: identifier word, region word, float32 with the minimum altitude in meters; a zero
+  identifier means there is none, as at the end of an airway). Classes, measured against the running simulator: 2 VOR,
+  3 NDB, 5 and 6 waypoint. Checked on the 10,442 airways stored from SimConnect: 81,100 neighbour pairs are in both, 4,386
+  only in the stored data (almost all because a fix of the pair has no record in the files: the packages are *streamed*
+  and the local copy is partial; e.g. SCOTS is cited but has no record), 8,289 only in the files (airways not yet loaded).
+  Positions equal the SimConnect ones to every digit. Names: 155,137 distinct (the first reading found 97,559: the blobs
+  were skipped). A fix repeats many times across blobs: dedupe by (name, region, class). The stored region of an en-route
+  waypoint is "" while the files say "SB": reconcile before storing. The load asks SimConnect with `KindsToAsk` (one
+  request instead of three for names the files give as waypoint only). Files are not used to fill the database yet.
 - **Viewer flow:** the top box of the in-sim viewer stands for the route ("SBSJ > SBGR"); the route button opens a box
   to paste a route in (resolved by `POST /api/route/resolve` on Resolve, Enter, paste, or when the EFB's text dialog ends).
   Three drawers keep the screen for the map: the **route** (left; tap the box): one container per place with a three-dot
