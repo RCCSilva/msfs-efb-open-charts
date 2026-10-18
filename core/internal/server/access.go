@@ -336,7 +336,7 @@ func (s *Server) settingsView() map[string]any {
 		addrs = lanAddresses(port)
 	}
 	return map[string]any{
-		"port": cfg.Port, "lan": cfg.LAN, "defaultPort": settings.DefaultPort, "fixed": fixed, "detail": cfg.Detail, "basemap": cfg.Basemap,
+		"port": cfg.Port, "lan": cfg.LAN, "defaultPort": settings.DefaultPort, "fixed": fixed, "detail": cfg.Detail, "largeCharts": cfg.LargeCharts, "basemap": cfg.Basemap,
 		"aircraft": cfg.Aircraft, "aircraftColor": cfg.AircraftColor, "aircraftColors": settings.AircraftColors,
 		"listenAddr": s.listenAddr(), "localURL": "http://127.0.0.1:" + port + "/", "addresses": addrs,
 	}
@@ -354,6 +354,8 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		LAN     *bool   `json:"lan"`
 		Detail  *string `json:"detail"`
 		Basemap *string `json:"basemap"`
+		// how sharp the big-area charts are drawn
+		LargeCharts *string `json:"largeCharts"`
 		// the symbol of the aircraft
 		Aircraft      *string `json:"aircraft"`
 		AircraftColor *string `json:"aircraftColor"`
@@ -365,6 +367,23 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	s.net.mu.RLock()
 	fixed, dir := s.net.fixedAddr, s.net.dataDir
 	s.net.mu.RUnlock()
+	// how sharp big-area charts are drawn does not depend on the listen address
+	if body.LargeCharts != nil && body.Port == nil && body.LAN == nil && body.Detail == nil && body.Basemap == nil && body.Aircraft == nil && body.AircraftColor == nil {
+		if !settings.ValidLargeCharts(*body.LargeCharts) {
+			writeErr(w, 400, errors.New("largeCharts must be standard, balanced or sharp"))
+			return
+		}
+		s.net.mu.Lock()
+		s.net.cfg.LargeCharts = *body.LargeCharts
+		cfg := s.net.cfg
+		s.net.mu.Unlock()
+		if err := cfg.Save(dir); err != nil {
+			writeErr(w, 500, err)
+			return
+		}
+		writeJSON(w, 200, s.settingsView())
+		return
+	}
 	// the aircraft symbol does not depend on the listen address either
 	if (body.Aircraft != nil || body.AircraftColor != nil) && body.Port == nil && body.LAN == nil && body.Detail == nil && body.Basemap == nil {
 		if body.Aircraft != nil && !settings.ValidAircraft(*body.Aircraft) {

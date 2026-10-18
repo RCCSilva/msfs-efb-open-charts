@@ -37,7 +37,7 @@ func TestTheDefaultPortIsNotACommonDevelopmentPort(t *testing.T) {
 func TestSettingsSurviveASaveAndALoad(t *testing.T) {
 	// Arrange
 	dir := t.TempDir()
-	in := Settings{Port: 45000, LAN: true, Token: "abc123", Detail: DetailHigh, Basemap: BasemapDark, Aircraft: AircraftHelicopter, AircraftColor: "blue",
+	in := Settings{Port: 45000, LAN: true, Token: "abc123", Detail: DetailHigh, LargeCharts: LargeBalanced, Basemap: BasemapDark, Aircraft: AircraftHelicopter, AircraftColor: "blue",
 		NamePatterns: []string{"{icao}_{type}_{title}"}}
 
 	// Act
@@ -182,4 +182,43 @@ func TestAnUnknownAircraftSymbolFallsBackToTheDefaults(t *testing.T) {
 	// Assert
 	assert.Equal(t, AircraftPlane, s.Aircraft)
 	assert.Equal(t, "yellow", s.AircraftColor)
+}
+
+func TestLargeChartsDefaultToStandardAndMeanTheAutomaticResolution(t *testing.T) {
+	// Act
+	s := Load(t.TempDir())
+
+	// Assert
+	assert.Equal(t, LargeStandard, s.LargeCharts)
+	assert.Zero(t, DetailMPerPx(s.LargeCharts))
+}
+
+func TestEachLargeChartsLevelAsksForAGroundResolution(t *testing.T) {
+	assert.Equal(t, 70.0, DetailMPerPx(LargeBalanced))
+	assert.Equal(t, 35.0, DetailMPerPx(LargeSharp))
+	assert.Zero(t, DetailMPerPx("whatever"))
+}
+
+func TestAnUnknownLargeChartsLevelFallsBackToStandard(t *testing.T) {
+	// Arrange
+	dir := writeSettings(t, `{"port": 43210, "largeCharts": "ultra"}`)
+
+	// Act
+	s := Load(dir)
+
+	// Assert
+	assert.Equal(t, LargeStandard, s.LargeCharts)
+}
+
+func TestTheLargeChartsLevelSurvivesARestart(t *testing.T) {
+	// Arrange
+	dir := t.TempDir()
+	s := Default()
+	s.LargeCharts = LargeSharp
+
+	// Act
+	require.NoError(t, s.Save(dir))
+
+	// Assert
+	assert.Equal(t, LargeSharp, Load(dir).LargeCharts)
 }

@@ -74,3 +74,28 @@ func TestAircraftSymbolRefusesUnknownValuesAndKeepsTheCurrentOne(t *testing.T) {
 		})
 	}
 }
+
+func TestLargeChartsLevelCanBeChangedAndIsShownInTheSettings(t *testing.T) {
+	// Arrange
+	_, h := newAccessServer(t, false)
+
+	// Act
+	r := putSettings(h, `{"largeCharts":"sharp"}`)
+
+	// Assert
+	require.Equal(t, 200, r.Code, r.Body.String())
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(r.Body.Bytes(), &got))
+	assert.Equal(t, "sharp", got["largeCharts"])
+}
+
+func TestLargeChartsLevelRefusesAnUnknownValue(t *testing.T) {
+	// Arrange
+	_, h := newAccessServer(t, false)
+
+	// Act
+	r := putSettings(h, `{"largeCharts":"ultra"}`)
+
+	// Assert
+	assert.Equal(t, 400, r.Code)
+}

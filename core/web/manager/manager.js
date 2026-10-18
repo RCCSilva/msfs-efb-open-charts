@@ -66,6 +66,9 @@
       col_blue: 'Blue', col_cyan: 'Cyan', col_green: 'Green', col_black: 'Black',
       baseHelp: 'What is drawn under the chart in the viewer. Light is a quiet grey version of OpenStreetMap: lighter to load and easier on the chart. Reload the viewer to see the change.',
       detailTitle: 'Chart detail', detailNormal: 'Normal', detailHigh: 'High',
+      catGeneral: 'General', catSimulator: 'Simulator', catNetwork: 'Network', catDisplay: 'Map and aircraft', catCharts: 'Charts', catData: 'Navigation data', catDiag: 'Diagnostics',
+      largeTitle: 'Large charts (WAC, en-route)', largeStandard: 'Standard', largeBalanced: 'Sharp to zoom 11', largeSharp: 'Sharp to zoom 12',
+      largeHelp: 'Charts that cover a lot of ground (the WACs and the en-route charts) look blurred when the map is zoomed in. The sharper levels draw them in more detail, as many more tiles. Measured on a WAC: Standard is about 22 MB and 6 seconds to import; Sharp to zoom 12 is about 165 MB and 50 seconds. Sharp to zoom 11 is in between. It applies to charts imported from now on: import a chart again to redraw it.',
       detailHelp: 'Applies to charts imported from now on. High is sharper when you zoom in (phones, large screens) but makes bigger files and takes longer. To change charts already in the library, delete and add them again.',
       netTitle: 'Port and local network', portTitle: 'Server port', lanTitle: 'Local network (tablet and phone)', portLabel: 'Port', apply: 'Apply', portApplied: 'Port changed',
       portHelp: 'Default {n}. Change it if another program uses it. Afterwards update the EFB app and restart the simulator.',
@@ -171,6 +174,9 @@
       col_blue: 'Azul', col_cyan: 'Ciano', col_green: 'Verde', col_black: 'Preto',
       baseHelp: 'O que aparece embaixo da carta no visualizador. O Claro é uma versão discreta, em cinza, do OpenStreetMap: carrega mais leve e não disputa atenção com a carta. Recarregue o visualizador para ver a mudança.',
       detailTitle: 'Detalhe das cartas', detailNormal: 'Normal', detailHigh: 'Alto',
+      catGeneral: 'Geral', catSimulator: 'Simulador', catNetwork: 'Rede', catDisplay: 'Mapa e aeronave', catCharts: 'Cartas', catData: 'Dados de navegação', catDiag: 'Diagnóstico',
+      largeTitle: 'Cartas grandes (WAC, em rota)', largeStandard: 'Padrão', largeBalanced: 'Nítido até o zoom 11', largeSharp: 'Nítido até o zoom 12',
+      largeHelp: 'As cartas que cobrem muito terreno (as WAC e as de rota) ficam borradas quando o mapa é aproximado. Os níveis mais nítidos as desenham com mais detalhe, em muito mais tiles. Medido numa WAC: o Padrão tem uns 22 MB e leva 6 segundos para importar; Nítido até o zoom 12 tem uns 165 MB e leva 50 segundos. O zoom 11 fica no meio. Vale para as cartas importadas daqui para a frente: importe a carta de novo para redesenhá-la.',
       detailHelp: 'Vale para as cartas importadas daqui em diante. Alto fica mais nítido ao dar zoom (celular, telas grandes), mas gera arquivos maiores e demora mais. Para mudar as cartas que já estão na biblioteca, exclua e adicione de novo.',
       netTitle: 'Porta e rede local', portTitle: 'Porta do servidor', lanTitle: 'Rede local (tablet e celular)', portLabel: 'Porta', apply: 'Aplicar', portApplied: 'Porta alterada',
       portHelp: 'Padrão {n}. Troque se outro programa usar. Depois, atualize o app do EFB e reinicie o simulador.',
@@ -1220,11 +1226,11 @@
     else if (st.sim.receiving) simText = ok(t('stSimRecv'));
     else if (st.sim.connected) simText = warn(t('stSimConn'));
 
-    const cards = [h('div', { class: 'card' },
+    const groups = { general: [h('div', { class: 'card' },
       h('h3', null, t('setupTitle')),
       row(t('stServer'), ok(t('stRunning') + ' ' + st.serverURL)),
       row(t('stSim'), simText),
-      row(t('stData'), h('span', { class: 'muted' }, st.dataDir)))];
+      row(t('stData'), h('span', { class: 'muted' }, st.dataDir)))], simulator: [], network: [], display: [], charts: [], data: [], diag: [] };
 
   // ---- Local network and port. The server validates and applies; this only collects and shows.
   // Returns two sections: the server port, and the local network (with its QR codes).
@@ -1369,6 +1375,21 @@
       h('div', { class: 'muted', style: 'margin-top:8px' }, t('aircraftHelp')));
   }
 
+  async function largeChartsCard() {
+    let net;
+    try { net = await api('GET', '/api/settings'); } catch (e) { return null; }
+    if (!net.largeCharts) return null; // an older program: nothing to choose
+    const pick = (value, label) => h('button', {
+      class: 'btn sm' + (net.largeCharts === value ? ' primary' : ''),
+      onclick: async () => {
+        try { await api('PUT', '/api/settings', { largeCharts: value }); toast(t('done')); } catch (e) { toast(e.message); }
+        renderSetup();
+      } }, label);
+    return h('div', { class: 'card' }, h('h3', null, t('largeTitle')),
+      h('div', { class: 'row' }, pick('standard', t('largeStandard')), pick('balanced', t('largeBalanced')), pick('sharp', t('largeSharp'))),
+      h('div', { class: 'muted', style: 'margin-top:8px' }, t('largeHelp')));
+  }
+
   async function detailCard() {
     let net;
     try { net = await api('GET', '/api/settings'); } catch (e) { return null; }
@@ -1383,15 +1404,17 @@
       h('div', { class: 'muted', style: 'margin-top:8px' }, t('detailHelp')));
   }
 
-    cards.push(...await networkCards(st));
+    groups.network.push(...await networkCards(st));
     const bCard = await basemapCard();
-    if (bCard) cards.push(bCard);
+    if (bCard) groups.display.push(bCard);
     const aCard = await aircraftCard();
-    if (aCard) cards.push(aCard);
+    if (aCard) groups.display.push(aCard);
     const gCard = await diagCard();
-    if (gCard) cards.push(gCard);
+    if (gCard) groups.diag.push(gCard);
     const dCard = await detailCard();
-    if (dCard) cards.push(dCard);
+    if (dCard) groups.charts.push(dCard);
+    const lCard = await largeChartsCard();
+    if (lCard) groups.charts.push(lCard);
 
     async function act(fn, done) {
       try { await fn(); toast(done || t('done')); } catch (e) { toast(e.message); }
@@ -1408,7 +1431,7 @@
         h('button', { class: 'btn sm primary', onclick: () => act(() => api('POST', '/api/setup/efb', { community: inst.community }), t('stRestart')) },
           efb.installed ? t('btnUpdate') : t('btnInstall')), ' ',
         efb.installed ? h('button', { class: 'btn sm danger', onclick: () => act(() => api('DELETE', '/api/setup/efb?community=' + encodeURIComponent(inst.community))) }, t('btnRemove')) : null);
-      cards.push(h('div', { class: 'card' },
+      groups.simulator.push(h('div', { class: 'card' },
         h('h3', null, t('stInstall') + ' \u2014 ' + (inst.edition === 'store' ? t('edStore') : t('edSteam'))),
         h('div', { class: 'muted', style: 'margin-bottom:6px' }, inst.community),
         h('div', { class: 'muted', style: 'margin-bottom:6px' }, t('version') + ': ' + ((st.program && st.program.display) || '?') + '  ·  EFB: ' + (efb.build || efb.version || '-')),
@@ -1421,12 +1444,22 @@
 
     if (!st.installs.length && simInfo.capabilities.inSimApp) {
       const path = h('input', { type: 'text', placeholder: 'C:\\...\\Packages\\Community' });
-      cards.push(h('div', { class: 'card' }, h('h3', null, t('stInstall')), h('div', { class: 'muted' }, t('stNoInstall')),
+      groups.simulator.push(h('div', { class: 'card' }, h('h3', null, t('stInstall')), h('div', { class: 'muted' }, t('stNoInstall')),
         h('div', { class: 'row', style: 'margin-top:8px' }, h('div', { class: 'grow' }, path),
           h('button', { class: 'btn primary', onclick: () => act(() => api('POST', '/api/setup/efb', { community: path.value }), t('stRestart')) }, t('btnInstall')))));
     }
-    cards.push(...await databaseCards());
-    view.replaceChildren(h('h2', null, t('setup')), ...cards);
+    groups.data.push(...await databaseCards());
+
+    // the categories, on the left; the chosen one is in the address (#setup/network), so a reload
+    // and a link keep it
+    const cats = [['general', 'catGeneral'], ['simulator', 'catSimulator'], ['network', 'catNetwork'], ['display', 'catDisplay'],
+      ['charts', 'catCharts'], ['data', 'catData'], ['diag', 'catDiag']].filter(([k]) => groups[k].length);
+    const want = parseRoute().arg;
+    const cur = (cats.find(([k]) => k === want) || cats[0])[0];
+    const side = h('div', { class: 'setupnav' }, ...cats.map(([k, label]) =>
+      pageLink('#setup/' + k, 'setupnavitem' + (k === cur ? ' on' : ''), t(label))));
+    view.replaceChildren(h('h2', null, t('setup')),
+      h('div', { class: 'setuplayout' }, side, h('div', { class: 'setupbody' }, ...groups[cur])));
   }
 
 

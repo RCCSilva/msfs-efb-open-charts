@@ -79,6 +79,8 @@ func (s *Server) importPDF(data []byte, filename string, f importForm) (*store.C
 		ViewOnly: true,
 		// Detail level chosen in the manager (settings), for charts imported from now on.
 		LongEdgePx: settings.LongEdgePx(s.settingsSnapshot().Detail),
+		// How sharp the charts that cover a lot of ground are drawn (settings).
+		DetailMPerPx: settings.DetailMPerPx(s.settingsSnapshot().LargeCharts),
 	}
 	opt.ID = s.lib.UniqueID(store.Slug(source + " " + stem))
 

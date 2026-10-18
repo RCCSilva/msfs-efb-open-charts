@@ -27,6 +27,32 @@ const (
 	DetailHigh   = "high"   // 4800 px: sharper when zoomed in, bigger files, slower
 )
 
+// How sharp the charts that cover a lot of ground (the WACs, the en-route charts) are drawn. A
+// chart of this kind has so many metres in a pixel that it is blurred when the map is zoomed in;
+// drawing it sharper makes a pyramid of many more tiles (see internal/importer/detail.go).
+const (
+	LargeStandard = "standard" // the automatic resolution: light and fast (the default)
+	LargeBalanced = "balanced" // sharp to map zoom 11: 70 metres per pixel at the finest level
+	LargeSharp    = "sharp"    // sharp to map zoom 12: 35 metres per pixel at the finest level
+)
+
+// ValidLargeCharts reports whether s is one of the levels above.
+func ValidLargeCharts(s string) bool {
+	return s == LargeStandard || s == LargeBalanced || s == LargeSharp
+}
+
+// DetailMPerPx is the ground resolution asked for at the finest level of a large chart, in metres
+// per pixel, for a level (0: leave the automatic resolution).
+func DetailMPerPx(level string) float64 {
+	switch level {
+	case LargeBalanced:
+		return 70
+	case LargeSharp:
+		return 35
+	}
+	return 0
+}
+
 // Base maps drawn under the charts (see internal/server/tilestyle.go).
 const (
 	BasemapStandard = "standard" // the default: the regular OpenStreetMap tiles
@@ -90,6 +116,8 @@ type Settings struct {
 	Token string `json:"token"` // the key those devices must present (in the QR code link)
 	// Detail is the level of detail of charts imported from now on (DetailNormal or DetailHigh).
 	Detail string `json:"detail"`
+	// LargeCharts is how sharp the big-area charts are drawn, for charts imported from now on.
+	LargeCharts string `json:"largeCharts"`
 	// Basemap is what the viewer draws under the chart (BasemapStandard by default).
 	Basemap string `json:"basemap"`
 	// Aircraft and AircraftColor are the symbol shown for the aircraft position (a yellow plane by default).
@@ -102,7 +130,7 @@ type Settings struct {
 
 // Default returns the settings of a fresh installation (a new key is generated).
 func Default() Settings {
-	return Settings{Port: DefaultPort, LAN: false, Token: NewToken(), Detail: DetailNormal, Basemap: BasemapStandard,
+	return Settings{Port: DefaultPort, LAN: false, Token: NewToken(), Detail: DetailNormal, LargeCharts: LargeStandard, Basemap: BasemapStandard,
 		Aircraft: AircraftPlane, AircraftColor: DefaultAircraftColor}
 }
 
@@ -136,6 +164,9 @@ func Load(dir string) Settings {
 			s.LAN = f.LAN
 			if f.Detail == DetailHigh {
 				s.Detail = DetailHigh
+			}
+			if ValidLargeCharts(f.LargeCharts) {
+				s.LargeCharts = f.LargeCharts
 			}
 			if ValidBasemap(f.Basemap) {
 				s.Basemap = f.Basemap

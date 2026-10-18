@@ -239,3 +239,15 @@ body.fullmap .planpanel { position: static; max-height: none; height: 100%; over
   border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 15px; cursor: pointer; user-select: none; }
 .layerrow:hover { border-color: #94a3b8; }
 .layerrow input { width: 20px; height: 20px; margin: 0; flex: 0 0 auto; cursor: pointer; }
+
+/* Setup: the categories on the left, the cards of the chosen one on the right */
+.setuplayout { display: flex; gap: 20px; align-items: flex-start; }
+.setupnav { flex: 0 0 190px; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 70px; }
+.setupnavitem, .setupnavitem:hover { padding: 8px 12px; border-radius: 8px; color: var(--muted); text-decoration: none; border: 1px solid transparent; }
+.setupnavitem:hover { color: var(--ink); background: var(--card); }
+.setupnavitem.on { background: var(--card); border-color: var(--line); color: var(--ink); font-weight: 600; }
+.setupbody { flex: 1; min-width: 0; }
+@media (max-width: 760px) {
+  .setuplayout { flex-direction: column; gap: 10px; }
+  .setupnav { flex: none; flex-direction: row; flex-wrap: wrap; position: static; width: 100%; }
+}

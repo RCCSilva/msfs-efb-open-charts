@@ -90,6 +90,10 @@ type Options struct {
 	// aircraft position (an airport diagram, for example). Without it such a PDF is an error.
 	ViewOnly bool
 	Package  string // archive the PDF came from (provenance), if any
+	// DetailMPerPx, when above 0, makes a chart whose ground resolution would be coarser than this
+	// many metres per pixel at its finest level be drawn sharper, as a pyramid of tiles drawn one
+	// by one from the PDF (see detail.go). 0 leaves the automatic resolution.
+	DetailMPerPx float64
 }
 
 // Meta is chart.json. Field names match what the existing viewer pages read.
@@ -226,41 +230,67 @@ func (r *Renderer) Import(pdf []byte, opt Options) (*Result, error) {
 	}
 	defer r.instance.FPDF_CloseDocument(&requests.FPDF_CloseDocument{Document: doc.Document})
 
-	rendered, err := r.instance.RenderPageInDPI(&requests.RenderPageInDPI{
-		DPI:  dpi,
-		Page: requests.Page{ByIndex: &requests.PageByIndex{Document: doc.Document, Index: 0}},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("render: %w", err)
-	}
-	defer rendered.Cleanup()
-
-	W, H := rendered.Result.Width, rendered.Result.Height
-	// Effective scale: pixels actually produced per PDF point, per axis (of the full picture).
-	sx, sy := float64(W)/boxW, float64(H)/boxH
-
-	// A page too big for the overview size (a big visual chart is drawn at 150 dpi at least) is also
-	// cut into a pyramid of tiles (see pyramid.go); chart.png is then the overview, exactly one
-	// 2^levels-th of the picture, and every coordinate below is in the overview's pixels.
 	long := opt.LongEdgePx
 	if long <= 0 {
 		long = 3200
 	}
-	var overview image.Image = rendered.Result.Image
+	// A chart whose pixels would cover more ground than asked for is drawn finer, tile by tile.
+	var detailScale0 float64
+	if !unref && opt.DetailMPerPx > 0 {
+		bw, bh := vp.BBox[2]-vp.BBox[0], vp.BBox[3]-vp.BBox[1]
+		t := view.compose(aff, [4]float64{vp.BBox[0], vp.BBox[1], bw, bh}, 1, 1) // pixels per point 1: metres per point
+		if mPerPt := 1 / math.Hypot(t.A, t.B); mPerPt > 0 {
+			want := detailScale(boxW, boxH, mPerPt/opt.DetailMPerPx)
+			if want > float64(dpi)/72*1.25 { // only ever finer than the automatic resolution
+				detailScale0 = want
+			}
+		}
+	}
+
+	var overview image.Image
 	var files map[string][]byte
 	var tiles *Tiles
-	if levels := pyramidLevels(W, H, long); levels > 0 {
-		ov, tf, info, err := buildPyramid(rendered.Result.Image, levels)
+	var sx, sy float64
+	if detailScale0 > 0 {
+		ov, tf, info, err := r.renderDetail(doc.Document, boxW, boxH, detailScale0, long)
 		if err != nil {
 			return nil, err
 		}
 		overview, files, tiles = ov, tf, &info
-		f := 1 / float64(int(1)<<levels)
-		sx, sy = sx*f, sy*f
-		dpi = int(math.Round(float64(dpi) * f))
+		sx = detailScale0 / float64(int(1)<<info.MaxZoom)
+		sy = sx
+		dpi = int(math.Round(sx * 72))
+	} else {
+		rendered, err := r.instance.RenderPageInDPI(&requests.RenderPageInDPI{
+			DPI:  dpi,
+			Page: requests.Page{ByIndex: &requests.PageByIndex{Document: doc.Document, Index: 0}},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("render: %w", err)
+		}
+		defer rendered.Cleanup()
+
+		W, H := rendered.Result.Width, rendered.Result.Height
+		// Effective scale: pixels actually produced per PDF point, per axis (of the full picture).
+		sx, sy = float64(W)/boxW, float64(H)/boxH
+
+		// A page too big for the overview size (a big visual chart is drawn at 150 dpi at least) is also
+		// cut into a pyramid of tiles (see pyramid.go); chart.png is then the overview, exactly one
+		// 2^levels-th of the picture, and every coordinate below is in the overview's pixels.
+		overview = rendered.Result.Image
+		if levels := pyramidLevels(W, H, long); levels > 0 {
+			ov, tf, info, err := buildPyramid(rendered.Result.Image, levels)
+			if err != nil {
+				return nil, err
+			}
+			overview, files, tiles = ov, tf, &info
+			f := 1 / float64(int(1)<<levels)
+			sx, sy = sx*f, sy*f
+			dpi = int(math.Round(float64(dpi) * f))
+		}
 	}
 	ob := overview.Bounds()
-	W, H = ob.Dx(), ob.Dy()
+	W, H := ob.Dx(), ob.Dy()
 
 	var pngBuf bytes.Buffer
 	enc := png.Encoder{CompressionLevel: png.DefaultCompression} // BestCompression doubled the import time for ~2% smaller files
