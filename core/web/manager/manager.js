@@ -4,7 +4,7 @@ import { api, toast } from './core/api.js';
 import { lang, setLang, t, tx, fill, fmtDuration } from './core/i18n.js';
 import { state, view, app, go, pageLink } from './core/app.js';
 import { renderGuide } from './pages/guide.js';
-import { chartFoxPanel } from './pages/chartfox.js';
+import { chartFoxPanel, cfLegal } from './pages/chartfox.js';
 import { confirmModal } from './core/modal.js';
 
 (function () {
@@ -496,7 +496,8 @@ import { confirmModal } from './core/modal.js';
     const linksShown = !!s.homepage || rows.length > 0;
 
     // 3. what the user downloaded goes here, PDFs and packages alike
-    view.replaceChildren(head, ...(s.id === 'chartfox' && state.local ? [chartFoxPanel()] : []),
+    view.replaceChildren(head, ...(s.id === 'chartfox' ? [h('div', { class: 'card' }, cfLegal())] : []),
+      ...(s.id === 'chartfox' && state.local ? [chartFoxPanel()] : []),
       ...(s.id === 'manual' ? [await patternCard()] : []),
       ...(caps.includes('places') ? [placesCard(s)] : []), ...(linksShown ? [links] : []),
       ...(s.id === 'faa-us' ? [await faaMetadataCard()] : []),
@@ -969,7 +970,10 @@ import { confirmModal } from './core/modal.js';
       h('h3', null, t('setupTitle')),
       row(t('stServer'), ok(t('stRunning') + ' ' + st.serverURL)),
       row(t('stSim'), simText),
-      row(t('stData'), h('span', { class: 'muted' }, st.dataDir)))], simulator: [], network: [], display: [], charts: [], data: [], diag: [] };
+      row(t('stData'), h('span', { class: 'muted' }, st.dataDir),
+        h('button', { class: 'btn sm', onclick: async () => {
+          try { await api('POST', '/api/setup/open-data-folder'); } catch (e) { toast(e.message); }
+        } }, t('stOpenFolder'))))], simulator: [], network: [], display: [], charts: [], data: [], diag: [] };
 
   // ---- Local network and port. The server validates and applies; this only collects and shows.
   // Returns two sections: the server port, and the local network (with its QR codes).
@@ -1149,7 +1153,7 @@ import { confirmModal } from './core/modal.js';
         try { await api('POST', '/api/chartfox/connect'); } catch (e) { toast(e.message); }
         renderSetup();
       } }, t('cfConnect')));
-    return h('div', { class: 'card' }, h('h3', null, t('cfTitle')), body,
+    return h('div', { class: 'card' }, h('h3', null, t('cfTitle')), cfLegal(), body,
       st.error ? h('div', { class: 'muted', style: 'margin-top:8px' }, st.error) : null,
       h('div', { class: 'muted', style: 'margin-top:8px' }, t('cfHelp')),
       h('div', { class: 'muted', style: 'margin-top:8px' }, credit));

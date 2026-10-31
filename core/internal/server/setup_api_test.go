@@ -120,3 +120,33 @@ func TestInstallNeedsAnAppInstaller(t *testing.T) {
 	assert.Equal(t, 400, w.Code)
 	assert.Contains(t, w.Body.String(), "no app to install")
 }
+
+func TestOpenDataFolderShowsTheLibraryFolderAndNothingElse(t *testing.T) {
+	// Arrange
+	s, _ := libServer(t)
+	var opened []string
+	s.UseOpener(func(path string) { opened = append(opened, path) })
+
+	// Act
+	w := post(s.handleOpenDataFolder, `{"path":"C:\\Windows"}`)
+
+	// Assert
+	require.Equal(t, 204, w.Code, w.Body.String())
+	assert.Equal(t, []string{s.lib.Dir()}, opened)
+}
+
+func TestOpenDataFolderWithoutAnOpenerIsNotAvailable(t *testing.T) {
+	// Arrange
+	s, _ := libServer(t)
+
+	// Act
+	w := post(s.handleOpenDataFolder, ``)
+
+	// Assert
+	assert.Equal(t, 501, w.Code)
+}
+
+func TestOpenDataFolderIsOnlyForTheComputerItself(t *testing.T) {
+	// Arrange / Act / Assert
+	assert.True(t, localOnlyPath("/api/setup/open-data-folder"))
+}
