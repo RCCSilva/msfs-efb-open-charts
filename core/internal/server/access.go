@@ -169,6 +169,8 @@ func localOnlyPath(p string) bool {
 		return true
 	case strings.HasPrefix(p, "/api/sources/") && strings.Contains(p, "/package"):
 		return true
+	case strings.HasPrefix(p, "/api/sources/") && strings.HasSuffix(p, "/favorite"):
+		return true // the tabs of the manager are the computer's own preference
 	}
 	return false
 }

@@ -238,3 +238,25 @@ func TestTheLargeChartsLevelSurvivesARestart(t *testing.T) {
 	// Assert
 	assert.Equal(t, LargeSharp, Load(dir).LargeCharts)
 }
+
+func TestFavoriteSourcesSurviveASaveAndALoad(t *testing.T) {
+	// Arrange
+	dir := t.TempDir()
+	s := Default()
+	s.FavoriteSources = []string{"chartfox", "decea-br"}
+
+	// Act
+	require.NoError(t, s.Save(dir))
+	got := Load(dir)
+
+	// Assert
+	assert.Equal(t, []string{"chartfox", "decea-br"}, got.FavoriteSources)
+}
+
+func TestNoFavoriteSourcesByDefault(t *testing.T) {
+	// Act
+	s := Load(t.TempDir())
+
+	// Assert
+	assert.Empty(t, s.FavoriteSources)
+}

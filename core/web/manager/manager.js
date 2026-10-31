@@ -72,7 +72,7 @@
       cfTitle: 'ChartFox', cfConnect: 'Connect ChartFox', cfDisconnect: 'Disconnect', cfWaiting: 'Waiting for you at the ChartFox page that opened in your browser...', cfUnavailable: 'This version of Open Charts cannot connect to ChartFox.', cfAs: 'Connected as',
       cfHelp: 'ChartFox is a chart service with an official API. Connect your own ChartFox account and Open Charts can look charts up by airport and bring the ones you pick, only when you ask. Your login is kept on this computer, and disconnecting forgets it. ChartFox charts are for flight simulation only, never for real navigation.',
       cfCredit: 'Chart data powered by ChartFox',
-      chartfox: 'ChartFox', cfIcao: 'Airport code (ICAO)', cfLookup: 'Look up', cfHint: 'Type an airport code to see its charts on ChartFox. Nothing is downloaded until you pick charts and import them.', cfLoading: 'Asking ChartFox...',
+      favorite: 'Favorite', favHelp: 'A favourite source gets a tab of its own', cfLookupTitle: 'Look up charts', cfOpenLookup: 'Open the lookup', cfIcao: 'Airport code (ICAO)', cfLookup: 'Look up', cfHint: 'Type an airport code to see its charts on ChartFox. Nothing is downloaded until you pick charts and import them.', cfLoading: 'Asking ChartFox...',
       cfNeedConnect: 'Connect your ChartFox account first.', cfGoSetup: 'Go to Setup', cfImport: 'Import selected', cfImporting: 'Importing...', cfImported: 'imported', cfAlready: 'already in the library', cfInLibrary: 'In library',
       cfSimOnly: 'for flight simulation only, never for real navigation', cfSelectAll: 'Select all', cfNone: 'ChartFox has no charts for this airport.',
       cfTypeIAC: 'Approach', cfTypeSID: 'Departures', cfTypeSTAR: 'Arrivals', cfTypeADC: 'Aerodrome', cfTypeOther: 'Other',
@@ -188,7 +188,7 @@
       cfTitle: 'ChartFox', cfConnect: 'Conectar o ChartFox', cfDisconnect: 'Desconectar', cfWaiting: 'Esperando você na página do ChartFox que abriu no navegador...', cfUnavailable: 'Esta versão do Open Charts não consegue se conectar ao ChartFox.', cfAs: 'Conectado como',
       cfHelp: 'O ChartFox é um serviço de cartas com API oficial. Conecte a sua própria conta do ChartFox e o Open Charts poderá procurar cartas por aeroporto e trazer as que você escolher, só quando você pedir. O seu login fica guardado neste computador, e desconectar apaga ele. As cartas do ChartFox são só para simulação de voo, nunca para navegação real.',
       cfCredit: 'Chart data powered by ChartFox',
-      chartfox: 'ChartFox', cfIcao: 'Código do aeroporto (ICAO)', cfLookup: 'Procurar', cfHint: 'Digite o código de um aeroporto para ver as cartas dele no ChartFox. Nada é baixado até você marcar cartas e importar.', cfLoading: 'Perguntando ao ChartFox...',
+      favorite: 'Favoritar', favHelp: 'Uma fonte favorita ganha uma aba própria', cfLookupTitle: 'Procurar cartas', cfOpenLookup: 'Abrir a busca', cfIcao: 'Código do aeroporto (ICAO)', cfLookup: 'Procurar', cfHint: 'Digite o código de um aeroporto para ver as cartas dele no ChartFox. Nada é baixado até você marcar cartas e importar.', cfLoading: 'Perguntando ao ChartFox...',
       cfNeedConnect: 'Conecte primeiro a sua conta do ChartFox.', cfGoSetup: 'Ir para o Setup', cfImport: 'Importar marcadas', cfImporting: 'Importando...', cfImported: 'importadas', cfAlready: 'já estavam na biblioteca', cfInLibrary: 'Na biblioteca',
       cfSimOnly: 'apenas para simulação de voo, nunca para navegação real', cfSelectAll: 'Marcar todas', cfNone: 'O ChartFox não tem cartas para este aeroporto.',
       cfTypeIAC: 'Aproximação', cfTypeSID: 'Saídas', cfTypeSTAR: 'Chegadas', cfTypeADC: 'Aeródromo', cfTypeOther: 'Outras',
@@ -346,13 +346,20 @@
     try { dbst = await api('GET', '/api/db/status'); } catch (e) { dbst = null; }   // only the computer itself may ask
     const dbBad = !!dbst && dbst.ok === false;
     document.body.classList.toggle('fullmap', r.name === 'map' && !dbBad);
-    const tab = r.name === 'source' ? 'sources' : (r.name === 'chart' ? 'library' : r.name);
     document.getElementById('brand').replaceChildren(pageLink('#library', '', 'Open Charts'));
     if (state.local === undefined) {
       try { state.local = (await api('GET', '/api/health')).local !== false; } catch (e) { state.local = true; }
     }
-    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'chartfox', 'groups', 'routes', 'map', 'nav', 'guide', 'setup', 'about'].filter((id) => (id !== 'setup' && id !== 'chartfox') || state.local).map((id) =>
-      pageLink('#' + id, id === tab ? 'on' : '', t(id === 'map' ? 'mapTab' : id))).concat([
+    // the favourite sources, each with a tab of its own (the ChartFox lookup only works on the computer itself)
+    let favs = [];
+    try { favs = (await api('GET', '/api/sources')).filter((x) => x.favorite && (x.id !== 'chartfox' || state.local)); } catch (e) { favs = []; }
+    const favTab = (id) => (favs.some((f) => f.id === id) ? 'fav:' + id : 'sources');
+    const tab = r.name === 'source' ? favTab(r.arg) : r.name === 'chartfox' ? favTab('chartfox') : (r.name === 'chart' ? 'library' : r.name);
+    document.getElementById('tabs').replaceChildren(...['library', 'sources', ...favs.map((f) => 'fav:' + f.id), 'groups', 'routes', 'map', 'nav', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) => {
+      const f = id.startsWith('fav:') ? favs.find((x) => 'fav:' + x.id === id) : null;
+      if (f) return pageLink(SOURCE_TABS[f.id] || '#source/' + encodeURIComponent(f.id), id === tab ? 'on' : '', tx(f.name));
+      return pageLink('#' + id, id === tab ? 'on' : '', t(id === 'map' ? 'mapTab' : id));
+    }).concat([
         // The EFB screen (same page the simulator shows) opens in its own tab, outside the simulator too.
         h('a', { class: 'navlink', href: '/viewer.html?lang=' + lang, target: '_blank', rel: 'noopener', title: t('efbTitle') }, t('efb') + ' \u2197')]));
     try {
@@ -688,6 +695,19 @@
     await load();
   }
 
+  // The page a favourite source opens, when it is not the source's own page.
+  const SOURCE_TABS = { chartfox: '#chartfox' };
+
+  // The star that makes a source a favourite (a tab of its own); only the computer itself may change it.
+  function favButton(s) {
+    if (!state.local) return null;
+    return h('button', { class: 'btn sm' + (s.favorite ? ' primary' : ''), title: t('favHelp'), onclick: async (e) => {
+      e.stopPropagation();
+      try { await api(s.favorite ? 'DELETE' : 'PUT', '/api/sources/' + encodeURIComponent(s.id) + '/favorite'); } catch (err) { toast(err.message); }
+      render();
+    } }, (s.favorite ? '★ ' : '☆ ') + t('favorite'));
+  }
+
   // ---- ChartFox: look charts up by airport and bring the ones picked
   const CF_TYPES = [['IAC', 'cfTypeIAC'], ['SID', 'cfTypeSID'], ['STAR', 'cfTypeSTAR'], ['ADC', 'cfTypeADC'], ['', 'cfTypeOther']];
   const CF_BATCH = 20; // what one import request may carry
@@ -811,7 +831,7 @@
               x.builtin ? h('span', { class: 'badge' }, t('builtin')) : null,
               (x.capabilities || []).map((c) => h('span', { class: 'badge' }, t(capName[c] || c))),
               !x.policy.automatedFetch && !x.builtin ? h('span', { class: 'badge warn' }, t('noAuto')) : null),
-            h('td', { class: 'actions' }, h('a', { class: 'btn sm', href: '#source/' + encodeURIComponent(x.id), onclick: (e) => e.stopPropagation() }, t('srcOpen')))))))));
+            h('td', { class: 'actions' }, favButton(x), ' ', h('a', { class: 'btn sm', href: '#source/' + encodeURIComponent(x.id), onclick: (e) => e.stopPropagation() }, t('srcOpen')))))))));
     };
     q.addEventListener('input', () => { sourcesView.q = q.value; draw(); });
     sel.addEventListener('change', () => { sourcesView.country = sel.value; draw(); });
@@ -833,6 +853,7 @@
       h('a', { class: 'back', href: '#sources' }, t('back')),
       h('div', { class: 'row' },
         h('h2', { class: 'grow', style: 'margin:0' }, tx(s.name)),
+        favButton(s),
         s.builtin ? h('span', { class: 'badge' }, t('builtin')) : null,
         !s.policy.automatedFetch && !s.builtin ? h('span', { class: 'badge warn' }, t('noAuto')) : null,
         s.policy.url ? h('a', { href: s.policy.url, target: '_blank', rel: 'noreferrer' }, t('policyLink')) : null),
@@ -865,7 +886,8 @@
     const linksShown = !!s.homepage || rows.length > 0;
 
     // 3. what the user downloaded goes here, PDFs and packages alike
-    view.replaceChildren(head, ...(s.id === 'manual' ? [await patternCard()] : []),
+    view.replaceChildren(head, ...(s.id === 'chartfox' && state.local ? [h('div', { class: 'card' }, h('h3', null, t('cfLookupTitle')), h('p', { class: 'muted' }, t('cfHint')), pageLink('#chartfox', 'btn primary', t('cfOpenLookup')))] : []),
+      ...(s.id === 'manual' ? [await patternCard()] : []),
       ...(caps.includes('places') ? [placesCard(s)] : []), ...(linksShown ? [links] : []),
       ...(s.id === 'faa-us' ? [await faaMetadataCard()] : []), filesPanel(s));
   }

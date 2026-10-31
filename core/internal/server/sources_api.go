@@ -17,7 +17,9 @@ import (
 )
 
 func (s *Server) registerSourceRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/sources", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, sources.All()) })
+	mux.HandleFunc("GET /api/sources", s.handleSources)
+	mux.HandleFunc("PUT /api/sources/{id}/favorite", s.handleFavoriteSource)
+	mux.HandleFunc("DELETE /api/sources/{id}/favorite", s.handleFavoriteSource)
 	mux.HandleFunc("GET /api/sources/{id}/catalog", s.handleCatalog)
 	mux.HandleFunc("GET /api/sources/{id}/locate", s.handleLocate)
 	mux.HandleFunc("GET /api/sources/{id}/places", s.handlePlaces)
