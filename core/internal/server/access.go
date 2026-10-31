@@ -165,7 +165,7 @@ func isLocalName(h string) bool { return h == "127.0.0.1" || h == "localhost" ||
 // the computer (EFB install, EXE.xml, settings) or read arbitrary paths of it (package reader).
 func localOnlyPath(p string) bool {
 	switch {
-	case strings.HasPrefix(p, "/api/setup"), strings.HasPrefix(p, "/api/settings"), strings.HasPrefix(p, "/api/lan/"), strings.HasPrefix(p, "/api/db/"), strings.HasPrefix(p, "/api/chartfox"):
+	case strings.HasPrefix(p, "/api/setup"), strings.HasPrefix(p, "/api/settings"), strings.HasPrefix(p, "/api/lan/"), strings.HasPrefix(p, "/api/db/"), strings.HasPrefix(p, "/api/chartfox"), p == "/api/library/delete-all":
 		return true
 	case strings.HasPrefix(p, "/api/sources/") && strings.Contains(p, "/package"):
 		return true

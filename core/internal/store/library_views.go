@@ -64,6 +64,17 @@ func (l *Library) Types() []string {
 	return out
 }
 
+// DeleteAll removes every chart of the library the way DeleteMany does, and returns how many there were.
+func (l *Library) DeleteAll() (int, error) {
+	l.mu.RLock()
+	ids := make([]string, 0, len(l.charts))
+	for id := range l.charts {
+		ids = append(ids, id)
+	}
+	l.mu.RUnlock()
+	return l.DeleteMany(ids)
+}
+
 // DeleteMany removes several charts in one go: from disk, from the index and from every group's
 // pins, saving the groups once. It returns how many were removed; ids that do not exist are
 // skipped (not an error: two windows may have the same list open).

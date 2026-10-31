@@ -65,6 +65,11 @@ func (m *Library) DeleteMany(ids []string) (int, error) {
 	return args.Int(0), args.Error(1)
 }
 
+func (m *Library) DeleteAll() (int, error) {
+	args := m.Called()
+	return args.Int(0), args.Error(1)
+}
+
 func (m *Library) Groups() store.GroupsState {
 	g, _ := m.Called().Get(0).(store.GroupsState)
 	return g
