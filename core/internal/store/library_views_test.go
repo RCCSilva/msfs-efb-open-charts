@@ -193,3 +193,30 @@ func TestAChartIsFoundByItsCycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, lib.Search(Query{Text: "2610"}), 1)
 }
+
+func TestDeleteAllRemovesEveryChartAndItsPins(t *testing.T) {
+	// Arrange
+	lib := threePinned(t)
+
+	// Act
+	n, err := lib.DeleteAll()
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 3, n)
+	assert.Equal(t, 0, lib.Count())
+	assert.Empty(t, lib.Groups().Groups[0].Pins)
+}
+
+func TestDeleteAllOfAnEmptyLibraryRemovesNothing(t *testing.T) {
+	// Arrange
+	lib, err := Open(t.TempDir())
+	require.NoError(t, err)
+
+	// Act
+	n, err := lib.DeleteAll()
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, 0, n)
+}

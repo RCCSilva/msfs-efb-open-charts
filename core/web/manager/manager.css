@@ -36,6 +36,8 @@ input[type=text] { width: 100%; }
 .btn { height: 36px; padding: 0 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; cursor: pointer; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .btn.danger { color: var(--bad); }
+.card.danger-zone { border-color: var(--bad); }
+.card.danger-zone h3 { color: var(--bad); }
 .btn.sm { height: 30px; padding: 0 10px; font-size: 13px; }
 .btn:disabled { opacity: .5; cursor: default; }
 a { color: var(--accent); text-decoration: none; }

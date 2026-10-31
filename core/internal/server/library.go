@@ -20,6 +20,7 @@ type Library interface {
 	Update(id string, p store.Patch) (*store.Chart, error)
 	Delete(id string) error
 	DeleteMany(ids []string) (int, error)
+	DeleteAll() (int, error)
 
 	Groups() store.GroupsState
 	CreateGroup(name string) (store.Group, error)

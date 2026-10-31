@@ -149,3 +149,37 @@ func TestSetCurrentAnswersWithTheGroups(t *testing.T) {
 	require.Equal(t, 200, w.Code, w.Body.String())
 	assert.Contains(t, w.Body.String(), "g1")
 }
+
+func TestDeleteAllAnswersWithHowManyWereRemoved(t *testing.T) {
+	// Arrange
+	s, lib := libServer(t)
+	lib.On("DeleteAll").Return(3, nil)
+	lib.On("Groups").Return(store.GroupsState{})
+
+	// Act
+	w := post(s.handleDeleteAll, ``)
+
+	// Assert
+	require.Equal(t, 200, w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), `"deleted":3`)
+	lib.AssertExpectations(t)
+}
+
+func TestDeleteAllReportsWhyItFailed(t *testing.T) {
+	// Arrange
+	s, lib := libServer(t)
+	lib.On("DeleteAll").Return(1, errors.New("disk full"))
+
+	// Act
+	w := post(s.handleDeleteAll, ``)
+
+	// Assert
+	assert.Equal(t, 500, w.Code)
+	assert.Contains(t, w.Body.String(), "disk full")
+}
+
+func TestDeleteAllIsOnlyForTheComputerItself(t *testing.T) {
+	// Arrange / Act / Assert
+	assert.True(t, localOnlyPath("/api/library/delete-all"))
+	assert.False(t, localOnlyPath("/api/library/delete"))
+}

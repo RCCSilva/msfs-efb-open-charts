@@ -132,6 +132,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/library", s.handleLibrary)
 	mux.HandleFunc("GET /api/airports", s.handleAirports)
 	mux.HandleFunc("POST /api/library/delete", s.handleDeleteMany)
+	mux.HandleFunc("POST /api/library/delete-all", s.handleDeleteAll)
 	mux.HandleFunc("GET /api/charts/{id}", s.handleChart)
 	mux.HandleFunc("PATCH /api/charts/{id}", s.handleUpdateChart)
 	mux.HandleFunc("DELETE /api/charts/{id}", s.handleDeleteChart)

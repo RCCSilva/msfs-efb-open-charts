@@ -5,6 +5,7 @@ import { lang, setLang, t, tx, fill, fmtDuration } from './core/i18n.js';
 import { state, view, app, go, pageLink } from './core/app.js';
 import { renderGuide } from './pages/guide.js';
 import { chartFoxPanel, cfLegal } from './pages/chartfox.js';
+import { confirmModal } from './core/modal.js';
 
 (function () {
   'use strict';
@@ -1158,6 +1159,24 @@ import { chartFoxPanel, cfLegal } from './pages/chartfox.js';
       h('div', { class: 'muted', style: 'margin-top:8px' }, credit));
   }
 
+  // the end of the Charts category: delete every chart of the library
+  async function chartsDangerCard() {
+    let n;
+    try { n = (await api('GET', '/api/health')).charts; } catch (e) { return null; }
+    return h('div', { class: 'card danger-zone' },
+      h('h3', null, t('dangerZone')),
+      h('p', { class: 'muted' }, h('strong', null, t('delAllTitle') + '. '), n > 0 ? t('delAllHelp') : t('delAllEmpty')),
+      h('button', { class: 'btn danger', disabled: n === 0, onclick: async () => {
+        if (!await confirmModal({ title: t('areYouSure'), text: fill(t('delAllConfirm'), { n }), ok: t('delAllOk') })) return;
+        try {
+          const r = await api('POST', '/api/library/delete-all');
+          state.groups = r.groups;
+          toast(fill(t('deletedN'), { n: r.deleted }));
+        } catch (e) { toast(e.message); }
+        renderSetup();
+      } }, t('delAllBtn')));
+  }
+
   async function detailCard() {
     let net;
     try { net = await api('GET', '/api/settings'); } catch (e) { return null; }
@@ -1185,6 +1204,8 @@ import { chartFoxPanel, cfLegal } from './pages/chartfox.js';
     if (lCard) groups.charts.push(lCard);
     const cfCard = await chartFoxCard();
     if (cfCard) groups.charts.push(cfCard);
+    const dzCard = await chartsDangerCard();
+    if (dzCard) groups.charts.push(dzCard);
 
     async function act(fn, done) {
       try { await fn(); toast(done || t('done')); } catch (e) { toast(e.message); }
@@ -1244,11 +1265,12 @@ import { chartFoxPanel, cfLegal } from './pages/chartfox.js';
       newerTitle: 'The navigation database is from a newer version',
       newerText: 'It was made by a newer version of Open Charts, so this one does not touch it. Update Open Charts. Starting over would set that file aside and begin a new one.',
       failedTitle: 'The navigation database could not be updated',
-      failedText: 'The update to the new version failed and the file was left as it was (a copy was made before). You can start over: the file is kept in the backups folder.',
+      failedText: 'The update to the new version failed and the file was left as it was (a copy was made before). You can delete everything at the end of this page: the file is kept in the backups folder.',
       goSetup: 'Open the Setup page', bannerNoDb: 'Until this is solved, the Navigation, Routes and Map tabs cannot be used.',
-      backupNow: 'Make a backup now', backupMade: 'Backup saved', reset: 'Start over...',
-      resetConfirm: 'Start the navigation database over?\n\nEverything in it is lost: airports, fixes, airways, your own points and your saved routes. A backup is saved first, in the backups folder, and you can restore it later.',
-      resetConfirmBroken: 'Set the damaged database aside and start over?\n\nEverything that was in it is lost, including your own points and saved routes. The damaged file is kept in the backups folder.',
+      backupNow: 'Make a backup now', backupMade: 'Backup saved', reset: 'Delete everything...', resetOk: 'Delete everything', dangerTitle: 'Delete the navigation database',
+      dangerHelp: 'Deletes everything in it: airports, fixes, airways, your own points and your saved routes. A backup is saved first, in the backups folder, and you can restore it later.',
+      resetConfirm: 'Delete everything in the navigation database?\n\nAirports, fixes, airways, your own points and your saved routes are removed. A backup is saved first, in the backups folder, and you can restore it later.',
+      resetConfirmBroken: 'Set the damaged database aside and create a new one?\n\nEverything that was in it is lost, including your own points and saved routes. The damaged file is kept in the backups folder.',
       resetDone: 'Done: a new database was created',
       backupsTitle: 'Backups', backupsEmpty: 'No backup yet.', restore: 'Restore', remove: 'Remove',
       restoreConfirm: 'Replace the current database with this backup?\n\nWhat is in the database now is lost, except for a copy that is saved first. If the backup is from an older version it is updated.',
@@ -1256,7 +1278,7 @@ import { chartFoxPanel, cfLegal } from './pages/chartfox.js';
       importBackup: 'Restore from a file...', importHow: 'Choose a database file (.db) that you saved before. It is checked, and if it is a healthy navigation database it takes the place of the current one (a copy of the current one is saved first).',
       importConfirm: 'Replace the current database with this file?\n\nWhat is in the database now is lost, except for a copy that is saved first.',
       working: 'Working...',
-      kinds: { schema: 'before an update', manual: 'made by you', reset: 'before starting over', restore: 'before restoring', corrupt: 'damaged file set aside', imported: 'a file you brought' },
+      kinds: { schema: 'before an update', manual: 'made by you', reset: 'before deleting everything', restore: 'before restoring', corrupt: 'damaged file set aside', imported: 'a file you brought' },
       loadSection: 'Load from the simulator', loadAirportTitle: 'Load one airport', loadAirportHow: 'Asks the simulator for one airport and stores it.',
       needDb: 'The database is not in use: solve the problem above first.'
     },
@@ -1268,11 +1290,12 @@ import { chartFoxPanel, cfLegal } from './pages/chartfox.js';
       newerTitle: 'O banco de dados de navegação é de uma versão mais nova',
       newerText: 'Ele foi feito por uma versão mais nova do Open Charts, então esta não mexe nele. Atualize o Open Charts. Recomeçar poria esse arquivo de lado e começaria um novo.',
       failedTitle: 'Não foi possível atualizar o banco de dados de navegação',
-      failedText: 'A atualização para a versão nova falhou e o arquivo ficou como estava (uma cópia foi feita antes). Você pode recomeçar: o arquivo fica guardado na pasta backups.',
+      failedText: 'A atualização para a versão nova falhou e o arquivo ficou como estava (uma cópia foi feita antes). Você pode apagar tudo no fim desta página: o arquivo fica guardado na pasta backups.',
       goSetup: 'Abrir a página Setup', bannerNoDb: 'Enquanto isso não for resolvido, as abas Navegação, Rotas e Mapa não funcionam.',
-      backupNow: 'Fazer uma cópia agora', backupMade: 'Cópia salva', reset: 'Recomeçar...',
-      resetConfirm: 'Recomeçar o banco de dados de navegação?\n\nTudo o que há nele se perde: aeroportos, fixos, aerovias, os seus pontos e as suas rotas salvas. Uma cópia é salva antes, na pasta backups, e você pode restaurá-la depois.',
-      resetConfirmBroken: 'Pôr o banco danificado de lado e recomeçar?\n\nTudo o que havia nele se perde, inclusive os seus pontos e rotas salvas. O arquivo danificado fica guardado na pasta backups.',
+      backupNow: 'Fazer uma cópia agora', backupMade: 'Cópia salva', reset: 'Apagar tudo...', resetOk: 'Apagar tudo', dangerTitle: 'Apagar o banco de navegação',
+      dangerHelp: 'Apaga tudo o que há nele: aeroportos, fixos, aerovias, os seus pontos e as suas rotas salvas. Uma cópia é salva antes, na pasta backups, e você pode restaurá-la depois.',
+      resetConfirm: 'Apagar tudo no banco de dados de navegação?\n\nAeroportos, fixos, aerovias, os seus pontos e as suas rotas salvas são removidos. Uma cópia é salva antes, na pasta backups, e você pode restaurá-la depois.',
+      resetConfirmBroken: 'Pôr o banco danificado de lado e criar um novo?\n\nTudo o que havia nele se perde, inclusive os seus pontos e rotas salvas. O arquivo danificado fica guardado na pasta backups.',
       resetDone: 'Pronto: um banco novo foi criado',
       backupsTitle: 'Cópias de segurança', backupsEmpty: 'Nenhuma cópia ainda.', restore: 'Restaurar', remove: 'Remover',
       restoreConfirm: 'Trocar o banco de dados atual por esta cópia?\n\nO que há no banco agora se perde, exceto por uma cópia que é salva antes. Se a cópia for de uma versão mais antiga, ela é atualizada.',
@@ -1280,7 +1303,7 @@ import { chartFoxPanel, cfLegal } from './pages/chartfox.js';
       importBackup: 'Restaurar de um arquivo...', importHow: 'Escolha um arquivo de banco de dados (.db) que você guardou antes. Ele é verificado e, se for um banco de navegação saudável, toma o lugar do atual (uma cópia do atual é salva antes).',
       importConfirm: 'Trocar o banco de dados atual por este arquivo?\n\nO que há no banco agora se perde, exceto por uma cópia que é salva antes.',
       working: 'Trabalhando...',
-      kinds: { schema: 'antes de uma atualização', manual: 'feita por você', reset: 'antes de recomeçar', restore: 'antes de restaurar', corrupt: 'arquivo danificado posto de lado', imported: 'um arquivo que você trouxe' },
+      kinds: { schema: 'antes de uma atualização', manual: 'feita por você', reset: 'antes de apagar tudo', restore: 'antes de restaurar', corrupt: 'arquivo danificado posto de lado', imported: 'um arquivo que você trouxe' },
       loadSection: 'Carregar do simulador', loadAirportTitle: 'Carregar um aeroporto', loadAirportHow: 'Pede ao simulador um aeroporto e o guarda.',
       needDb: 'O banco não está em uso: resolva o problema acima primeiro.'
     }
@@ -1324,12 +1347,22 @@ import { chartFoxPanel, cfLegal } from './pages/chartfox.js';
         : h('div', { class: 'warnbox', style: 'margin:8px 0' }, h('strong', null, w.title), h('div', { style: 'margin-top:4px' }, w.text),
           st.problem && st.problem.detail ? h('div', { class: 'muted', style: 'margin-top:4px;font-size:12px' }, st.problem.detail) : null),
       h('div', { class: 'row', style: 'margin-top:8px' },
-        h('button', { class: 'btn', disabled: !st.ok || st.loading, onclick: () => run(() => api('POST', '/api/db/backup'), sd('backupMade')) }, sd('backupNow')),
-        h('button', { class: 'btn danger', disabled: st.loading, onclick: async () => {
-          if (!confirm(st.ok ? sd('resetConfirm') : sd('resetConfirmBroken'))) return;
-          run(() => api('POST', '/api/db/reset'), sd('resetDone'));
-        } }, sd('reset'))),
+        h('button', { class: 'btn', disabled: !st.ok || st.loading, onclick: () => run(() => api('POST', '/api/db/backup'), sd('backupMade')) }, sd('backupNow'))),
       busy);
+  }
+
+  // the end of the database page: the one button that deletes the whole database (a copy is saved first)
+  function dbDangerCard(st) {
+    const busy = h('div', { class: 'muted', style: 'margin-top:8px' });
+    return h('div', { class: 'card danger-zone' },
+      h('h3', null, t('dangerZone')),
+      h('p', { class: 'muted' }, h('strong', null, sd('dangerTitle') + '. '), sd('dangerHelp')),
+      h('button', { class: 'btn danger', disabled: st.loading, onclick: async () => {
+        if (!await confirmModal({ title: t('areYouSure'), text: st.ok ? sd('resetConfirm') : sd('resetConfirmBroken'), ok: sd('resetOk') })) return;
+        busy.textContent = sd('working');
+        try { await api('POST', '/api/db/reset'); toast(sd('resetDone')); } catch (e) { toast(e.message); }
+        render();
+      } }, sd('reset')), busy);
   }
 
   // the copies in the backups folder: restore one, remove one, or bring a file
@@ -1455,6 +1488,7 @@ import { chartFoxPanel, cfLegal } from './pages/chartfox.js';
       try { cards.push(await dbLoadCard()); } catch (e) { /* the card is an extra */ }
       cards.push(dbPointsImportCard());
     }
+    cards.push(dbDangerCard(st));
     return cards;
   }
 

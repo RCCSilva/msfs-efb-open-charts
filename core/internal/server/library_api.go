@@ -92,4 +92,15 @@ func (s *Server) handleDeleteMany(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"deleted": n, "groups": s.lib.Groups()})
 }
 
+// handleDeleteAll empties the library: the "delete all charts" of Setup. Like the other bulk delete it is
+// refused to a device of the network (see localOnlyPath).
+func (s *Server) handleDeleteAll(w http.ResponseWriter, r *http.Request) {
+	n, err := s.lib.DeleteAll()
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"deleted": n, "groups": s.lib.Groups()})
+}
+
 var errNoIDs = errors.New("no charts selected")
