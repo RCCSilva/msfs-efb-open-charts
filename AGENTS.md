@@ -356,9 +356,18 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   it at install time, so a port change must be followed by an EFB app update (the manager says so).
 - Endpoints that write outside the data folder (`/api/setup/*`) are limited to detected simulator
   folders and need an explicit user action in the UI.
-- **Never fetch from a chart provider automatically.** DECEA/AISWEB forbids automated collection
+- **Never scrape or crawl a chart provider.** DECEA/AISWEB forbids automated collection
   and redistribution; the app only links to official pages and works on files the user downloaded.
-  Do not embed provider API keys, scrape provider sites or add crawlers.
+  Do not scrape provider sites, add crawlers or sync a provider's catalogue.
+- **Official provider APIs are the one exception** (ChartFox first), and only when all of this holds:
+  the provider granted the project API access and its terms allow the use; the user connects their own
+  account (OAuth authorization code with PKCE, public client, so there is no secret to embed: the public
+  `client_id` may live in the code, nothing else); every download starts from an explicit user action
+  (search an ICAO, pick charts), never in bulk or in the background; responses are cached on disk to spare
+  the API; the provider is credited where its data shows ("Chart data powered by ChartFox", linked); the
+  data stays in the user's data folder (never in the installer, the zip or the repository) and
+  disconnecting the account deletes it. Ask only for the scopes the feature needs (not `charts:view_source_url`,
+  which points to third-party sites, nor telemetry). The simulation-only notice applies to these charts too.
 - **Never commit charts or provider packages** (`*.pdf`, `*.zip` are ignored on purpose), nor any
   personal data, keys or local paths.
 - Do not modify the user's simulator files (`Community`, `EXE.xml`) outside the setup flow, and
