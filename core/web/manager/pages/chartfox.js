@@ -3,6 +3,16 @@ import { api, toast } from '../core/api.js';
 import { t, lang } from '../core/i18n.js';
 import { pageLink } from '../core/app.js';
 
+export const CF_TERMS_URL = 'https://chartfox.org/legal/terms';
+export const CF_PRIVACY_URL = 'https://chartfox.org/legal/privacy';
+
+// What connecting an account means: the ChartFox terms and privacy policy are theirs, and the user accepts them there.
+export function cfLegal() {
+  const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
+  return h('div', { class: 'muted', style: 'margin-top:8px' },
+    t('cfLegalLead') + ' ', link(CF_TERMS_URL, t('cfTerms')), ' ' + t('cfAnd') + ' ', link(CF_PRIVACY_URL, t('cfPrivacy')), t('cfLegalTail'));
+}
+
 const CF_TYPES = [['IAC', 'cfTypeIAC'], ['SID', 'cfTypeSID'], ['STAR', 'cfTypeSTAR'], ['ADC', 'cfTypeADC'], ['', 'cfTypeOther']];
 const CF_BATCH = 20; // what one import request may carry
 
