@@ -128,6 +128,9 @@ func Read(paths []string, progress func(done, total int) bool) ([]navdb.SeedIden
 		// a name can be several fixes (a VOR and a waypoint of the same name), each of its own
 		// class: Classes holds one bit per class found
 		bit := 1 << f.Class
+		if !validRegion(f.Region) {
+			bit |= navdb.UnplacedBit
+		}
 		if s, ok := seen[f.Ident]; ok {
 			s.Classes |= bit
 			seen[f.Ident] = s

@@ -61,17 +61,24 @@ func TestReadFixesReal(t *testing.T) {
 
 	// Assert
 	require.NoError(t, err)
-	routes, named := 0, 0
+	routes, named, badNeighbours := 0, 0, 0
 	for _, f := range fixes {
 		routes += len(f.Routes)
 		for _, r := range f.Routes {
 			if r.Airway != "" && (r.NextIdent != "" || r.PrevIdent != "") {
 				named++
 			}
+			if (r.NextIdent != "" && !validRegion(r.NextRegion)) || (r.PrevIdent != "" && !validRegion(r.PrevRegion)) {
+				badNeighbours++
+			}
 		}
 	}
 	t.Logf("%d waypoints, %d airway entries", len(fixes), routes)
-	assert.GreaterOrEqual(t, len(fixes), 100000, "waypoints")
+	assert.GreaterOrEqual(t, len(fixes), 80000, "waypoints")
 	assert.GreaterOrEqual(t, routes, 50000, "airway entries")
 	assert.Equal(t, routes, named, "every entry has an airway name and a neighbour")
+	assert.Zero(t, badNeighbours, "airways lead to fixes with a usable region")
+	for _, f := range fixes {
+		require.True(t, validRegion(f.Region), f.Ident+" "+f.Region)
+	}
 }

@@ -226,10 +226,11 @@ func TestTheWaypointsOfTheFilesAreStoredAndTheirNamesNeedNoQuestionToTheSimulato
 	// Arrange
 	f := newFixture()
 	seed := []navdb.SeedIdent{
-		{Ident: "GERTU", Classes: 1 << 5},       // a waypoint only, and not a short name: covered
-		{Ident: "PTL", Classes: 1 << 2},         // a VOR: the simulator has its name and frequency
-		{Ident: "BAD", Classes: 1 << 5},         // short: may be a VOR of a region the files lack
-		{Ident: "LONGVR", Classes: 1<<5 | 1<<2}, // also a VOR
+		{Ident: "GERTU", Classes: 1 << 5},                    // a waypoint only, and not a short name: covered
+		{Ident: "PTL", Classes: 1 << 2},                      // a VOR: the simulator has its name and frequency
+		{Ident: "BAD", Classes: 1 << 5},                      // short: may be a VOR of a region the files lack
+		{Ident: "LONGVR", Classes: 1<<5 | 1<<2},              // also a VOR
+		{Ident: "TERMNL", Classes: 1<<6 | navdb.UnplacedBit}, // a fix the files cannot place: the simulator is asked
 	}
 	fixes := []navdata.Fix{{Ident: "GERTU", Region: "SB", Kind: navdata.FixWaypoint}}
 	f.seed.On("Locate").Return([]string{"a.fsarchive"})

@@ -164,6 +164,21 @@ func (l layout) maxBody() int {
 	return n
 }
 
+// validRegion tells whether a region is what the simulator calls one: two letters or digits ("SB", "K6").
+// The files give the terminal waypoints a number in that word that is no text (and that the simulator
+// answers with the real region), which unpacks to anything.
+func validRegion(region string) bool {
+	if len(region) != 2 {
+		return false
+	}
+	for _, c := range region {
+		if (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
+			return false
+		}
+	}
+	return true
+}
+
 // plausibleFix tells whether the data looks like a fix record: a class of fix the files use, a region
 // of two letters or digits, and entries that fill what is left of the record.
 func plausibleFix(body []byte, l layout) bool {
@@ -179,14 +194,8 @@ func plausibleFix(body []byte, l layout) bool {
 	if id1>>idShift == 0 || id1>>idShift >= 38*38*38*38*38*38 {
 		return false
 	}
-	region := unpack38(binary.LittleEndian.Uint64(body[regionAt : regionAt+8]))
-	if len(region) != 2 {
+	if !validRegion(unpack38(binary.LittleEndian.Uint64(body[regionAt : regionAt+8]))) {
 		return false
-	}
-	for _, c := range region {
-		if (c < 'A' || c > 'Z') && (c < '0' || c > '9') {
-			return false
-		}
 	}
 	rest := body[l.first:]
 	if !l.tails {

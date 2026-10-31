@@ -313,7 +313,7 @@ func (l *Loader) importFixes(paths []string, seed []navdb.SeedIdent) bool {
 	}
 	var covered []string
 	for _, s := range seed {
-		if k := navdb.KindsToAsk(s.Ident, s.Classes); len(k) == 1 && k[0] == navdata.FixWaypoint {
+		if k := navdb.KindsToAsk(s.Ident, s.Classes); len(k) == 1 && k[0] == navdata.FixWaypoint && s.Classes&navdb.UnplacedBit == 0 {
 			covered = append(covered, s.Ident)
 		}
 	}

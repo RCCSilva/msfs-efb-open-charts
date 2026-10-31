@@ -238,6 +238,28 @@ func TestScanBlobIgnoresARecordOfTheCurrentLayoutWhoseClosingRecordsDoNotAddUp(t
 	assert.Zero(t, called)
 }
 
+func TestValidRegionIsTwoLettersOrDigits(t *testing.T) {
+	assert.True(t, validRegion("SB"))
+	assert.True(t, validRegion("K6"))
+	assert.False(t, validRegion(""), "no region")
+	assert.False(t, validRegion("P"), "a letter")
+	assert.False(t, validRegion("L U9S"), "what a number of the files unpacks to")
+	assert.False(t, validRegion("??"))
+}
+
+func TestWaypointsLeaveOutTheFixesWhoseRegionTheFilesCannotGive(t *testing.T) {
+	// Arrange
+	placed := FileFix{FileRef: FileRef{Ident: "AAAAA", Class: 5, Region: "SB"}}
+	terminal := FileFix{FileRef: FileRef{Ident: "BBBBB", Class: 6, Region: "L U9S"}}
+
+	// Act
+	got := waypoints([]FileFix{placed, terminal})
+
+	// Assert
+	require.Len(t, got, 1)
+	assert.Equal(t, "AAAAA", got[0].Ident)
+}
+
 func TestWaypointsKeepTheirRegionAndKeepByNameNeighboursTheFilesDoNotHave(t *testing.T) {
 	// Arrange
 	a := FileFix{FileRef: FileRef{Ident: "AAAAA", Class: 5, Region: "SB"}, Lat: 1, Lon: 2, Airways: []FileAirway{

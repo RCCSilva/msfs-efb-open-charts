@@ -260,9 +260,11 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   and the content of the 0x0113 records of section 0x22, which are scanned. Checked against the database that the
   0.7.0 loader had stored from the old files: 95,090 fixes of two-letter regions in both, positions identical to every
   digit, and their 80,378 airway rows identical (airway, previous and next fix); the new reader also has 2,432 fixes the
-  old one did not and lacks 1,469 (the update changed data). Fixes of class 6 whose region word is not two letters (the
-  terminal waypoints: the word is an airport code in the identifier encoding) are left to `plausibleFix`'s rule as
-  before. Classes, measured against the running simulator: 2 VOR,
+  old one did not and lacks 1,469 (the update changed data). Fixes whose region word is not two letters (about 75,000 of
+  class 5/6, the terminal waypoints) hold a 32-bit number that is no text (it unpacks to `L U9S`, not an airport code, and
+  was stored as such by 0.7.0 and 0.8.0); for the same names the simulator answered with the real two-letter region (D10
+  is `NC` at the same place). They are no longer stored from the files (`validRegion`, `waypoints`) and their names carry
+  `navdb.UnplacedBit` in the seed, so the load still asks the simulator for them: about 76,000 names instead of 5,700. Classes, measured against the running simulator: 2 VOR,
   3 NDB, 5 and 6 waypoint. Checked on the 10,442 airways stored from SimConnect: 81,100 neighbour pairs are in both, 4,386
   only in the stored data (almost all because a fix of the pair has no record in the files: the packages are *streamed*
   and the local copy is partial; e.g. SCOTS is cited but has no record), 8,289 only in the files (airways not yet loaded).
