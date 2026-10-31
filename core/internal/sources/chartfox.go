@@ -4,7 +4,7 @@ import "github.com/RCCSilva/msfs-efb-open-charts/core/internal/naming"
 
 // ChartFox: a chart service with an official API (see package chartfox). It is the one source whose charts the app brings
 // itself, only when the user asks (an airport, then the charts picked), with the user's own account. Its files are
-// named by the app (`chartfox-<id>.pdf`) and carry the airport, type and title the API gave, so nothing is read from the name.
+// named by the app (`<id>.pdf`) and carry the airport, type and title the API gave, so nothing is read from the name.
 type chartfox struct{}
 
 func (chartfox) Info() Info {

@@ -116,7 +116,7 @@ type chartfoxChart struct {
 }
 
 // chartfoxFile is the name the original file of a ChartFox chart has in the library.
-func chartfoxFile(id string) string { return "chartfox-" + strings.ToLower(id) + ".pdf" }
+func chartfoxFile(id string) string { return strings.ToLower(id) + ".pdf" }
 
 // chartfoxStatus maps an error of the ChartFox client to the answer of the manager.
 func chartfoxStatus(err error) int {
