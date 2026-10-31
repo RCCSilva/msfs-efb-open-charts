@@ -17,10 +17,7 @@ import (
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim/msfs2024/fsarchive"
 )
 
-// recordFix is the BGL record that holds a waypoint, VOR or NDB of the navigation packages.
-const recordFix = 0x0108
-
-// sectionBlobs is the section whose records the structure reader cannot tell apart: they hold runs
+// sectionBlobs is the section whose records the structure reader may not tell apart: they can hold runs
 // of fix records of the airways (see scanBlob).
 const sectionBlobs = 0x22
 
@@ -67,9 +64,11 @@ func unpack38(v uint64) string {
 	return strings.TrimSpace(string(out))
 }
 
-// walk calls fn with the data of every fix record of the archives. progress, when set, is told how
-// many files were read out of how many; a false return from it stops the reading.
-func walk(paths []string, progress func(done, total int) bool, fn func(b []byte)) error {
+// walk calls fn with the data of every fix record of the archives, and the layout it is in (the BGL
+// record that holds a waypoint, VOR or NDB changed with the simulator update of 25 October 2026: see
+// layout). progress, when set, is told how many files were read out of how many; a false return from it
+// stops the reading.
+func walk(paths []string, progress func(done, total int) bool, fn func(b []byte, l layout)) error {
 	if len(paths) == 0 {
 		return errors.New("no navigation package of the simulator was found on this computer")
 	}
@@ -101,8 +100,10 @@ func walk(paths []string, progress func(done, total int) bool, fn func(b []byte)
 				for _, sub := range s.Subsections {
 					for _, r := range sub.Records {
 						switch {
-						case r.ID == recordFix:
-							fn(f.Bytes(r))
+						case r.ID == legacy.id:
+							fn(f.Bytes(r), legacy)
+						case r.ID == current.id:
+							fn(f.Bytes(r), current)
 						case s.Type == sectionBlobs:
 							scanBlob(f.Bytes(r), fn)
 						}
@@ -119,8 +120,8 @@ func walk(paths []string, progress func(done, total int) bool, fn func(b []byte)
 // were read out of how many; a false return from it stops the reading.
 func Read(paths []string, progress func(done, total int) bool) ([]navdb.SeedIdent, error) {
 	seen := map[string]navdb.SeedIdent{}
-	err := walk(paths, progress, func(b []byte) {
-		f, ok := parseFix(b)
+	err := walk(paths, progress, func(b []byte, l layout) {
+		f, ok := parseFix(b, l)
 		if !ok {
 			return
 		}

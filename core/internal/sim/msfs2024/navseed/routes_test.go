@@ -61,6 +61,33 @@ func record(data []byte) []byte {
 	return append(h, data...)
 }
 
+// tail is a record that closes a fix of the current layout: id 0x0112, 88 bytes.
+func tail() []byte {
+	b := make([]byte, tailSize)
+	b[0], b[1], b[2] = 0x12, 0x01, tailSize
+	return b
+}
+
+// fixDataNow is the data of a fix record of the current layout: the same, then how many tails close it,
+// the entries, the tails and some padding.
+func fixDataNow(name string, class int, region string, tails, padding int, entries ...[]byte) []byte {
+	b := fixData(name, class, region)
+	b = binary.LittleEndian.AppendUint32(b, uint32(tails))
+	for _, e := range entries {
+		b = append(b, e...)
+	}
+	for i := 0; i < tails; i++ {
+		b = append(b, tail()...)
+	}
+	return append(b, make([]byte, padding)...)
+}
+
+func recordNow(data []byte) []byte {
+	h := []byte{0x1e, 0x01, 0, 0, 0, 0}
+	binary.LittleEndian.PutUint32(h[2:6], uint32(6+len(data)))
+	return append(h, data...)
+}
+
 func TestParseFixReadsTheNameRegionPositionAndAirways(t *testing.T) {
 	// Arrange
 	data := fixData("REBAM", 5, "SB",
@@ -68,7 +95,7 @@ func TestParseFixReadsTheNameRegionPositionAndAirways(t *testing.T) {
 		entry(1, "Z36", ref("", 0, "", 0), ref("PUBIN", 5, "SB", 4419.6)))
 
 	// Act
-	f, ok := parseFix(data)
+	f, ok := parseFix(data, legacy)
 
 	// Assert
 	require.True(t, ok)
@@ -90,7 +117,7 @@ func TestParseFixReadsTheNameRegionPositionAndAirways(t *testing.T) {
 
 func TestParseFixWithoutAirwaysIsJustAFix(t *testing.T) {
 	// Act
-	f, ok := parseFix(fixData("PTL", 2, "SB"))
+	f, ok := parseFix(fixData("PTL", 2, "SB"), legacy)
 
 	// Assert
 	require.True(t, ok)
@@ -100,7 +127,7 @@ func TestParseFixWithoutAirwaysIsJustAFix(t *testing.T) {
 
 func TestParseFixTooShortIsNotAFix(t *testing.T) {
 	// Act
-	_, ok := parseFix(make([]byte, 10))
+	_, ok := parseFix(make([]byte, 10), legacy)
 
 	// Assert
 	assert.False(t, ok)
@@ -116,8 +143,8 @@ func TestScanBlobFindsTheRecordsBetweenOtherBytes(t *testing.T) {
 	var got []string
 
 	// Act
-	scanBlob(blob, func(b []byte) {
-		f, _ := parseFix(b)
+	scanBlob(blob, func(b []byte, l layout) {
+		f, _ := parseFix(b, l)
 		got = append(got, f.Ident+"/"+f.Region)
 	})
 
@@ -131,7 +158,7 @@ func TestScanBlobIgnoresARecordThatIsCutShort(t *testing.T) {
 
 	// Act
 	called := 0
-	scanBlob(whole[:len(whole)-5], func([]byte) { called++ })
+	scanBlob(whole[:len(whole)-5], func([]byte, layout) { called++ })
 
 	// Assert
 	assert.Zero(t, called)
@@ -144,7 +171,68 @@ func TestScanBlobIgnoresWhatDoesNotLookLikeAFix(t *testing.T) {
 
 	// Act
 	called := 0
-	scanBlob(append(badClass, badRegion...), func([]byte) { called++ })
+	scanBlob(append(badClass, badRegion...), func([]byte, layout) { called++ })
+
+	// Assert
+	assert.Zero(t, called)
+}
+
+func TestParseFixOfTheCurrentLayoutReadsTheAirwaysPastTheCount(t *testing.T) {
+	// Arrange: two airways, then two of the records that close the fix, then padding
+	data := fixDataNow("REBAM", 5, "SB", 2, 2,
+		entry(2, "UZ84", ref("IROMA", 5, "SB", 7467.6), ref("ANBUM", 5, "SB", 7467.6)),
+		entry(1, "Z36", ref("", 0, "", 0), ref("PUBIN", 5, "SB", 4419.6)))
+
+	// Act
+	f, ok := parseFix(data, current)
+
+	// Assert
+	require.True(t, ok)
+	assert.Equal(t, FileRef{Ident: "REBAM", Class: 5, Region: "SB"}, f.FileRef)
+	require.Len(t, f.Airways, 2, "the closing records are not airways")
+	assert.Equal(t, "UZ84", f.Airways[0].Name)
+	assert.Equal(t, "ANBUM", f.Airways[0].Next.Ident)
+	assert.Equal(t, "Z36", f.Airways[1].Name)
+	assert.False(t, f.Airways[1].HasPrev)
+	assert.Equal(t, "PUBIN", f.Airways[1].Next.Ident)
+}
+
+func TestParseFixOfTheCurrentLayoutWithOnlyClosingRecordsHasNoAirways(t *testing.T) {
+	// Act
+	f, ok := parseFix(fixDataNow("PTL", 3, "SB", 1, 0), current)
+
+	// Assert
+	require.True(t, ok)
+	assert.Equal(t, 3, f.Class)
+	assert.Empty(t, f.Airways)
+}
+
+func TestScanBlobFindsTheRecordsOfBothLayouts(t *testing.T) {
+	// Arrange
+	old := record(fixData("AAAAA", 5, "SB", entry(2, "UZ1", ref("BBBBB", 5, "SB", 1), ref("CCCCC", 5, "SB", 1))))
+	now := recordNow(fixDataNow("DDDDD", 5, "K1", 1, 1, entry(1, "Z2", ref("EEEEE", 5, "K1", 1), ref("FFFFF", 5, "K1", 1))))
+	blob := append(append([]byte{0, 1, 0x1e}, old...), 0x55)
+	blob = append(blob, now...)
+	var got []string
+
+	// Act
+	scanBlob(blob, func(b []byte, l layout) {
+		f, _ := parseFix(b, l)
+		got = append(got, f.Ident+"/"+f.Region+"/"+f.Airways[0].Name)
+	})
+
+	// Assert
+	assert.Equal(t, []string{"AAAAA/SB/UZ1", "DDDDD/K1/Z2"}, got)
+}
+
+func TestScanBlobIgnoresARecordOfTheCurrentLayoutWhoseClosingRecordsDoNotAddUp(t *testing.T) {
+	// Arrange: it says 3 closing records and holds 1
+	data := fixDataNow("AAAAA", 5, "SB", 1, 0)
+	binary.LittleEndian.PutUint32(data[fixHeader:], 3)
+
+	// Act
+	called := 0
+	scanBlob(recordNow(data), func([]byte, layout) { called++ })
 
 	// Assert
 	assert.Zero(t, called)

@@ -18,8 +18,8 @@ func (f FileFix) key() fixKey { return fixKey{f.Ident, f.Region, f.Class} }
 func ReadFixes(paths []string, progress func(done, total int) bool) ([]FileFix, error) {
 	byKey := map[fixKey]int{}
 	var out []FileFix
-	err := walk(paths, progress, func(b []byte) {
-		f, ok := parseFix(b)
+	err := walk(paths, progress, func(b []byte, l layout) {
+		f, ok := parseFix(b, l)
 		if !ok {
 			return
 		}
