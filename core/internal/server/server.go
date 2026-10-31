@@ -360,6 +360,10 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := checkUploadSource(r.FormValue("source")); err != nil {
+		writeErr(w, 400, err)
+		return
+	}
 	form := importForm{
 		Source:   r.FormValue("source"),
 		Name:     r.FormValue("name"),

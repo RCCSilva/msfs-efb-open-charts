@@ -207,3 +207,15 @@ func TestChartFoxDisconnectRemovesTheChartsBroughtFromChartFox(t *testing.T) {
 	assert.Contains(t, w.Body.String(), `"removed":2`)
 	lib.AssertExpectations(t)
 }
+
+func TestAFileAddedByHandCannotClaimToBeFromChartFox(t *testing.T) {
+	// Act
+	byHand := checkUploadSource("chartfox")
+	spaced := checkUploadSource(" chartfox ")
+	others := []error{checkUploadSource(""), checkUploadSource("manual"), checkUploadSource("decea-br")}
+
+	// Assert
+	assert.Error(t, byHand)
+	assert.Error(t, spaced)
+	assert.Equal(t, []error{nil, nil, nil}, others)
+}

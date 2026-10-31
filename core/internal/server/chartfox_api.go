@@ -115,6 +115,15 @@ type chartfoxChart struct {
 	Imported bool   `json:"imported"` // already in the library
 }
 
+// checkUploadSource refuses a file the user adds by hand under the source of ChartFox: those charts are only brought by
+// the ChartFox lookup, and disconnecting the account removes them, which must never take a user's own PDF along.
+func checkUploadSource(source string) error {
+	if strings.TrimSpace(source) == chartfoxSource {
+		return errors.New("charts of ChartFox are brought by its lookup; add your own files under My PDFs")
+	}
+	return nil
+}
+
 // chartfoxFile is the name the original file of a ChartFox chart has in the library.
 func chartfoxFile(id string) string { return strings.ToLower(id) + ".pdf" }
 

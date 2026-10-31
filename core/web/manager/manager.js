@@ -889,7 +889,9 @@
     view.replaceChildren(head, ...(s.id === 'chartfox' && state.local ? [h('div', { class: 'card' }, h('h3', null, t('cfLookupTitle')), h('p', { class: 'muted' }, t('cfHint')), pageLink('#chartfox', 'btn primary', t('cfOpenLookup')))] : []),
       ...(s.id === 'manual' ? [await patternCard()] : []),
       ...(caps.includes('places') ? [placesCard(s)] : []), ...(linksShown ? [links] : []),
-      ...(s.id === 'faa-us' ? [await faaMetadataCard()] : []), filesPanel(s));
+      ...(s.id === 'faa-us' ? [await faaMetadataCard()] : []),
+      // ChartFox brings its charts itself (the lookup): there is nothing to drop here
+      ...(s.id === 'chartfox' ? [] : [filesPanel(s)]));
   }
 
   // A provider that keeps its charts aerodrome by aerodrome: type the code or the name and the link
