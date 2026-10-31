@@ -245,12 +245,26 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   as a type byte (1 or 2) plus the characters ("UZ84"), but the container's structure is not decoded.
   **Decoded since** (`sim/msfs2024/navseed/routes.go`; probes `cmd/fsaextract`, `cmd/airwaycheck`, `cmd/classprobe`): the
   blobs of section 0x22 are runs of 0x0108 records that the structure reader cannot split (it sees records with ids like
-  0xc018 and 0x0000 and sizes of 64 KB multiples), so they are scanned for `08 01 <size>` headers and each candidate is
-  validated (`scanBlob`, `plausibleFix`). A fix record is: 2 bytes (flags), lon and lat (uint32, formulas in `parseFix`),
+  0xc018 and 0x0000 and sizes of 64 KB multiples), so they are scanned for `08 01 <size>` headers (`1e 01` in the current
+  layout, below) and each candidate is validated (`scanBlob`, `plausibleFix`). A fix record is: 2 bytes (flags), lon and lat (uint32, formulas in `parseFix`),
   a float32, the identifier word at 14 (name in `>>6`, class in the low 6 bits), the **region word** at 22 (two base-38
   characters, "SB", "K1"), then entries of 49 bytes: type (1 low, 2 high, 3..7 other), the airway name (8 bytes ASCII), the
   previous fix and the next fix (each: identifier word, region word, float32 with the minimum altitude in meters; a zero
-  identifier means there is none, as at the end of an airway). Classes, measured against the running simulator: 2 VOR,
+  identifier means there is none, as at the end of an airway). **Layout change of 25 Oct 2026** (the MSFS update that
+  rewrote the packages, which stopped the fast load until the reader learned the new one): the fix is record **0x011e** instead of 0x0108 and,
+  between the region word and the entries, there is a uint32 (offset 30) with the number of **88-byte records of id 0x0112**
+  that close the fix (after the entries; not read); the record may end with up to 3 bytes of padding. The entries are
+  byte for byte the same, and so are the position, identifier and region words. `navseed` has both as a `layout`
+  (`legacy` 0x0108, entries at 30; `current` 0x011e, entries at 34) and reads whichever a record is, so an older
+  install still works. In the current packages 0x011e is both a normal record (section 0x22 too, 1.26 million with repeats)
+  and the content of the 0x0113 records of section 0x22, which are scanned. Checked against the database that the
+  0.7.0 loader had stored from the old files: 95,090 fixes of two-letter regions in both, positions identical to every
+  digit, and their 80,378 airway rows identical (airway, previous and next fix); the new reader also has 2,432 fixes the
+  old one did not and lacks 1,469 (the update changed data). Fixes whose region word is not two letters (about 75,000 of
+  class 5/6, the terminal waypoints) hold a 32-bit number that is no text (it unpacks to `L U9S`, not an airport code, and
+  was stored as such by 0.7.0 and 0.8.0); for the same names the simulator answered with the real two-letter region (D10
+  is `NC` at the same place). They are no longer stored from the files (`validRegion`, `waypoints`) and their names carry
+  `navdb.UnplacedBit` in the seed, so the load still asks the simulator for them: about 76,000 names instead of 5,700. Classes, measured against the running simulator: 2 VOR,
   3 NDB, 5 and 6 waypoint. Checked on the 10,442 airways stored from SimConnect: 81,100 neighbour pairs are in both, 4,386
   only in the stored data (almost all because a fix of the pair has no record in the files: the packages are *streamed*
   and the local copy is partial; e.g. SCOTS is cited but has no record), 8,289 only in the files (airways not yet loaded).
@@ -319,7 +333,7 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   The manager has a **Navigation** tab (`renderNav`; API in `server/nav_admin.go`, queries in `navdb/admin.go`): counts, lists
   with delete/refresh for airports, fixes and airways, the user's own points (`user_point`, region `USR`, they are found by
   the route resolver like any waypoint and are never dropped by a schema change) and the **bulk load**: (1) `navseed` reads
-  the identifiers (record 0x0108) from the simulator's `fs24-fs-base-nav` / `genericairports` `.fsarchive` files (read-only,
+  the identifiers (record 0x0108, 0x011e since the update of 25 Oct 2026) from the simulator's `fs24-fs-base-nav` / `genericairports` `.fsarchive` files (read-only,
   only the names and rough positions are kept, table `seed_ident`); (2) every name is asked to the simulator as a whole
   through SimConnect (`loadIdents`), 40 names per batch, which stores region, position and airways. Resumable (pending =
   seed names without an `ident_check`); then (3) `loadAirports`: `simconnect.ListAirports` (minimal list EX1)

@@ -422,6 +422,11 @@ type SeedIdent struct {
 	Lon     float64
 }
 
+// UnplacedBit is set in the classes of a name when the files hold a fix of it that they cannot place: its
+// region is not a code of two letters or digits (the terminal waypoints carry a number that only the
+// simulator can turn into a region). Such a name is still asked to the simulator.
+const UnplacedBit = 1 << 40
+
 // KindsToAsk says which kinds of fix to ask the simulator for a name, so that it is not asked as all
 // three when the files already tell. The files do not hold every fix of a name (a short name that is
 // a VOR somewhere is often also a waypoint of a region they lack), so a short name, and one the files

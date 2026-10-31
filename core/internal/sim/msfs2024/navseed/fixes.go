@@ -18,8 +18,8 @@ func (f FileFix) key() fixKey { return fixKey{f.Ident, f.Region, f.Class} }
 func ReadFixes(paths []string, progress func(done, total int) bool) ([]FileFix, error) {
 	byKey := map[fixKey]int{}
 	var out []FileFix
-	err := walk(paths, progress, func(b []byte) {
-		f, ok := parseFix(b)
+	err := walk(paths, progress, func(b []byte, l layout) {
+		f, ok := parseFix(b, l)
 		if !ok {
 			return
 		}
@@ -56,7 +56,8 @@ func kindOfClass(class int) byte {
 }
 
 // Waypoints reads the waypoints of the archives as the database stores them, with the airways through
-// them. A neighbour on an airway that the files have no record of (they hold only part of the fixes)
+// them. Those whose region is not a code of two letters are left out (see validRegion): the simulator
+// is asked for them. A neighbour on an airway that the files have no record of (they hold only part of the fixes)
 // is kept by name, with no position. VORs and NDBs are not taken: the files do not have their names
 // and frequencies.
 func Waypoints(paths []string, progress func(done, total int) bool) ([]navdata.Fix, error) {
@@ -75,7 +76,7 @@ func waypoints(files []FileFix) []navdata.Fix {
 	}
 	var out []navdata.Fix
 	for _, f := range files {
-		if kindOfClass(f.Class) != navdata.FixWaypoint {
+		if kindOfClass(f.Class) != navdata.FixWaypoint || !validRegion(f.Region) {
 			continue
 		}
 		fix := navdata.Fix{Ident: f.Ident, Region: f.Region, Kind: navdata.FixWaypoint, Lat: f.Lat, Lon: f.Lon}

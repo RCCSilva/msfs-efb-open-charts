@@ -44,5 +44,41 @@ func TestReadReal(t *testing.T) {
 	// Assert
 	require.NoError(t, err)
 	t.Logf("%d archives, %d identifiers", len(paths), len(list))
-	assert.GreaterOrEqual(t, len(list), 1000, "identifiers")
+	assert.GreaterOrEqual(t, len(list), 100000, "identifiers")
+}
+
+// The airways are the part of the layout that is easiest to read wrongly without noticing: the names
+// are right and the entries are not.
+func TestReadFixesReal(t *testing.T) {
+	// Arrange
+	paths := Locate()
+	if len(paths) == 0 {
+		t.Skip("no simulator packages on this computer")
+	}
+
+	// Act
+	fixes, err := Waypoints(paths, nil)
+
+	// Assert
+	require.NoError(t, err)
+	routes, named, badNeighbours := 0, 0, 0
+	for _, f := range fixes {
+		routes += len(f.Routes)
+		for _, r := range f.Routes {
+			if r.Airway != "" && (r.NextIdent != "" || r.PrevIdent != "") {
+				named++
+			}
+			if (r.NextIdent != "" && !validRegion(r.NextRegion)) || (r.PrevIdent != "" && !validRegion(r.PrevRegion)) {
+				badNeighbours++
+			}
+		}
+	}
+	t.Logf("%d waypoints, %d airway entries", len(fixes), routes)
+	assert.GreaterOrEqual(t, len(fixes), 80000, "waypoints")
+	assert.GreaterOrEqual(t, routes, 50000, "airway entries")
+	assert.Equal(t, routes, named, "every entry has an airway name and a neighbour")
+	assert.Zero(t, badNeighbours, "airways lead to fixes with a usable region")
+	for _, f := range fixes {
+		require.True(t, validRegion(f.Region), f.Ident+" "+f.Region)
+	}
 }
