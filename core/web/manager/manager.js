@@ -72,7 +72,7 @@
       cfTitle: 'ChartFox', cfConnect: 'Connect ChartFox', cfDisconnect: 'Disconnect', cfWaiting: 'Waiting for you at the ChartFox page that opened in your browser...', cfUnavailable: 'This version of Open Charts cannot connect to ChartFox.', cfAs: 'Connected as',
       cfHelp: 'ChartFox is a chart service with an official API. Connect your own ChartFox account and Open Charts can look charts up by airport and bring the ones you pick, only when you ask. Your login is kept on this computer, and disconnecting forgets it. ChartFox charts are for flight simulation only, never for real navigation.',
       cfCredit: 'Chart data powered by ChartFox',
-      favorite: 'Favorite', favHelp: 'A favourite source gets a tab of its own', cfLookupTitle: 'Look up charts', cfOpenLookup: 'Open the lookup', cfIcao: 'Airport code (ICAO)', cfLookup: 'Look up', cfHint: 'Type an airport code to see its charts on ChartFox. Nothing is downloaded until you pick charts and import them.', cfLoading: 'Asking ChartFox...',
+      favorite: 'Favorite', favHelp: 'A favourite source shows first, highlighted, in Sources', cfLookupTitle: 'Look up charts', cfIcao: 'Airport code (ICAO)', cfLookup: 'Look up', cfHint: 'Type an airport code to see its charts on ChartFox. Nothing is downloaded until you pick charts and import them.', cfLoading: 'Asking ChartFox...',
       cfNeedConnect: 'Connect your ChartFox account first.', cfGoSetup: 'Go to Setup', cfImport: 'Import selected', cfImporting: 'Importing...', cfImported: 'imported', cfAlready: 'already in the library', cfInLibrary: 'In library',
       cfSimOnly: 'for flight simulation only, never for real navigation', cfSelectAll: 'Select all', cfNone: 'ChartFox has no charts for this airport.',
       cfTypeIAC: 'Approach', cfTypeSID: 'Departures', cfTypeSTAR: 'Arrivals', cfTypeADC: 'Aerodrome', cfTypeOther: 'Other',
@@ -188,7 +188,7 @@
       cfTitle: 'ChartFox', cfConnect: 'Conectar o ChartFox', cfDisconnect: 'Desconectar', cfWaiting: 'Esperando você na página do ChartFox que abriu no navegador...', cfUnavailable: 'Esta versão do Open Charts não consegue se conectar ao ChartFox.', cfAs: 'Conectado como',
       cfHelp: 'O ChartFox é um serviço de cartas com API oficial. Conecte a sua própria conta do ChartFox e o Open Charts poderá procurar cartas por aeroporto e trazer as que você escolher, só quando você pedir. O seu login fica guardado neste computador, e desconectar apaga ele. As cartas do ChartFox são só para simulação de voo, nunca para navegação real.',
       cfCredit: 'Chart data powered by ChartFox',
-      favorite: 'Favoritar', favHelp: 'Uma fonte favorita ganha uma aba própria', cfLookupTitle: 'Procurar cartas', cfOpenLookup: 'Abrir a busca', cfIcao: 'Código do aeroporto (ICAO)', cfLookup: 'Procurar', cfHint: 'Digite o código de um aeroporto para ver as cartas dele no ChartFox. Nada é baixado até você marcar cartas e importar.', cfLoading: 'Perguntando ao ChartFox...',
+      favorite: 'Favoritar', favHelp: 'Uma fonte favorita aparece primeiro, destacada, em Fontes', cfLookupTitle: 'Procurar cartas', cfIcao: 'Código do aeroporto (ICAO)', cfLookup: 'Procurar', cfHint: 'Digite o código de um aeroporto para ver as cartas dele no ChartFox. Nada é baixado até você marcar cartas e importar.', cfLoading: 'Perguntando ao ChartFox...',
       cfNeedConnect: 'Conecte primeiro a sua conta do ChartFox.', cfGoSetup: 'Ir para o Setup', cfImport: 'Importar marcadas', cfImporting: 'Importando...', cfImported: 'importadas', cfAlready: 'já estavam na biblioteca', cfInLibrary: 'Na biblioteca',
       cfSimOnly: 'apenas para simulação de voo, nunca para navegação real', cfSelectAll: 'Marcar todas', cfNone: 'O ChartFox não tem cartas para este aeroporto.',
       cfTypeIAC: 'Aproximação', cfTypeSID: 'Saídas', cfTypeSTAR: 'Chegadas', cfTypeADC: 'Aeródromo', cfTypeOther: 'Outras',
@@ -350,16 +350,9 @@
     if (state.local === undefined) {
       try { state.local = (await api('GET', '/api/health')).local !== false; } catch (e) { state.local = true; }
     }
-    // the favourite sources, each with a tab of its own (the ChartFox lookup only works on the computer itself)
-    let favs = [];
-    try { favs = (await api('GET', '/api/sources')).filter((x) => x.favorite && (x.id !== 'chartfox' || state.local)); } catch (e) { favs = []; }
-    const favTab = (id) => (favs.some((f) => f.id === id) ? 'fav:' + id : 'sources');
-    const tab = r.name === 'source' ? favTab(r.arg) : r.name === 'chartfox' ? favTab('chartfox') : (r.name === 'chart' ? 'library' : r.name);
-    document.getElementById('tabs').replaceChildren(...['library', 'sources', ...favs.map((f) => 'fav:' + f.id), 'groups', 'routes', 'map', 'nav', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) => {
-      const f = id.startsWith('fav:') ? favs.find((x) => 'fav:' + x.id === id) : null;
-      if (f) return pageLink(SOURCE_TABS[f.id] || '#source/' + encodeURIComponent(f.id), id === tab ? 'on' : '', tx(f.name));
-      return pageLink('#' + id, id === tab ? 'on' : '', t(id === 'map' ? 'mapTab' : id));
-    }).concat([
+    const tab = r.name === 'source' ? 'sources' : (r.name === 'chart' ? 'library' : r.name);
+    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'routes', 'map', 'nav', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
+      pageLink('#' + id, id === tab ? 'on' : '', t(id === 'map' ? 'mapTab' : id))).concat([
         // The EFB screen (same page the simulator shows) opens in its own tab, outside the simulator too.
         h('a', { class: 'navlink', href: '/viewer.html?lang=' + lang, target: '_blank', rel: 'noopener', title: t('efbTitle') }, t('efb') + ' \u2197')]));
     try {
@@ -368,7 +361,6 @@
       drawFooter();
       if (dbBad && (r.name === 'routes' || r.name === 'map' || r.name === 'nav')) view.replaceChildren(h('h2', null, t(r.name === 'map' ? 'mapTab' : r.name)), dbBanner(dbst));
       else if (r.name === 'sources') await renderSources();
-      else if (r.name === 'chartfox') await renderChartFox(r.arg);
       else if (r.name === 'source') await renderSource(r.arg);
       else if (r.name === 'chart') await renderChart(r.arg);
       else if (r.name === 'groups') await renderGroups();
@@ -695,10 +687,7 @@
     await load();
   }
 
-  // The page a favourite source opens, when it is not the source's own page.
-  const SOURCE_TABS = { chartfox: '#chartfox' };
-
-  // The star that makes a source a favourite (a tab of its own); only the computer itself may change it.
+  // The star that makes a source a favourite (shown first and highlighted in Sources); only the computer itself may change it.
   function favButton(s) {
     if (!state.local) return null;
     return h('button', { class: 'btn sm' + (s.favorite ? ' primary' : ''), title: t('favHelp'), onclick: async (e) => {
@@ -712,88 +701,100 @@
   const CF_TYPES = [['IAC', 'cfTypeIAC'], ['SID', 'cfTypeSID'], ['STAR', 'cfTypeSTAR'], ['ADC', 'cfTypeADC'], ['', 'cfTypeOther']];
   const CF_BATCH = 20; // what one import request may carry
 
-  async function renderChartFox(icao) {
-    icao = (icao || '').toUpperCase();
-    const st = await api('GET', '/api/chartfox');
-    const credit = h('div', { class: 'muted', style: 'margin-top:12px' },
-      h('a', { href: 'https://chartfox.org', target: '_blank', rel: 'noopener' }, t('cfCredit')), ' · ', t('cfSimOnly'));
-    const title = h('h2', null, t('cfTitle'));
-    if (!st.available) { view.replaceChildren(title, h('div', { class: 'card' }, h('div', { class: 'muted' }, t('cfUnavailable')))); return; }
-    if (!st.connected) {
-      view.replaceChildren(title, h('div', { class: 'card' }, h('p', null, t('cfNeedConnect')), pageLink('#setup', 'btn primary', t('cfGoSetup'))), credit);
-      return;
-    }
+  // The airport last looked up on the ChartFox page, kept while the manager stays open.
+  const cfLookup = { icao: '' };
 
-    const box = h('input', { type: 'text', placeholder: t('cfIcao'), value: icao, maxlength: '4', style: 'text-transform:uppercase;max-width:140px' });
-    const form = h('form', { class: 'row', onsubmit: (e) => {
-      e.preventDefault();
-      const v = box.value.trim().toUpperCase();
-      if (v) go('#chartfox/' + encodeURIComponent(v));
-    } }, box, h('button', { class: 'btn primary', type: 'submit' }, t('cfLookup')));
-    const out = h('div');
-    view.replaceChildren(title, h('div', { class: 'card' }, form), out, credit);
-    if (!icao) { out.append(h('div', { class: 'muted' }, t('cfHint'))); return; }
+  // The lookup of ChartFox, shown on its page under Sources: type an airport, tick charts, import. It redraws itself in
+  // place (no page of its own).
+  function chartFoxPanel() {
+    const root = h('div');
+    const draw = async () => {
+      const icao = cfLookup.icao;
+      let st;
+      try { st = await api('GET', '/api/chartfox'); } catch (e) { root.replaceChildren(h('div', { class: 'card' }, h('span', { class: 'badge bad' }, e.message))); return; }
+      const credit = h('div', { class: 'muted', style: 'margin-bottom:16px' },
+        h('a', { href: 'https://chartfox.org', target: '_blank', rel: 'noopener' }, t('cfCredit')), ' · ', t('cfSimOnly'));
+      if (!st.available) { root.replaceChildren(h('div', { class: 'card' }, h('div', { class: 'muted' }, t('cfUnavailable')))); return; }
+      if (!st.connected) {
+        root.replaceChildren(h('div', { class: 'card' }, h('h3', null, t('cfLookupTitle')), h('p', null, t('cfNeedConnect')), pageLink('#setup', 'btn primary', t('cfGoSetup'))), credit);
+        return;
+      }
 
-    out.append(h('div', { class: 'muted' }, t('cfLoading')));
-    let data;
-    try { data = await api('GET', '/api/chartfox/airports/' + encodeURIComponent(icao)); } catch (e) {
-      out.replaceChildren(h('div', { class: 'card' }, h('span', { class: 'badge bad' }, e.message)));
-      return;
-    }
+      const box = h('input', { type: 'text', placeholder: t('cfIcao'), value: icao, maxlength: '4', style: 'text-transform:uppercase;max-width:140px' });
+      const form = h('form', { class: 'row', onsubmit: (e) => {
+        e.preventDefault();
+        cfLookup.icao = box.value.trim().toUpperCase();
+        draw();
+      } }, box, h('button', { class: 'btn primary', type: 'submit' }, t('cfLookup')));
+      const out = h('div');
+      root.replaceChildren(h('div', { class: 'card' }, h('h3', null, t('cfLookupTitle')), form), out, credit);
+      if (!icao) { out.append(h('div', { class: 'muted', style: 'margin-bottom:16px' }, t('cfHint'))); return; }
 
-    const picked = new Set();
-    const importBtn = h('button', { class: 'btn primary' }, '');
-    const sync = () => {
-      importBtn.textContent = t('cfImport') + ' (' + picked.size + ')';
-      importBtn.disabled = picked.size === 0;
-    };
-    importBtn.addEventListener('click', async () => {
-      const ids = [...picked];
-      importBtn.disabled = true;
-      importBtn.textContent = t('cfImporting');
-      let ok = 0, already = 0, failed = '';
-      try {
-        for (let i = 0; i < ids.length; i += CF_BATCH) {
-          const r = await api('POST', '/api/chartfox/import', { ids: ids.slice(i, i + CF_BATCH) });
-          r.results.forEach((x) => {
-            if (x.status === 'ok') ok++; else if (x.status === 'already') already++; else if (!failed) failed = x.message;
-          });
-          if (failed) break;
-        }
-      } catch (e) { failed = e.message; }
-      toast(ok + ' ' + t('cfImported') + (already ? ', ' + already + ' ' + t('cfAlready') : '') + (failed ? ' · ' + failed : ''));
-      renderChartFox(icao);
-    });
+      out.append(h('div', { class: 'muted' }, t('cfLoading')));
+      let data;
+      try { data = await api('GET', '/api/chartfox/airports/' + encodeURIComponent(icao)); } catch (e) {
+        out.replaceChildren(h('div', { class: 'card' }, h('span', { class: 'badge bad' }, e.message)));
+        return;
+      }
 
-    const a = data.airport || {};
-    const groups = CF_TYPES.map(([code, label]) => ({
-      label,
-      items: data.charts.filter((c) => (c.type || '') === code).sort((p, q) => p.name.localeCompare(q.name, lang, { numeric: true })),
-    })).filter((g) => g.items.length);
-
-    const cards = groups.map((g) => {
-      const rows = g.items.map((c) => {
-        const cb = h('input', { type: 'checkbox', disabled: c.imported, onchange: (e) => {
-          if (e.target.checked) picked.add(c.id); else picked.delete(c.id);
-          sync();
-        } });
-        cb.dataset.id = c.id;
-        return h('label', { class: 'row', style: 'padding:4px 0;cursor:pointer' }, cb, h('span', null, c.name),
-          c.code ? h('span', { class: 'badge' }, c.code) : null,
-          c.imported ? h('span', { class: 'badge ok' }, t('cfInLibrary')) : null);
+      const picked = new Set();
+      const importBtn = h('button', { class: 'btn primary' }, '');
+      const sync = () => {
+        importBtn.textContent = t('cfImport') + ' (' + picked.size + ')';
+        importBtn.disabled = picked.size === 0;
+      };
+      importBtn.addEventListener('click', async () => {
+        const ids = [...picked];
+        importBtn.disabled = true;
+        importBtn.textContent = t('cfImporting');
+        let ok = 0, already = 0, failed = '';
+        try {
+          for (let i = 0; i < ids.length; i += CF_BATCH) {
+            const r = await api('POST', '/api/chartfox/import', { ids: ids.slice(i, i + CF_BATCH) });
+            r.results.forEach((x) => {
+              if (x.status === 'ok') ok++; else if (x.status === 'already') already++; else if (!failed) failed = x.message;
+            });
+            if (failed) break;
+          }
+        } catch (e) { failed = e.message; }
+        toast(ok + ' ' + t('cfImported') + (already ? ', ' + already + ' ' + t('cfAlready') : '') + (failed ? ' · ' + failed : ''));
+        draw();
       });
-      const toggle = h('button', { class: 'btn sm', onclick: () => {
-        const boxes = [...document.querySelectorAll('#cf-' + groups.indexOf(g) + ' input[type=checkbox]:not(:disabled)')];
-        const on = boxes.some((b) => !b.checked);
-        boxes.forEach((b) => { b.checked = on; if (on) picked.add(b.dataset.id); else picked.delete(b.dataset.id); });
-        sync();
-      } }, t('cfSelectAll'));
-      return h('div', { class: 'card', id: 'cf-' + groups.indexOf(g) }, h('div', { class: 'row' }, h('h3', { style: 'margin:0' }, t(g.label) + ' (' + g.items.length + ')'), toggle), rows);
-    });
-    out.replaceChildren(
-      h('div', { class: 'row', style: 'margin-bottom:12px' }, h('strong', null, (a.ident || icao) + (a.name ? ' — ' + a.name : '')), h('span', { class: 'muted' }, data.charts.length + ' ' + t('charts')), importBtn),
-      cards.length ? h('div', null, cards) : h('div', { class: 'muted' }, t('cfNone')));
-    sync();
+
+      const a = data.airport || {};
+      const groups = CF_TYPES.map(([code, label]) => ({
+        label,
+        items: data.charts.filter((c) => (c.type || '') === code).sort((p, q) => p.name.localeCompare(q.name, lang, { numeric: true })),
+      })).filter((g) => g.items.length);
+
+      const cards = groups.map((g, gi) => {
+        const rows = g.items.map((c) => {
+          const cb = h('input', { type: 'checkbox', disabled: c.imported, onchange: (e) => {
+            if (e.target.checked) picked.add(c.id); else picked.delete(c.id);
+            sync();
+          } });
+          cb.dataset.id = c.id;
+          return h('label', { class: 'row', style: 'padding:4px 0;cursor:pointer' }, cb, h('span', null, c.name),
+            c.code ? h('span', { class: 'badge' }, c.code) : null,
+            c.imported ? h('span', { class: 'badge ok' }, t('cfInLibrary')) : null);
+        });
+        const card = h('div', { class: 'card' });
+        const toggle = h('button', { class: 'btn sm', onclick: () => {
+          const boxes = [...card.querySelectorAll('input[type=checkbox]:not(:disabled)')];
+          const on = boxes.some((b) => !b.checked);
+          boxes.forEach((b) => { b.checked = on; if (on) picked.add(b.dataset.id); else picked.delete(b.dataset.id); });
+          sync();
+        } }, t('cfSelectAll'));
+        card.append(h('div', { class: 'row' }, h('h3', { style: 'margin:0' }, t(g.label) + ' (' + g.items.length + ')'), toggle), ...rows);
+        return card;
+      });
+      out.replaceChildren(
+        h('div', { class: 'row', style: 'margin-bottom:12px' }, h('strong', null, (a.ident || icao) + (a.name ? ' — ' + a.name : '')), h('span', { class: 'muted' }, data.charts.length + ' ' + t('charts')), importBtn),
+        cards.length ? h('div', null, cards) : h('div', { class: 'muted' }, t('cfNone')));
+      sync();
+    };
+    draw();
+    return root;
   }
 
   // ---- Sources: list, then one page per source
@@ -820,11 +821,13 @@
         if (!text) return true;
         return (tx(x.name) + ' ' + tx(x.description) + ' ' + (countries[x.country] || '')).toLowerCase().includes(text);
       });
+      // the favourites first, in the order the registry gives otherwise
+      shown.sort((p, q) => (q.favorite ? 1 : 0) - (p.favorite ? 1 : 0));
       body.replaceChildren(shown.length === 0 ? h('p', { class: 'muted' }, t('srcNone')) : h('div', { class: 'card', style: 'padding:0' },
         h('table', { class: 'srctable' },
           h('thead', null, h('tr', null, h('th', null, t('srcSource')), h('th', null, t('srcCountry')), h('th', null, t('srcWhat')), h('th'))),
-          h('tbody', null, shown.map((x) => h('tr', { class: 'clickable', onclick: () => go('#source/' + encodeURIComponent(x.id)) },
-            h('td', null, h('a', { href: '#source/' + encodeURIComponent(x.id), onclick: (e) => e.stopPropagation() }, h('strong', null, tx(x.name))),
+          h('tbody', null, shown.map((x) => h('tr', { class: 'clickable' + (x.favorite ? ' fav' : ''), onclick: () => go('#source/' + encodeURIComponent(x.id)) },
+            h('td', null, h('a', { href: '#source/' + encodeURIComponent(x.id), onclick: (e) => e.stopPropagation() }, h('strong', null, (x.favorite ? '★ ' : '') + tx(x.name))),
               h('div', { class: 'muted', style: 'font-size:12px;max-width:520px' }, tx(x.description))),
             h('td', null, x.country ? countries[x.country] : h('span', { class: 'muted' }, t('srcAnyCountry'))),
             h('td', null,
@@ -886,7 +889,7 @@
     const linksShown = !!s.homepage || rows.length > 0;
 
     // 3. what the user downloaded goes here, PDFs and packages alike
-    view.replaceChildren(head, ...(s.id === 'chartfox' && state.local ? [h('div', { class: 'card' }, h('h3', null, t('cfLookupTitle')), h('p', { class: 'muted' }, t('cfHint')), pageLink('#chartfox', 'btn primary', t('cfOpenLookup')))] : []),
+    view.replaceChildren(head, ...(s.id === 'chartfox' && state.local ? [chartFoxPanel()] : []),
       ...(s.id === 'manual' ? [await patternCard()] : []),
       ...(caps.includes('places') ? [placesCard(s)] : []), ...(linksShown ? [links] : []),
       ...(s.id === 'faa-us' ? [await faaMetadataCard()] : []),
