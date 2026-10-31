@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/chartfox"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/logfile"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
@@ -191,6 +192,13 @@ func main() {
 
 	srv := server.New(lib, factory, provider, ln.Addr().String())
 	srv.UseSettings(*data, defaultDataDir(), cfg, fixedAddr)
+
+	// The user's ChartFox account: the token stays in the data folder, the authorization page opens in the browser.
+	srv.UseChartFox(chartfox.NewAccount(chartfox.DefaultConfig(), &http.Client{Timeout: 30 * time.Second},
+		chartfox.FileStore{Path: filepath.Join(*data, "chartfox.json")}, func(authURL string) error {
+			tray.Open(authURL)
+			return nil
+		}))
 
 	// What the simulator knows about airports and procedures: asked on demand, kept in SQLite.
 	navPath := filepath.Join(*data, "navdata.db")

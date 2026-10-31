@@ -19,7 +19,14 @@ try {
   $env:CGO_ENABLED = '0'
   go test ./... | Out-Host
   if ($LASTEXITCODE -ne 0) { throw 'tests failed' }
-  go build -trimpath -ldflags '-s -w -H windowsgui -X github.com/RCCSilva/msfs-efb-open-charts/core/internal/buildinfo.Release=1' -o (Join-Path $build 'opencharts.exe') ./cmd/opencharts
+  # The public ChartFox client id (not a secret) comes from the ignored .env file at the repository root.
+  $ldflags = '-s -w -H windowsgui -X github.com/RCCSilva/msfs-efb-open-charts/core/internal/buildinfo.Release=1'
+  $envFile = Join-Path $root '.env'
+  if (Test-Path -LiteralPath $envFile) {
+    $line = Get-Content -LiteralPath $envFile | Where-Object { $_ -match '^\s*CHARTFOX_CLIENT_ID\s*=' } | Select-Object -First 1
+    if ($line) { $id = ($line -split '=', 2)[1].Trim().Trim('"'); if ($id) { $ldflags += " -X github.com/RCCSilva/msfs-efb-open-charts/core/internal/chartfox.ClientID=$id" } }
+  }
+  go build -trimpath -ldflags $ldflags -o (Join-Path $build 'opencharts.exe') ./cmd/opencharts
   if ($LASTEXITCODE -ne 0) { throw 'go build failed' }
 } finally { Pop-Location }
 

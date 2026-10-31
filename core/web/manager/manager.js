@@ -69,6 +69,9 @@
       catGeneral: 'General', catSimulator: 'Simulator', catNetwork: 'Network', catDisplay: 'Map and aircraft', catCharts: 'Charts', catData: 'Navigation data', catDiag: 'Diagnostics',
       largeTitle: 'Large charts (WAC, en-route)', largeStandard: 'Light', largeBalanced: 'Balanced (default)', largeSharp: 'Sharp', largeMaximum: 'Maximum',
       largeHelp: 'Charts that cover a lot of ground (the WACs and the en-route charts) look blurred when the map is zoomed in, so they are drawn in more detail, as many more tiles. Measured on a WAC: Light stays sharp to map zoom 9 (about 22 MB); Balanced to zoom 11 (about 80 MB, the default); Sharp to zoom 12 (about 170 MB, 1 minute to import); Maximum to zoom 13 (about 700 MB, several minutes, only for those who really need it). An en-route chart is bigger and takes longer. It applies to charts imported from now on: import a chart again to redraw it.',
+      cfTitle: 'ChartFox', cfConnect: 'Connect ChartFox', cfDisconnect: 'Disconnect', cfWaiting: 'Waiting for you at the ChartFox page that opened in your browser...', cfUnavailable: 'This version of Open Charts cannot connect to ChartFox.', cfAs: 'Connected as',
+      cfHelp: 'ChartFox is a chart service with an official API. Connect your own ChartFox account and Open Charts can look charts up by airport and bring the ones you pick, only when you ask. Your login is kept on this computer, and disconnecting forgets it. ChartFox charts are for flight simulation only, never for real navigation.',
+      cfCredit: 'Chart data powered by ChartFox',
       detailHelp: 'Applies to charts imported from now on. High is sharper when you zoom in (phones, large screens) but makes bigger files and takes longer. To change charts already in the library, delete and add them again.',
       netTitle: 'Port and local network', portTitle: 'Server port', lanTitle: 'Local network (tablet and phone)', portLabel: 'Port', apply: 'Apply', portApplied: 'Port changed',
       portHelp: 'Default {n}. Change it if another program uses it. Afterwards update the EFB app and restart the simulator.',
@@ -177,6 +180,9 @@
       catGeneral: 'Geral', catSimulator: 'Simulador', catNetwork: 'Rede', catDisplay: 'Mapa e aeronave', catCharts: 'Cartas', catData: 'Dados de navegação', catDiag: 'Diagnóstico',
       largeTitle: 'Cartas grandes (WAC, em rota)', largeStandard: 'Leve', largeBalanced: 'Equilibrado (padrão)', largeSharp: 'Nítido', largeMaximum: 'Máximo',
       largeHelp: 'As cartas que cobrem muito terreno (as WAC e as de rota) ficam borradas quando o mapa é aproximado, então são desenhadas com mais detalhe, em muito mais tiles. Medido numa WAC: o Leve fica nítido até o zoom 9 do mapa (uns 22 MB); o Equilibrado até o zoom 11 (uns 80 MB, o padrão); o Nítido até o zoom 12 (uns 170 MB, 1 minuto para importar); o Máximo até o zoom 13 (uns 700 MB, vários minutos, só para quem precisa mesmo). Uma carta de rota é maior e demora mais. Vale para as cartas importadas daqui para a frente: importe a carta de novo para redesenhá-la.',
+      cfTitle: 'ChartFox', cfConnect: 'Conectar o ChartFox', cfDisconnect: 'Desconectar', cfWaiting: 'Esperando você na página do ChartFox que abriu no navegador...', cfUnavailable: 'Esta versão do Open Charts não consegue se conectar ao ChartFox.', cfAs: 'Conectado como',
+      cfHelp: 'O ChartFox é um serviço de cartas com API oficial. Conecte a sua própria conta do ChartFox e o Open Charts poderá procurar cartas por aeroporto e trazer as que você escolher, só quando você pedir. O seu login fica guardado neste computador, e desconectar apaga ele. As cartas do ChartFox são só para simulação de voo, nunca para navegação real.',
+      cfCredit: 'Chart data powered by ChartFox',
       detailHelp: 'Vale para as cartas importadas daqui em diante. Alto fica mais nítido ao dar zoom (celular, telas grandes), mas gera arquivos maiores e demora mais. Para mudar as cartas que já estão na biblioteca, exclua e adicione de novo.',
       netTitle: 'Porta e rede local', portTitle: 'Porta do servidor', lanTitle: 'Rede local (tablet e celular)', portLabel: 'Porta', apply: 'Aplicar', portApplied: 'Porta alterada',
       portHelp: 'Padrão {n}. Troque se outro programa usar. Depois, atualize o app do EFB e reinicie o simulador.',
@@ -1390,6 +1396,31 @@
       h('div', { class: 'muted', style: 'margin-top:8px' }, t('largeHelp')));
   }
 
+  async function chartFoxCard() {
+    let st;
+    try { st = await api('GET', '/api/chartfox'); } catch (e) { return null; } // an older program: nothing to show
+    if (st.connecting) setTimeout(() => { if (location.hash.indexOf('setup') >= 0) renderSetup(); }, 2000);
+    const credit = h('a', { href: 'https://chartfox.org', target: '_blank', rel: 'noopener' }, t('cfCredit'));
+    let body;
+    if (!st.available) body = h('div', { class: 'muted' }, t('cfUnavailable'));
+    else if (st.connecting) body = h('div', { class: 'muted' }, t('cfWaiting'));
+    else if (st.connected) body = h('div', { class: 'row' },
+      h('span', null, t('cfAs') + ' ' + (st.user || 'ChartFox')),
+      h('button', { class: 'btn sm danger', onclick: async () => {
+        try { await api('POST', '/api/chartfox/disconnect'); toast(t('done')); } catch (e) { toast(e.message); }
+        renderSetup();
+      } }, t('cfDisconnect')));
+    else body = h('div', { class: 'row' },
+      h('button', { class: 'btn sm primary', onclick: async () => {
+        try { await api('POST', '/api/chartfox/connect'); } catch (e) { toast(e.message); }
+        renderSetup();
+      } }, t('cfConnect')));
+    return h('div', { class: 'card' }, h('h3', null, t('cfTitle')), body,
+      st.error ? h('div', { class: 'muted', style: 'margin-top:8px' }, st.error) : null,
+      h('div', { class: 'muted', style: 'margin-top:8px' }, t('cfHelp')),
+      h('div', { class: 'muted', style: 'margin-top:8px' }, credit));
+  }
+
   async function detailCard() {
     let net;
     try { net = await api('GET', '/api/settings'); } catch (e) { return null; }
@@ -1415,6 +1446,8 @@
     if (dCard) groups.charts.push(dCard);
     const lCard = await largeChartsCard();
     if (lCard) groups.charts.push(lCard);
+    const cfCard = await chartFoxCard();
+    if (cfCard) groups.charts.push(cfCard);
 
     async function act(fn, done) {
       try { await fn(); toast(done || t('done')); } catch (e) { toast(e.message); }
