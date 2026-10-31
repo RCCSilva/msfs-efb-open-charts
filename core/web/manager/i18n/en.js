@@ -104,7 +104,7 @@ export default {
   btnInstall: 'Install in the EFB', btnUpdate: 'Update', btnRemove: 'Remove',
   stAuto: 'Start with MSFS', stAutoHelp: 'Open Charts starts when the simulator starts (no window).', btnEnable: 'Enable', btnDisable: 'Disable',
   stEfbLegacy: 'Old version (Local Moving Map) found: installing replaces it',
-  stData: 'Data folder', stRestart: 'Restart the simulator for the EFB app change to take effect.',
+  stData: 'Data folder', stOpenFolder: 'Open folder', stRestart: 'Restart the simulator for the EFB app change to take effect.',
   edSteam: 'Steam', edStore: 'Microsoft Store',
   reviewTitle: 'Review before importing', icao: 'ICAO', ctype: 'Type', ctitle: 'Title', validity: 'AIRAC cycle or date', cname: 'Display name',
   importOne: 'Import', importAll: 'Import all', notGeo: 'This PDF has no georeferencing: it will be added for viewing only (no aircraft position).', dup: 'Already in the library as',

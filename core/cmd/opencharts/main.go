@@ -192,6 +192,7 @@ func main() {
 
 	srv := server.New(lib, factory, provider, ln.Addr().String())
 	srv.UseSettings(*data, defaultDataDir(), cfg, fixedAddr)
+	srv.UseOpener(tray.Open)
 
 	// The user's ChartFox account: the token stays in the data folder, the authorization page opens in the browser.
 	cfAccount := chartfox.NewAccount(chartfox.DefaultConfig(), &http.Client{Timeout: 30 * time.Second},
