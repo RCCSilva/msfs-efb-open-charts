@@ -72,6 +72,11 @@
       cfTitle: 'ChartFox', cfConnect: 'Connect ChartFox', cfDisconnect: 'Disconnect', cfWaiting: 'Waiting for you at the ChartFox page that opened in your browser...', cfUnavailable: 'This version of Open Charts cannot connect to ChartFox.', cfAs: 'Connected as',
       cfHelp: 'ChartFox is a chart service with an official API. Connect your own ChartFox account and Open Charts can look charts up by airport and bring the ones you pick, only when you ask. Your login is kept on this computer, and disconnecting forgets it. ChartFox charts are for flight simulation only, never for real navigation.',
       cfCredit: 'Chart data powered by ChartFox',
+      chartfox: 'ChartFox', cfIcao: 'Airport code (ICAO)', cfLookup: 'Look up', cfHint: 'Type an airport code to see its charts on ChartFox. Nothing is downloaded until you pick charts and import them.', cfLoading: 'Asking ChartFox...',
+      cfNeedConnect: 'Connect your ChartFox account first.', cfGoSetup: 'Go to Setup', cfImport: 'Import selected', cfImporting: 'Importing...', cfImported: 'imported', cfAlready: 'already in the library', cfInLibrary: 'In library',
+      cfSimOnly: 'for flight simulation only, never for real navigation', cfSelectAll: 'Select all', cfNone: 'ChartFox has no charts for this airport.',
+      cfTypeIAC: 'Approach', cfTypeSID: 'Departures', cfTypeSTAR: 'Arrivals', cfTypeADC: 'Aerodrome', cfTypeOther: 'Other',
+      cfConfirmDisconnect: 'Disconnect ChartFox? The charts brought from ChartFox will be removed from the library.',
       detailHelp: 'Applies to charts imported from now on. High is sharper when you zoom in (phones, large screens) but makes bigger files and takes longer. To change charts already in the library, delete and add them again.',
       netTitle: 'Port and local network', portTitle: 'Server port', lanTitle: 'Local network (tablet and phone)', portLabel: 'Port', apply: 'Apply', portApplied: 'Port changed',
       portHelp: 'Default {n}. Change it if another program uses it. Afterwards update the EFB app and restart the simulator.',
@@ -183,6 +188,11 @@
       cfTitle: 'ChartFox', cfConnect: 'Conectar o ChartFox', cfDisconnect: 'Desconectar', cfWaiting: 'Esperando você na página do ChartFox que abriu no navegador...', cfUnavailable: 'Esta versão do Open Charts não consegue se conectar ao ChartFox.', cfAs: 'Conectado como',
       cfHelp: 'O ChartFox é um serviço de cartas com API oficial. Conecte a sua própria conta do ChartFox e o Open Charts poderá procurar cartas por aeroporto e trazer as que você escolher, só quando você pedir. O seu login fica guardado neste computador, e desconectar apaga ele. As cartas do ChartFox são só para simulação de voo, nunca para navegação real.',
       cfCredit: 'Chart data powered by ChartFox',
+      chartfox: 'ChartFox', cfIcao: 'Código do aeroporto (ICAO)', cfLookup: 'Procurar', cfHint: 'Digite o código de um aeroporto para ver as cartas dele no ChartFox. Nada é baixado até você marcar cartas e importar.', cfLoading: 'Perguntando ao ChartFox...',
+      cfNeedConnect: 'Conecte primeiro a sua conta do ChartFox.', cfGoSetup: 'Ir para o Setup', cfImport: 'Importar marcadas', cfImporting: 'Importando...', cfImported: 'importadas', cfAlready: 'já estavam na biblioteca', cfInLibrary: 'Na biblioteca',
+      cfSimOnly: 'apenas para simulação de voo, nunca para navegação real', cfSelectAll: 'Marcar todas', cfNone: 'O ChartFox não tem cartas para este aeroporto.',
+      cfTypeIAC: 'Aproximação', cfTypeSID: 'Saídas', cfTypeSTAR: 'Chegadas', cfTypeADC: 'Aeródromo', cfTypeOther: 'Outras',
+      cfConfirmDisconnect: 'Desconectar o ChartFox? As cartas trazidas do ChartFox serão removidas da biblioteca.',
       detailHelp: 'Vale para as cartas importadas daqui em diante. Alto fica mais nítido ao dar zoom (celular, telas grandes), mas gera arquivos maiores e demora mais. Para mudar as cartas que já estão na biblioteca, exclua e adicione de novo.',
       netTitle: 'Porta e rede local', portTitle: 'Porta do servidor', lanTitle: 'Rede local (tablet e celular)', portLabel: 'Porta', apply: 'Aplicar', portApplied: 'Porta alterada',
       portHelp: 'Padrão {n}. Troque se outro programa usar. Depois, atualize o app do EFB e reinicie o simulador.',
@@ -341,7 +351,7 @@
     if (state.local === undefined) {
       try { state.local = (await api('GET', '/api/health')).local !== false; } catch (e) { state.local = true; }
     }
-    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'routes', 'map', 'nav', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
+    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'chartfox', 'groups', 'routes', 'map', 'nav', 'guide', 'setup', 'about'].filter((id) => (id !== 'setup' && id !== 'chartfox') || state.local).map((id) =>
       pageLink('#' + id, id === tab ? 'on' : '', t(id === 'map' ? 'mapTab' : id))).concat([
         // The EFB screen (same page the simulator shows) opens in its own tab, outside the simulator too.
         h('a', { class: 'navlink', href: '/viewer.html?lang=' + lang, target: '_blank', rel: 'noopener', title: t('efbTitle') }, t('efb') + ' \u2197')]));
@@ -351,6 +361,7 @@
       drawFooter();
       if (dbBad && (r.name === 'routes' || r.name === 'map' || r.name === 'nav')) view.replaceChildren(h('h2', null, t(r.name === 'map' ? 'mapTab' : r.name)), dbBanner(dbst));
       else if (r.name === 'sources') await renderSources();
+      else if (r.name === 'chartfox') await renderChartFox(r.arg);
       else if (r.name === 'source') await renderSource(r.arg);
       else if (r.name === 'chart') await renderChart(r.arg);
       else if (r.name === 'groups') await renderGroups();
@@ -675,6 +686,94 @@
         side));
     await loadPinned();
     await load();
+  }
+
+  // ---- ChartFox: look charts up by airport and bring the ones picked
+  const CF_TYPES = [['IAC', 'cfTypeIAC'], ['SID', 'cfTypeSID'], ['STAR', 'cfTypeSTAR'], ['ADC', 'cfTypeADC'], ['', 'cfTypeOther']];
+  const CF_BATCH = 20; // what one import request may carry
+
+  async function renderChartFox(icao) {
+    icao = (icao || '').toUpperCase();
+    const st = await api('GET', '/api/chartfox');
+    const credit = h('div', { class: 'muted', style: 'margin-top:12px' },
+      h('a', { href: 'https://chartfox.org', target: '_blank', rel: 'noopener' }, t('cfCredit')), ' · ', t('cfSimOnly'));
+    const title = h('h2', null, t('cfTitle'));
+    if (!st.available) { view.replaceChildren(title, h('div', { class: 'card' }, h('div', { class: 'muted' }, t('cfUnavailable')))); return; }
+    if (!st.connected) {
+      view.replaceChildren(title, h('div', { class: 'card' }, h('p', null, t('cfNeedConnect')), pageLink('#setup', 'btn primary', t('cfGoSetup'))), credit);
+      return;
+    }
+
+    const box = h('input', { type: 'text', placeholder: t('cfIcao'), value: icao, maxlength: '4', style: 'text-transform:uppercase;max-width:140px' });
+    const form = h('form', { class: 'row', onsubmit: (e) => {
+      e.preventDefault();
+      const v = box.value.trim().toUpperCase();
+      if (v) go('#chartfox/' + encodeURIComponent(v));
+    } }, box, h('button', { class: 'btn primary', type: 'submit' }, t('cfLookup')));
+    const out = h('div');
+    view.replaceChildren(title, h('div', { class: 'card' }, form), out, credit);
+    if (!icao) { out.append(h('div', { class: 'muted' }, t('cfHint'))); return; }
+
+    out.append(h('div', { class: 'muted' }, t('cfLoading')));
+    let data;
+    try { data = await api('GET', '/api/chartfox/airports/' + encodeURIComponent(icao)); } catch (e) {
+      out.replaceChildren(h('div', { class: 'card' }, h('span', { class: 'badge bad' }, e.message)));
+      return;
+    }
+
+    const picked = new Set();
+    const importBtn = h('button', { class: 'btn primary' }, '');
+    const sync = () => {
+      importBtn.textContent = t('cfImport') + ' (' + picked.size + ')';
+      importBtn.disabled = picked.size === 0;
+    };
+    importBtn.addEventListener('click', async () => {
+      const ids = [...picked];
+      importBtn.disabled = true;
+      importBtn.textContent = t('cfImporting');
+      let ok = 0, already = 0, failed = '';
+      try {
+        for (let i = 0; i < ids.length; i += CF_BATCH) {
+          const r = await api('POST', '/api/chartfox/import', { ids: ids.slice(i, i + CF_BATCH) });
+          r.results.forEach((x) => {
+            if (x.status === 'ok') ok++; else if (x.status === 'already') already++; else if (!failed) failed = x.message;
+          });
+          if (failed) break;
+        }
+      } catch (e) { failed = e.message; }
+      toast(ok + ' ' + t('cfImported') + (already ? ', ' + already + ' ' + t('cfAlready') : '') + (failed ? ' · ' + failed : ''));
+      renderChartFox(icao);
+    });
+
+    const a = data.airport || {};
+    const groups = CF_TYPES.map(([code, label]) => ({
+      label,
+      items: data.charts.filter((c) => (c.type || '') === code).sort((p, q) => p.name.localeCompare(q.name, lang, { numeric: true })),
+    })).filter((g) => g.items.length);
+
+    const cards = groups.map((g) => {
+      const rows = g.items.map((c) => {
+        const cb = h('input', { type: 'checkbox', disabled: c.imported, onchange: (e) => {
+          if (e.target.checked) picked.add(c.id); else picked.delete(c.id);
+          sync();
+        } });
+        cb.dataset.id = c.id;
+        return h('label', { class: 'row', style: 'padding:4px 0;cursor:pointer' }, cb, h('span', null, c.name),
+          c.code ? h('span', { class: 'badge' }, c.code) : null,
+          c.imported ? h('span', { class: 'badge ok' }, t('cfInLibrary')) : null);
+      });
+      const toggle = h('button', { class: 'btn sm', onclick: () => {
+        const boxes = [...document.querySelectorAll('#cf-' + groups.indexOf(g) + ' input[type=checkbox]:not(:disabled)')];
+        const on = boxes.some((b) => !b.checked);
+        boxes.forEach((b) => { b.checked = on; if (on) picked.add(b.dataset.id); else picked.delete(b.dataset.id); });
+        sync();
+      } }, t('cfSelectAll'));
+      return h('div', { class: 'card', id: 'cf-' + groups.indexOf(g) }, h('div', { class: 'row' }, h('h3', { style: 'margin:0' }, t(g.label) + ' (' + g.items.length + ')'), toggle), rows);
+    });
+    out.replaceChildren(
+      h('div', { class: 'row', style: 'margin-bottom:12px' }, h('strong', null, (a.ident || icao) + (a.name ? ' — ' + a.name : '')), h('span', { class: 'muted' }, data.charts.length + ' ' + t('charts')), importBtn),
+      cards.length ? h('div', null, cards) : h('div', { class: 'muted' }, t('cfNone')));
+    sync();
   }
 
   // ---- Sources: list, then one page per source
@@ -1399,7 +1498,7 @@
   async function chartFoxCard() {
     let st;
     try { st = await api('GET', '/api/chartfox'); } catch (e) { return null; } // an older program: nothing to show
-    if (st.connecting) setTimeout(() => { if (location.hash.indexOf('setup') >= 0) renderSetup(); }, 2000);
+    if (st.connecting) setupTimer = setTimeout(renderSetup, 2000);
     const credit = h('a', { href: 'https://chartfox.org', target: '_blank', rel: 'noopener' }, t('cfCredit'));
     let body;
     if (!st.available) body = h('div', { class: 'muted' }, t('cfUnavailable'));
@@ -1407,6 +1506,7 @@
     else if (st.connected) body = h('div', { class: 'row' },
       h('span', null, t('cfAs') + ' ' + (st.user || 'ChartFox')),
       h('button', { class: 'btn sm danger', onclick: async () => {
+        if (!confirm(t('cfConfirmDisconnect'))) return;
         try { await api('POST', '/api/chartfox/disconnect'); toast(t('done')); } catch (e) { toast(e.message); }
         renderSetup();
       } }, t('cfDisconnect')));
