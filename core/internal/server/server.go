@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/buildinfo"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/chartfox"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/geotiff"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/jobs"
@@ -41,9 +42,10 @@ type Server struct {
 	tiles       *tileCache
 	jobs        *jobs.Manager
 	staged      stagedStore
-	net         netState // listening, port and network access, see access.go
-	nav         navState // navigation data of the simulator, see nav_api.go
-	addr        string   // the address being listened on; guarded by net.mu
+	net         netState           // listening, port and network access, see access.go
+	nav         navState           // navigation data of the simulator, see nav_api.go
+	addr        string             // the address being listened on; guarded by net.mu
+	chartfox    chartfox.Connector // the user's ChartFox account, see chartfox_api.go; nil: not available
 }
 
 // New builds a server. newRenderer may be nil (import then returns 503). The provider is what the
@@ -73,6 +75,9 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, 200, buildinfo.Get(buildinfo.Version))
 	})
 	mux.HandleFunc("GET /api/position", s.handlePosition)
+	mux.HandleFunc("GET /api/chartfox", s.handleChartFoxStatus)
+	mux.HandleFunc("POST /api/chartfox/connect", s.handleChartFoxConnect)
+	mux.HandleFunc("POST /api/chartfox/disconnect", s.handleChartFoxDisconnect)
 	mux.HandleFunc("GET /api/nav/airport/{icao}", s.handleNavAirport)
 	mux.HandleFunc("GET /api/nav/airports", s.handleNavAirports)
 	mux.HandleFunc("GET /api/nav/fix/{region}/{ident}", s.handleNavFix)

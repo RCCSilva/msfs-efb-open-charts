@@ -55,6 +55,7 @@ type Token struct {
 	Refresh string    `json:"refresh,omitempty"`
 	Expires time.Time `json:"expires"`
 	Scope   string    `json:"scope,omitempty"`
+	User    string    `json:"user,omitempty"` // the name of the account, to show in the app
 }
 
 // Fresh reports whether the access token is good for at least another minute.

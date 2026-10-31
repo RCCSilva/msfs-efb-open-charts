@@ -29,6 +29,7 @@ One Go program (no cgo) that runs in the Windows tray:
 | `core/internal/importer` | Renders a PDF and writes the image + `chart.json` |
 | `core/internal/store` | Library on disk, search, groups and pins |
 | `core/internal/sources` | Chart sources: built-in `manual` and `decea-br` |
+| `core/internal/chartfox` | The ChartFox API (an official provider API, see "Security and policy"): the client (airport, chart list, detail, PDF), OAuth login with PKCE and a token that refreshes itself (`Account` runs the login, `Connector` is what the server takes, `chartfoxmock` has the mock), the mapping of its chart types and its georeference maths (not validated yet). The detail has no `source_url` on purpose. The public client id is set at build time (`CHARTFOX_CLIENT_ID` in the ignored `.env`, read by `installer/build.ps1`) or from the environment |
 | `core/internal/naming` | Name display, accent folding, type words (generic parts only) |
 | `core/internal/server` | HTTP handlers, import/inspect flow, lazy renderer, setup API |
 | `core/internal/savedroutes` | The routes the user saves: checked when saved (every name found), kept with their resolved places; takes a `Store` (`navdb/navdbmock.SavedRoutes`) and a `Resolver` |

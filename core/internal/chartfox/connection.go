@@ -76,6 +76,14 @@ func (c *Connection) Connected() bool {
 	return ok
 }
 
+// User is the name of the connected account ("" when unknown or not connected).
+func (c *Connection) User() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	t, _ := c.store.Load()
+	return t.User
+}
+
 // Set stores the token of a new login.
 func (c *Connection) Set(t Token) error {
 	c.mu.Lock()

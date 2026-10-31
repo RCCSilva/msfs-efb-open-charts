@@ -48,6 +48,15 @@ func NewClient(base string, httpClient Doer, tokens TokenSource) *Client {
 	return &Client{base: strings.TrimRight(base, "/"), http: httpClient, tokens: tokens}
 }
 
+// User gives the name of the connected account.
+func (c *Client) User(ctx context.Context) (string, error) {
+	var u struct {
+		FullName string `json:"full_name"`
+	}
+	err := c.getJSON(ctx, "/v2/user", &u)
+	return u.FullName, err
+}
+
 // Airport looks an airport up by ICAO code.
 func (c *Client) Airport(ctx context.Context, icao string) (Airport, error) {
 	var a Airport

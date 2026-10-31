@@ -276,3 +276,65 @@ func TestConnectionWithoutATokenIsUnauthorized(t *testing.T) {
 	assert.ErrorIs(t, err, ErrUnauthorized)
 	assert.False(t, c.Connected())
 }
+
+func TestAccountConnectsAndShowsTheUser(t *testing.T) {
+	// Arrange
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			fmt.Fprint(w, `{"access_token":"A","expires_in":3600}`)
+		case "/v2/user":
+			fmt.Fprint(w, `{"full_name":"Pat Pilot"}`)
+		}
+	}))
+	defer api.Close()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close() // the account listens on this port itself
+	cfg := testConfig(api.URL+"/oauth/token", fmt.Sprintf("http://127.0.0.1:%d/oauth/chartfox/callback", port))
+	opened := make(chan string, 1)
+	acc := NewAccount(cfg, rewriteHost(api), FileStore{Path: filepath.Join(t.TempDir(), "t.json")}, func(authURL string) error {
+		opened <- authURL
+		return nil
+	})
+
+	// Act
+	require.NoError(t, acc.Connect())
+	authURL := <-opened
+	resp, err := http.Get(cfg.Redirect + "?code=abc&state=" + url.QueryEscape(mustQuery(authURL, "state")))
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Eventually(t, func() bool { return acc.Status().Connected }, 3*time.Second, 10*time.Millisecond)
+
+	// Assert
+	st := acc.Status()
+	assert.True(t, st.Available)
+	assert.False(t, st.Connecting)
+	assert.Equal(t, "Pat Pilot", st.User)
+	require.NoError(t, acc.Disconnect())
+	assert.False(t, acc.Status().Connected)
+}
+
+func TestAccountWithoutAClientIDCannotConnect(t *testing.T) {
+	// Arrange
+	acc := NewAccount(Config{}, http.DefaultClient, FileStore{Path: filepath.Join(t.TempDir(), "t.json")}, func(string) error { return nil })
+
+	// Act
+	err := acc.Connect()
+
+	// Assert
+	assert.Error(t, err)
+	assert.False(t, acc.Status().Available)
+}
+
+// rewriteHost sends the calls the account makes to BaseURL to a test server instead.
+func rewriteHost(srv *httptest.Server) Doer { return hostRewriter{srv} }
+
+type hostRewriter struct{ srv *httptest.Server }
+
+func (h hostRewriter) Do(r *http.Request) (*http.Response, error) {
+	u, _ := url.Parse(h.srv.URL)
+	r.URL.Scheme, r.URL.Host = u.Scheme, u.Host
+	return h.srv.Client().Do(r)
+}
