@@ -1,300 +1,18 @@
-/* Open Charts manager. Plain JS, no build step. Only textContent is used for data (no innerHTML). */
+/* Open Charts manager. Plain JS, no build step (native ES modules). Only textContent is used for data (no innerHTML). */
+import { h } from './core/dom.js';
+import { api, toast } from './core/api.js';
+import { lang, setLang, t, tx, fill, fmtDuration } from './core/i18n.js';
+import { state, view, app, go, pageLink } from './core/app.js';
+import { renderGuide } from './pages/guide.js';
+import { chartFoxPanel } from './pages/chartfox.js';
+
 (function () {
   'use strict';
 
-  const STR = {
-    en: {
-      library: 'Library', sources: 'Sources', groups: 'Groups', back: '< Sources',
-      group: 'Group', newGroup: 'New group', groupName: 'Group name',
-      search: 'Search by ICAO, type or name...', all: 'All', charts: 'charts',
-      addToGroup: '+ Add to group', inGroup: 'In group', addSelected: 'Add selected to group',
-      removeFromGroup: 'Remove from this group', confirmDel: 'Delete this chart from the library?', newName: 'New name',
-      rename: 'Rename', del: 'Delete', chartOnly: 'Chart only', onMap: 'On map',
-      thisGroup: 'Charts in this group', noPins: 'Nothing here yet. Use "Add to group" in the library.',
-      noCharts: 'No charts yet. Open Sources to add some.', addCharts: 'Add charts (Sources)',
-      current: 'Current', makeCurrent: 'Use this group', pinnedN: 'pinned',
-      dropPdf: 'Drop here what you downloaded: PDFs (several at once) and/or a .zip package. Known files are named and imported automatically. Or', choose: 'choose files',
-      linksTitle: 'Official links', linkHub: 'AISWEB: charts page', linkHubNote: 'click "Pacote completo" for the full package (.zip)', exVisual: 'Example of a visual chart',
-      pkgFrom: 'Package', pkgChoose: 'Choose the aerodromes to import, or import everything.', pkgNone: 'Nothing of this package was recognised.',
-      pkgImportAll: 'Import everything', pkgNew: 'new', pkgAlready: 'already imported', pkgPrev: 'Previous', pkgNext: 'Next', pkgOf: 'of',
-      pkgAllInfo: 'Prepares {n} charts, about {t}.', pkgAllWarn: 'Importing everything prepares every chart of the package on this computer (drawing each PDF as an image). It can take {t} and the computer will be busy meanwhile. You can leave this page open and keep using the app. Continue?',
-      patTitle: 'Name pattern for your PDFs', patHelp: 'Name your PDFs the same way and the app reads the airport, type, title and date from the file name, so a whole folder is imported without asking. Write the pattern with placeholders.',
-      patLegend: 'Placeholders', patIcao: 'airport code (4 letters)', patType: 'chart type (IAC, SID, STAR, ADC...)', patTitle2: 'the chart\'s name',
-      patDate: 'validity date; a format fixes it, for example {date:DD-MM-YYYY} (default: YYYYMMDD or YYYY-MM-DD). {cycle} reads an AIRAC cycle such as 2610', patSkip: 'any text you do not need',
-      patRules: '"_", "-" and a space are interchangeable, and capitals do not matter. One pattern per line; the first that fits wins.',
-      patExample: 'Example: {icao}_{type}_{title}_{date:YYYYMMDD} reads SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
-      patPlaceholder: '{icao}_{type}_{title}_{date:YYYYMMDD}', patTestLabel: 'Test with a file name', patTestPlaceholder: 'SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
-      patSave: 'Save patterns', patSaved: 'Patterns saved', patNoMatch: 'no pattern matches this name', patResult: 'Reads',
-      libAll: 'All charts', libAirports: 'By airport', libRoutes: 'Route charts', noIcao: 'No airport (visual charts)', airportsN: 'airports',
-      selN: '{n} selected', selPage: 'All {n} on this page are selected.', selAll: 'Select all {n} matching charts', selClear: 'Clear selection',
-      delSelected: 'Delete selected', confirmDelN: 'Delete {n} charts from the library? This cannot be undone.', deletedN: '{n} charts deleted',
-      backAirports: '< Airports', openAirport: 'Open', selectAllPage: 'Select all on this page',
-      faaMetaTitle: 'd-TPP metadata (names of the files)', faaMetaNone: 'Not loaded: the FAA PDFs are named by number, and without the metadata of the cycle they cannot be told apart.',
-      faaMetaOk: 'Loaded: cycle {cycle} ({from} to {to}), {charts} charts of {airports} airports.', faaMetaAdd: 'Add the metadata (.xml, or the "E" zip)',
-      faaMetaDone: 'Metadata loaded', faaMetaWhy: 'Download it once per cycle (28 days): it is inside DDTPPE_<date>.zip (about 130 MB).',
-      pkgEta: 'left', pkgDuration: { s: 'a few seconds', m: '{n} min', h: '{h} h {m} min' },
-      inbox: 'Inbox folder', inboxHelp: 'What you add here stays in this folder, on this computer. PDFs are imported when you click the button; for a .zip, read it and choose the aerodromes.',
-      importInbox: 'Import the PDFs of the inbox', noInbox: 'The inbox is empty.',
-      imported: 'imported', skipped: 'skipped', failed: 'failed', done: 'Done', error: 'Error',
-      placesTitle: 'Go straight to an aerodrome', placesHelp: 'Type the code or the name: the link opens the page of that aerodrome in the cycle in force, where its charts are listed.',
-      placesInput: 'EGLL, heathrow, gatwick...', placesNone: 'No aerodrome matches.', placesOpen: 'Open the charts page', placesMore: 'More aerodromes match: type more of the name.',
-      capPlaces: 'By aerodrome',
-      srcFilter: 'Filter by name...', srcAllCountries: 'All countries', srcCountry: 'Country', srcSource: 'Source', srcWhat: 'What it gives',
-      srcNone: 'No source matches.', srcAnyCountry: 'Any country', srcOpen: 'Open',
-      builtin: 'Built in', noAuto: 'No automatic download', policyLink: 'Usage policy', official: 'Official page',
-      howTo: 'How to get charts from this source', locate: 'Where to get the package',
-      locateHelp: 'Addresses derived from the file naming; they open in your browser and you download the file yourself.',
-      unverified: 'not confirmed', package: 'Downloaded package', pkgPath: 'Path to the .zip file (or pick one from the inbox)',
-      readPackage: 'Read package', airports: 'airports', importAirport: 'Import',
-      catalog: 'Catalog', catalogHelp: 'Open the official page, save the PDF, then use "Add file" on the same row.',
-      openOfficial: '1. Open official page', addFile: '2. Add file', installed: 'Installed', snapshot: 'Snapshot of',
-      tabCatalog: 'Visual charts (catalog)', tabPackage: 'Aerodromes (package)', tabFiles: 'Add files',
-      stepsFiles: 'Add what you downloaded', capCatalog: 'Catalog', capPackage: 'Package', capLocate: 'By date', capUpload: 'Upload',
-      efbTitle: "The screen the simulator's EFB shows, in its own tab",
-      about: 'About', setup: 'Setup', efb: 'EFB', guide: 'Guide', nav: 'Navigation', routes: 'Routes', mapTab: 'Map',
-      whyManualTitle: 'Why do I have to download the charts myself?',
-      whyManual: 'Most chart providers do not allow redistribution, so we cannot offer the charts already processed and ready. Many also forbid any kind of bulk download or scraping script. To stay within the terms of use, we are being conservative for now: you download the files yourself and Open Charts processes them on your computer. We may look for a better way in the future.',
-      guideIntro: 'The simulator screen shows no hints when you hover a button, so here is what each one does. The numbers on the drawing match the list.',
-      guideTop: 'Top bar', guideLeft: 'Left column: moving the view', guideRight: 'Right column: how the chart is shown', guideLists: 'Inside the lists',
-      diagTitle: 'Viewer browsers', diagNone: 'No viewer has reported yet. Open the viewer (in the simulator or in a browser) and come back.',
-      diagSim: 'Simulator (EFB)', diagBrowser: 'Browser', diagYes: 'yes', diagNo: 'no', diagRatio: 'Pixel ratio',
-      diagHelp: 'What each viewer reported about itself. WebGL decides whether a vector map (lighter and sharper) is possible inside the simulator.',
-      baseTitle: 'Base map', baseLight: 'Light (quiet)', baseStandard: 'Standard OpenStreetMap', baseDark: 'Dark', baseNone: 'No map',
-      aircraftTitle: 'Aircraft symbol', aircraftPlane: 'Airplane', aircraftHeli: 'Helicopter', aircraftColor: 'Colour',
-      aircraftHelp: 'What marks the aircraft on the map in the viewer. Reload the viewer to see the change.',
-      col_yellow: 'Yellow', col_white: 'White', col_orange: 'Orange', col_red: 'Red', col_magenta: 'Magenta',
-      col_blue: 'Blue', col_cyan: 'Cyan', col_green: 'Green', col_black: 'Black',
-      baseHelp: 'What is drawn under the chart in the viewer. Light is a quiet grey version of OpenStreetMap: lighter to load and easier on the chart. Reload the viewer to see the change.',
-      detailTitle: 'Chart detail', detailNormal: 'Normal', detailHigh: 'High',
-      catGeneral: 'General', catSimulator: 'Simulator', catNetwork: 'Network', catDisplay: 'Map and aircraft', catCharts: 'Charts', catData: 'Navigation data', catDiag: 'Diagnostics',
-      largeTitle: 'Large charts (WAC, en-route)', largeStandard: 'Light', largeBalanced: 'Balanced (default)', largeSharp: 'Sharp', largeMaximum: 'Maximum',
-      largeHelp: 'Charts that cover a lot of ground (the WACs and the en-route charts) look blurred when the map is zoomed in, so they are drawn in more detail, as many more tiles. Measured on a WAC: Light stays sharp to map zoom 9 (about 22 MB); Balanced to zoom 11 (about 80 MB, the default); Sharp to zoom 12 (about 170 MB, 1 minute to import); Maximum to zoom 13 (about 700 MB, several minutes, only for those who really need it). An en-route chart is bigger and takes longer. It applies to charts imported from now on: import a chart again to redraw it.',
-      cfTitle: 'ChartFox', cfConnect: 'Connect ChartFox', cfDisconnect: 'Disconnect', cfWaiting: 'Waiting for you at the ChartFox page that opened in your browser...', cfUnavailable: 'This version of Open Charts cannot connect to ChartFox.', cfAs: 'Connected as',
-      cfHelp: 'ChartFox is a chart service with an official API. Connect your own ChartFox account and Open Charts can look charts up by airport and bring the ones you pick, only when you ask. Your login is kept on this computer, and disconnecting forgets it. ChartFox charts are for flight simulation only, never for real navigation.',
-      cfCredit: 'Chart data powered by ChartFox',
-      favorite: 'Favorite', favHelp: 'A favourite source shows first, highlighted, in Sources', cfLookupTitle: 'Look up charts', cfIcao: 'Airport code (ICAO)', cfLookup: 'Look up', cfHint: 'Type an airport code to see its charts on ChartFox. Nothing is downloaded until you pick charts and import them.', cfLoading: 'Asking ChartFox...',
-      cfNeedConnect: 'Connect your ChartFox account first.', cfGoSetup: 'Go to Setup', cfImport: 'Import selected', cfImporting: 'Importing...', cfImported: 'imported', cfAlready: 'already in the library', cfInLibrary: 'In library',
-      cfSimOnly: 'for flight simulation only, never for real navigation', cfSelectAll: 'Select all', cfNone: 'ChartFox has no charts for this airport.',
-      cfTypeIAC: 'Approach', cfTypeSID: 'Departures', cfTypeSTAR: 'Arrivals', cfTypeADC: 'Aerodrome', cfTypeOther: 'Other',
-      cfConfirmDisconnect: 'Disconnect ChartFox? The charts brought from ChartFox will be removed from the library.',
-      detailHelp: 'Applies to charts imported from now on. High is sharper when you zoom in (phones, large screens) but makes bigger files and takes longer. To change charts already in the library, delete and add them again.',
-      netTitle: 'Port and local network', portTitle: 'Server port', lanTitle: 'Local network (tablet and phone)', portLabel: 'Port', apply: 'Apply', portApplied: 'Port changed',
-      portHelp: 'Default {n}. Change it if another program uses it. Afterwards update the EFB app and restart the simulator.',
-      portFixed: 'The address was set with -addr on the command line; these options are off.',
-      lanLabel: 'Other devices', lanOn: 'Allowed: tablet and phone on the same Wi-Fi can connect', lanOff: 'Only this computer',
-      lanHelp: 'Scan the QR code with the tablet or phone. They can view and manage charts and groups, but never change this computer.',
-      lanFirewall: 'If Windows asks about the firewall, allow Open Charts on private networks.',
-      lanNoAddress: 'No network address found. Connect to a Wi-Fi or Ethernet network.',
-      lanVirtual: 'virtual adapter', lanRotate: 'Generate a new access key', lanRotateConfirm: 'Devices already connected will have to scan the QR code again. Continue?',
-      stEfbUrl: 'The EFB app points to another address',
-      viewOnly: 'View only', viewOnlyHelp: 'No georeference: it can be looked at, but has no aircraft position and cannot go over the map.',
-      preview: 'Original', pdfOriginal: 'Original PDF', chartImage: 'Chart image', backLibrary: '< Library', openPdf: 'Open the PDF', notFound: 'Chart not found',
-      editChart: 'Edit properties', save: 'Save', cancel: 'Cancel', saved: 'Saved',
-      editHelp: 'The display name is generated from ICAO, type and title.',
-      editWarnSource: 'Source and georeference cannot be changed.',
-      sUploading: 'Uploading the file', sAnalyzing: 'Reading the PDF and identifying the chart',
-      sWaiting: 'Waiting for the previous file', sEngine: 'Starting the PDF engine (first import only)',
-      sRender: 'Rendering and georeferencing the chart', sSave: 'Saving to the library',
-      aboutProject: 'Project and support', aboutRepo: 'Source code on GitHub', aboutIssues: 'Open issues',
-      aboutBug: 'Report a bug', aboutFeature: 'Suggest a feature', aboutBeta: 'This is an Open Beta: bug reports are very welcome.',
-      aboutLogs: 'When reporting a bug, include the log file',
-      setupTitle: 'Setup and status', stServer: 'Open Charts server', stRunning: 'Running at',
-      stSim: 'Simulator link', stSimRecv: 'Receiving the aircraft position', stSimConn: 'Connected, waiting for a position (start a flight)',
-      stSimWait: 'Waiting for MSFS to start', stSimFixed: 'Fixed test position (no simulator link)',
-      stInstall: 'MSFS installation', stNoInstall: 'No MSFS 2024 installation found. Enter the Community folder:',
-      stEfb: 'EFB app', stEfbNo: 'Not installed', stEfbOld: 'Installed, update available', stEfbOk: 'Installed',
-      btnInstall: 'Install in the EFB', btnUpdate: 'Update', btnRemove: 'Remove',
-      stAuto: 'Start with MSFS', stAutoHelp: 'Open Charts starts when the simulator starts (no window).', btnEnable: 'Enable', btnDisable: 'Disable',
-      stEfbLegacy: 'Old version (Local Moving Map) found: installing replaces it',
-      stData: 'Data folder', stRestart: 'Restart the simulator for the EFB app change to take effect.',
-      edSteam: 'Steam', edStore: 'Microsoft Store',
-      reviewTitle: 'Review before importing', icao: 'ICAO', ctype: 'Type', ctitle: 'Title', validity: 'AIRAC cycle or date', cname: 'Display name',
-      importOne: 'Import', importAll: 'Import all', notGeo: 'This PDF has no georeferencing: it will be added for viewing only (no aircraft position).', dup: 'Already in the library as',
-      detected: 'Detected from', fromFile: 'the file name', fromPdf: 'the PDF title', nameAuto: 'Leave empty to build it from ICAO, type and title',
-      disclaimer: 'For flight simulation only. Not for real-world aviation: using these charts or this software for real navigation or flight planning is prohibited.',
-      aboutWhat: 'Open Charts manages aeronautical chart PDFs and shows them as a moving map inside Microsoft Flight Simulator.',
-      aboutNotAffil: 'Independent project. Not affiliated with or endorsed by Microsoft, Asobo Studio, DECEA or any chart provider.',
-      aboutData: 'Charts stay on your computer. The app downloads nothing from chart providers by itself; you get the files from the official pages and follow the usage policy of each provider.',
-      aboutCredits: 'Credits and licences', aboutMap: 'Map tiles: (c) OpenStreetMap contributors (ODbL).',
-      aboutLibs: 'Built with Go, PDFium (BSD), pdfcpu (Apache-2.0), wazero (Apache-2.0), Leaflet (BSD-2). Live position through the SimConnect SDK.',
-      aboutLicense: 'Open source, MIT licence.', version: 'Version'
-    },
-    pt: {
-      library: 'Biblioteca', sources: 'Fontes', groups: 'Grupos', back: '< Fontes',
-      group: 'Grupo', newGroup: 'Novo grupo', groupName: 'Nome do grupo',
-      search: 'Buscar por ICAO, tipo ou nome...', all: 'Todas', charts: 'cartas',
-      addToGroup: '+ Adicionar ao grupo', inGroup: 'No grupo', addSelected: 'Adicionar selecionadas ao grupo',
-      removeFromGroup: 'Tirar deste grupo', confirmDel: 'Excluir esta carta da biblioteca?', newName: 'Novo nome',
-      rename: 'Renomear', del: 'Excluir', chartOnly: 'Só a carta', onMap: 'No mapa',
-      thisGroup: 'Cartas deste grupo', noPins: 'Nada aqui ainda. Use "Adicionar ao grupo" na biblioteca.',
-      noCharts: 'Nenhuma carta ainda. Abra Fontes para adicionar.', addCharts: 'Adicionar cartas (Fontes)',
-      current: 'Atual', makeCurrent: 'Usar este grupo', pinnedN: 'fixadas',
-      dropPdf: 'Solte aqui o que você baixou: PDFs (vários de uma vez) e/ou um pacote .zip. Arquivos conhecidos são nomeados e importados automaticamente. Ou', choose: 'escolha os arquivos',
-      linksTitle: 'Links oficiais', linkHub: 'AISWEB: página de cartas', linkHubNote: 'clique em "Pacote completo" para baixar o pacote (.zip)', exVisual: 'Exemplo de carta visual',
-      pkgFrom: 'Pacote', pkgChoose: 'Escolha os aeródromos que quer importar, ou importe tudo.', pkgNone: 'Nada deste pacote foi reconhecido.',
-      pkgImportAll: 'Importar tudo', pkgNew: 'novas', pkgAlready: 'já importado', pkgPrev: 'Anterior', pkgNext: 'Próxima', pkgOf: 'de',
-      pkgAllInfo: 'Prepara {n} cartas, cerca de {t}.', pkgAllWarn: 'Importar tudo prepara todas as cartas do pacote neste computador (cada PDF é desenhado como imagem). Pode levar {t}, e o computador ficará ocupado nesse tempo. Você pode deixar esta página aberta e continuar usando o aplicativo. Continuar?',
-      patTitle: 'Padrão de nome dos seus PDFs', patHelp: 'Nomeie seus PDFs sempre do mesmo jeito e o aplicativo lê o aeródromo, o tipo, o título e a data pelo nome do arquivo, e uma pasta inteira é importada sem perguntar. Escreva o padrão com marcadores.',
-      patLegend: 'Marcadores', patIcao: 'código do aeródromo (4 letras)', patType: 'tipo da carta (IAC, SID, STAR, ADC...)', patTitle2: 'o nome da carta',
-      patDate: 'data de validade; um formato a fixa, por exemplo {date:DD-MM-YYYY} (padrão: AAAAMMDD ou AAAA-MM-DD). {cycle} lê um ciclo AIRAC, como 2610', patSkip: 'qualquer texto que você não precisa',
-      patRules: '"_", "-" e espaço valem o mesmo, e maiúsculas não importam. Um padrão por linha; vale o primeiro que servir.',
-      patExample: 'Exemplo: {icao}_{type}_{title}_{date:YYYYMMDD} lê SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
-      patPlaceholder: '{icao}_{type}_{title}_{date:YYYYMMDD}', patTestLabel: 'Teste com um nome de arquivo', patTestPlaceholder: 'SBSP_IAC_ILS-X-RWY-17R_20260806.pdf',
-      patSave: 'Salvar padrões', patSaved: 'Padrões salvos', patNoMatch: 'nenhum padrão serve para este nome', patResult: 'Lê',
-      libAll: 'Todas as cartas', libAirports: 'Por aeródromo', libRoutes: 'Cartas de rota', noIcao: 'Sem aeródromo (cartas visuais)', airportsN: 'aeródromos',
-      selN: '{n} selecionadas', selPage: 'Todas as {n} desta página estão selecionadas.', selAll: 'Selecionar todas as {n} cartas da busca', selClear: 'Limpar seleção',
-      delSelected: 'Excluir selecionadas', confirmDelN: 'Excluir {n} cartas da biblioteca? Isso não pode ser desfeito.', deletedN: '{n} cartas excluídas',
-      backAirports: '< Aeródromos', openAirport: 'Abrir', selectAllPage: 'Selecionar todas desta página',
-      faaMetaTitle: 'Metadados do d-TPP (nomes dos arquivos)', faaMetaNone: 'Não carregado: os PDFs da FAA têm nome numérico, e sem os metadados do ciclo não dá para distingui-los.',
-      faaMetaOk: 'Carregado: ciclo {cycle} ({from} a {to}), {charts} cartas de {airports} aeroportos.', faaMetaAdd: 'Adicionar os metadados (.xml, ou o zip "E")',
-      faaMetaDone: 'Metadados carregados', faaMetaWhy: 'Baixe uma vez por ciclo (28 dias): fica dentro do DDTPPE_<data>.zip (cerca de 130 MB).',
-      pkgEta: 'restantes', pkgDuration: { s: 'alguns segundos', m: '{n} min', h: '{h} h {m} min' },
-      inbox: 'Pasta de entrada', inboxHelp: 'O que você adiciona aqui fica nesta pasta, no seu computador. Os PDFs são importados quando você clicar no botão; de um .zip, leia o pacote e escolha os aeródromos.',
-      importInbox: 'Importar os PDFs da pasta de entrada', noInbox: 'A pasta de entrada está vazia.',
-      imported: 'importadas', skipped: 'ignoradas', failed: 'com erro', done: 'Concluído', error: 'Erro',
-      placesTitle: 'Ir direto para um aeródromo', placesHelp: 'Digite o código ou o nome: o link abre a página daquele aeródromo no ciclo em vigor, onde as cartas estão listadas.',
-      placesInput: 'EGLL, heathrow, gatwick...', placesNone: 'Nenhum aeródromo encontrado.', placesOpen: 'Abrir a página das cartas', placesMore: 'Mais aeródromos combinam: digite mais do nome.',
-      capPlaces: 'Por aeródromo',
-      srcFilter: 'Filtrar pelo nome...', srcAllCountries: 'Todos os países', srcCountry: 'País', srcSource: 'Fonte', srcWhat: 'O que oferece',
-      srcNone: 'Nenhuma fonte encontrada.', srcAnyCountry: 'Qualquer país', srcOpen: 'Abrir',
-      builtin: 'Embutida', noAuto: 'Sem download automático', policyLink: 'Política de uso', official: 'Página oficial',
-      howTo: 'Como obter cartas desta fonte', locate: 'Onde obter o pacote',
-      locateHelp: 'Endereços derivados do padrão de nome; abrem no seu navegador e você baixa o arquivo.',
-      unverified: 'não confirmado', package: 'Pacote baixado', pkgPath: 'Caminho do arquivo .zip (ou escolha um da pasta de entrada)',
-      readPackage: 'Ler pacote', airports: 'aeródromos', importAirport: 'Importar',
-      catalog: 'Catálogo', catalogHelp: 'Abra a página oficial, salve o PDF e use "Adicionar arquivo" na mesma linha.',
-      openOfficial: '1. Abrir página oficial', addFile: '2. Adicionar arquivo', installed: 'Instalada', snapshot: 'Retrato de',
-      tabCatalog: 'Cartas visuais (catálogo)', tabPackage: 'Aeródromos (pacote)', tabFiles: 'Adicionar arquivos',
-      stepsFiles: 'Adicione o que você baixou', capCatalog: 'Catálogo', capPackage: 'Pacote', capLocate: 'Por data', capUpload: 'Envio',
-      efbTitle: 'A tela que o EFB do simulador mostra, em uma aba própria',
-      about: 'Sobre', setup: 'Configuração', efb: 'EFB', guide: 'Guia', nav: 'Navegação', routes: 'Rotas', mapTab: 'Mapa',
-      whyManualTitle: 'Por que eu tenho que baixar as cartas manualmente?',
-      whyManual: 'A maior parte dos provedores não permite a redistribuição, o que impede a gente de já entregar as cartas processadas e prontas. Muitos também proíbem qualquer tipo de download em massa ou script de extração automática. Para não infringir os termos de uso, vamos ser conservadores por enquanto: você baixa os arquivos e o Open Charts os processa no seu computador. No futuro podemos avaliar uma alternativa melhor.',
-      guideIntro: 'A tela do simulador não mostra dicas ao passar o mouse nos botões, então aqui está o que cada um faz. Os números do desenho batem com a lista.',
-      guideTop: 'Barra de cima', guideLeft: 'Coluna da esquerda: mexer na vista', guideRight: 'Coluna da direita: como a carta aparece', guideLists: 'Dentro das listas',
-      diagTitle: 'Navegadores do visualizador', diagNone: 'Nenhum visualizador se apresentou ainda. Abra o visualizador (no simulador ou num navegador) e volte aqui.',
-      diagSim: 'Simulador (EFB)', diagBrowser: 'Navegador', diagYes: 'sim', diagNo: 'não', diagRatio: 'Densidade de pixels',
-      diagHelp: 'O que cada visualizador informou sobre si. O WebGL decide se um mapa vetorial (mais leve e mais nítido) é possível dentro do simulador.',
-      baseTitle: 'Mapa base', baseLight: 'Claro (discreto)', baseStandard: 'OpenStreetMap padrão', baseDark: 'Escuro', baseNone: 'Sem mapa',
-      aircraftTitle: 'Símbolo da aeronave', aircraftPlane: 'Avião', aircraftHeli: 'Helicóptero', aircraftColor: 'Cor',
-      aircraftHelp: 'O que marca a aeronave no mapa do visualizador. Recarregue o visualizador para ver a mudança.',
-      col_yellow: 'Amarelo', col_white: 'Branco', col_orange: 'Laranja', col_red: 'Vermelho', col_magenta: 'Magenta',
-      col_blue: 'Azul', col_cyan: 'Ciano', col_green: 'Verde', col_black: 'Preto',
-      baseHelp: 'O que aparece embaixo da carta no visualizador. O Claro é uma versão discreta, em cinza, do OpenStreetMap: carrega mais leve e não disputa atenção com a carta. Recarregue o visualizador para ver a mudança.',
-      detailTitle: 'Detalhe das cartas', detailNormal: 'Normal', detailHigh: 'Alto',
-      catGeneral: 'Geral', catSimulator: 'Simulador', catNetwork: 'Rede', catDisplay: 'Mapa e aeronave', catCharts: 'Cartas', catData: 'Dados de navegação', catDiag: 'Diagnóstico',
-      largeTitle: 'Cartas grandes (WAC, em rota)', largeStandard: 'Leve', largeBalanced: 'Equilibrado (padrão)', largeSharp: 'Nítido', largeMaximum: 'Máximo',
-      largeHelp: 'As cartas que cobrem muito terreno (as WAC e as de rota) ficam borradas quando o mapa é aproximado, então são desenhadas com mais detalhe, em muito mais tiles. Medido numa WAC: o Leve fica nítido até o zoom 9 do mapa (uns 22 MB); o Equilibrado até o zoom 11 (uns 80 MB, o padrão); o Nítido até o zoom 12 (uns 170 MB, 1 minuto para importar); o Máximo até o zoom 13 (uns 700 MB, vários minutos, só para quem precisa mesmo). Uma carta de rota é maior e demora mais. Vale para as cartas importadas daqui para a frente: importe a carta de novo para redesenhá-la.',
-      cfTitle: 'ChartFox', cfConnect: 'Conectar o ChartFox', cfDisconnect: 'Desconectar', cfWaiting: 'Esperando você na página do ChartFox que abriu no navegador...', cfUnavailable: 'Esta versão do Open Charts não consegue se conectar ao ChartFox.', cfAs: 'Conectado como',
-      cfHelp: 'O ChartFox é um serviço de cartas com API oficial. Conecte a sua própria conta do ChartFox e o Open Charts poderá procurar cartas por aeroporto e trazer as que você escolher, só quando você pedir. O seu login fica guardado neste computador, e desconectar apaga ele. As cartas do ChartFox são só para simulação de voo, nunca para navegação real.',
-      cfCredit: 'Chart data powered by ChartFox',
-      favorite: 'Favoritar', favHelp: 'Uma fonte favorita aparece primeiro, destacada, em Fontes', cfLookupTitle: 'Procurar cartas', cfIcao: 'Código do aeroporto (ICAO)', cfLookup: 'Procurar', cfHint: 'Digite o código de um aeroporto para ver as cartas dele no ChartFox. Nada é baixado até você marcar cartas e importar.', cfLoading: 'Perguntando ao ChartFox...',
-      cfNeedConnect: 'Conecte primeiro a sua conta do ChartFox.', cfGoSetup: 'Ir para o Setup', cfImport: 'Importar marcadas', cfImporting: 'Importando...', cfImported: 'importadas', cfAlready: 'já estavam na biblioteca', cfInLibrary: 'Na biblioteca',
-      cfSimOnly: 'apenas para simulação de voo, nunca para navegação real', cfSelectAll: 'Marcar todas', cfNone: 'O ChartFox não tem cartas para este aeroporto.',
-      cfTypeIAC: 'Aproximação', cfTypeSID: 'Saídas', cfTypeSTAR: 'Chegadas', cfTypeADC: 'Aeródromo', cfTypeOther: 'Outras',
-      cfConfirmDisconnect: 'Desconectar o ChartFox? As cartas trazidas do ChartFox serão removidas da biblioteca.',
-      detailHelp: 'Vale para as cartas importadas daqui em diante. Alto fica mais nítido ao dar zoom (celular, telas grandes), mas gera arquivos maiores e demora mais. Para mudar as cartas que já estão na biblioteca, exclua e adicione de novo.',
-      netTitle: 'Porta e rede local', portTitle: 'Porta do servidor', lanTitle: 'Rede local (tablet e celular)', portLabel: 'Porta', apply: 'Aplicar', portApplied: 'Porta alterada',
-      portHelp: 'Padrão {n}. Troque se outro programa usar. Depois, atualize o app do EFB e reinicie o simulador.',
-      portFixed: 'O endereço foi definido com -addr na linha de comando; estas opções ficam desativadas.',
-      lanLabel: 'Outros dispositivos', lanOn: 'Permitido: tablet e celular na mesma rede Wi-Fi podem conectar', lanOff: 'Somente este computador',
-      lanHelp: 'Leia o QR code com o tablet ou o celular. Eles veem e gerenciam cartas e grupos, mas nunca alteram este computador.',
-      lanFirewall: 'Se o Windows perguntar sobre o firewall, permita o Open Charts em redes privadas.',
-      lanNoAddress: 'Nenhum endereço de rede encontrado. Conecte-se a uma rede Wi-Fi ou cabeada.',
-      lanVirtual: 'adaptador virtual', lanRotate: 'Gerar nova chave de acesso', lanRotateConfirm: 'Os dispositivos já conectados precisarão ler o QR code de novo. Continuar?',
-      stEfbUrl: 'O app do EFB aponta para outro endereço',
-      viewOnly: 'Só visualização', viewOnlyHelp: 'Sem georreferenciamento: dá para ver a carta, mas ela não tem a posição da aeronave e não vai sobre o mapa.',
-      preview: 'Original', pdfOriginal: 'PDF original', chartImage: 'Imagem da carta', backLibrary: '< Biblioteca', openPdf: 'Abrir o PDF', notFound: 'Carta não encontrada',
-      editChart: 'Editar propriedades', save: 'Salvar', cancel: 'Cancelar', saved: 'Salvo',
-      editHelp: 'O nome exibido é gerado a partir de ICAO, tipo e título.',
-      editWarnSource: 'A fonte e a georreferência não podem ser alteradas.',
-      sUploading: 'Enviando o arquivo', sAnalyzing: 'Lendo o PDF e identificando a carta',
-      sWaiting: 'Aguardando o arquivo anterior', sEngine: 'Iniciando o motor de PDF (só na primeira importação)',
-      sRender: 'Renderizando e georreferenciando a carta', sSave: 'Salvando na biblioteca',
-      aboutProject: 'Projeto e suporte', aboutRepo: 'Código-fonte no GitHub', aboutIssues: 'Ver issues',
-      aboutBug: 'Reportar um bug', aboutFeature: 'Sugerir uma funcionalidade', aboutBeta: 'Esta é uma Open Beta: relatos de bugs são muito bem-vindos.',
-      aboutLogs: 'Ao reportar um bug, anexe o arquivo de log',
-      setupTitle: 'Configuração e status', stServer: 'Servidor do Open Charts', stRunning: 'Rodando em',
-      stSim: 'Ligação com o simulador', stSimRecv: 'Recebendo a posição da aeronave', stSimConn: 'Conectado, aguardando posição (inicie um voo)',
-      stSimWait: 'Aguardando o MSFS iniciar', stSimFixed: 'Posição fixa de teste (sem ligação com o simulador)',
-      stInstall: 'Instalação do MSFS', stNoInstall: 'Nenhuma instalação do MSFS 2024 encontrada. Informe a pasta Community:',
-      stEfb: 'App do EFB', stEfbNo: 'Não instalado', stEfbOld: 'Instalado, há atualização', stEfbOk: 'Instalado',
-      btnInstall: 'Instalar no EFB', btnUpdate: 'Atualizar', btnRemove: 'Remover',
-      stAuto: 'Iniciar com o MSFS', stAutoHelp: 'O Open Charts inicia quando o simulador inicia (sem janela).', btnEnable: 'Ativar', btnDisable: 'Desativar',
-      stEfbLegacy: 'Versão antiga (Local Moving Map) encontrada: instalar substitui',
-      stData: 'Pasta de dados', stRestart: 'Reinicie o simulador para a mudança no app do EFB valer.',
-      edSteam: 'Steam', edStore: 'Microsoft Store',
-      reviewTitle: 'Revise antes de importar', icao: 'ICAO', ctype: 'Tipo', ctitle: 'Título', validity: 'Ciclo AIRAC ou data', cname: 'Nome exibido',
-      importOne: 'Importar', importAll: 'Importar todas', notGeo: 'Este PDF não tem georreferenciamento: será adicionado só para visualização (sem a posição da aeronave).', dup: 'Já está na biblioteca como',
-      detected: 'Detectado a partir de', fromFile: 'do nome do arquivo', fromPdf: 'do título do PDF', nameAuto: 'Deixe vazio para montar com ICAO, tipo e título',
-      disclaimer: 'Apenas para simulação aérea. Proibido o uso em aviação real: é vedado utilizar estas cartas ou este software para navegação ou planejamento de voo reais.',
-      aboutWhat: 'O Open Charts gerencia cartas aeronáuticas em PDF e as exibe como mapa móvel dentro do Microsoft Flight Simulator.',
-      aboutNotAffil: 'Projeto independente. Sem afiliação ou endosso da Microsoft, Asobo Studio, DECEA ou de qualquer provedor de cartas.',
-      aboutData: 'As cartas ficam no seu computador. O aplicativo não baixa nada dos provedores sozinho; você obtém os arquivos nas páginas oficiais e segue a política de uso de cada provedor.',
-      aboutCredits: 'Créditos e licenças', aboutMap: 'Mapas: (c) colaboradores do OpenStreetMap (ODbL).',
-      aboutLibs: 'Feito com Go, PDFium (BSD), pdfcpu (Apache-2.0), wazero (Apache-2.0), Leaflet (BSD-2). Posição ao vivo pelo SimConnect SDK.',
-      aboutLicense: 'Código aberto, licença MIT.', version: 'Versão'
-    }
-  };
-
-  let lang = 'en';
-  try { lang = localStorage.getItem('oc.lang') || ((navigator.language || 'en').toLowerCase().startsWith('pt') ? 'pt' : 'en'); } catch (e) { /* ignore */ }
-  const qLang = new URLSearchParams(location.search).get('lang');
-  if (qLang === 'pt' || qLang === 'en') lang = qLang;
   let VERSION = '0.7.0 Open Beta';   // replaced by what the running program reports (/api/version): '0.1.1-8fa9b5b' while developing
   const REPO = 'https://github.com/RCCSilva/msfs-efb-open-charts';
-  const t = (k) => STR[lang][k] || STR.en[k] || k;
-  const fill = (text, vars) => text.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
-  // 45 -> "a few seconds", 600 -> "10 min", 7500 -> "2 h 5 min" (an estimate: never more precise than a minute)
-  function fmtDuration(sec) {
-    const d = STR[lang].pkgDuration || STR.en.pkgDuration;
-    if (sec < 60) return d.s;
-    const min = Math.max(1, Math.round(sec / 60));
-    if (min < 60) return fill(d.m, { n: min });
-    return fill(d.h, { h: Math.floor(min / 60), m: min % 60 });
-  }
-  const tx = (o) => (o && (o[lang] || o.en)) || '';
 
   // ---- helpers
-  function h(tag, attrs, ...kids) {
-    const n = document.createElement(tag);
-    if (attrs) {
-      for (const k of Object.keys(attrs)) {
-        const v = attrs[k];
-        if (v === null || v === undefined || v === false) continue;
-        if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
-        else if (k === 'class') n.className = v;
-        else if (k === 'value') n.value = v;
-        else n.setAttribute(k, v === true ? '' : v);
-      }
-    }
-    for (const kid of kids.flat(Infinity)) {
-      if (kid === null || kid === undefined || kid === false) continue;
-      n.appendChild(typeof kid === 'string' || typeof kid === 'number' ? document.createTextNode(String(kid)) : kid);
-    }
-    return n;
-  }
-
-  async function api(method, url, body) {
-    const opt = { method, headers: {} };
-    if (body instanceof FormData) opt.body = body;
-    else if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
-    const r = await fetch(url, opt);
-    let data = null;
-    try { data = await r.json(); } catch (e) { /* no body */ }
-    if (!r.ok) throw new Error((data && data.error) || r.statusText);
-    return data;
-  }
-
-  let toastTimer = null;
-  function toast(msg) {
-    const el = document.getElementById('toast');
-    el.textContent = msg;
-    el.hidden = false;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
-  }
-
   async function waitJob(id, onTick) {
     for (;;) {
       const j = await api('GET', '/api/jobs/' + encodeURIComponent(id));
@@ -316,8 +34,6 @@
   }
 
   // ---- state and routing
-  const state = { groups: { current: '', groups: [] } };
-  const view = document.getElementById('view');
   const currentGroup = () => state.groups.groups.find((f) => f.id === state.groups.current) || { id: '', name: '-', pins: [] };
 
   async function loadGroups() { state.groups = await api('GET', '/api/groups'); }
@@ -325,17 +41,6 @@
   function parseRoute() {
     const [name, arg] = (location.hash || '#library').slice(1).split('/');
     return { name: name || 'library', arg: arg ? decodeURIComponent(arg) : '' };
-  }
-  const go = (hash) => { if (location.hash === hash) render(); else location.hash = hash; };
-
-  // A page is a real link (an <a>): it can be opened in a new tab with the middle button or ctrl+click.
-  // A plain click is handled in place, without reloading the page.
-  function pageLink(hash, cls, ...kids) {
-    return h('a', { class: cls, href: location.pathname + location.search + hash, onclick: (e) => {
-      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-      e.preventDefault();
-      go(hash);
-    } }, ...kids);
   }
 
   async function render() {
@@ -697,105 +402,6 @@
     } }, (s.favorite ? '★ ' : '☆ ') + t('favorite'));
   }
 
-  // ---- ChartFox: look charts up by airport and bring the ones picked
-  const CF_TYPES = [['IAC', 'cfTypeIAC'], ['SID', 'cfTypeSID'], ['STAR', 'cfTypeSTAR'], ['ADC', 'cfTypeADC'], ['', 'cfTypeOther']];
-  const CF_BATCH = 20; // what one import request may carry
-
-  // The airport last looked up on the ChartFox page, kept while the manager stays open.
-  const cfLookup = { icao: '' };
-
-  // The lookup of ChartFox, shown on its page under Sources: type an airport, tick charts, import. It redraws itself in
-  // place (no page of its own).
-  function chartFoxPanel() {
-    const root = h('div');
-    const draw = async () => {
-      const icao = cfLookup.icao;
-      let st;
-      try { st = await api('GET', '/api/chartfox'); } catch (e) { root.replaceChildren(h('div', { class: 'card' }, h('span', { class: 'badge bad' }, e.message))); return; }
-      const credit = h('div', { class: 'muted', style: 'margin-bottom:16px' },
-        h('a', { href: 'https://chartfox.org', target: '_blank', rel: 'noopener' }, t('cfCredit')), ' · ', t('cfSimOnly'));
-      if (!st.available) { root.replaceChildren(h('div', { class: 'card' }, h('div', { class: 'muted' }, t('cfUnavailable')))); return; }
-      if (!st.connected) {
-        root.replaceChildren(h('div', { class: 'card' }, h('h3', null, t('cfLookupTitle')), h('p', null, t('cfNeedConnect')), pageLink('#setup', 'btn primary', t('cfGoSetup'))), credit);
-        return;
-      }
-
-      const box = h('input', { type: 'text', placeholder: t('cfIcao'), value: icao, maxlength: '4', style: 'text-transform:uppercase;max-width:140px' });
-      const form = h('form', { class: 'row', onsubmit: (e) => {
-        e.preventDefault();
-        cfLookup.icao = box.value.trim().toUpperCase();
-        draw();
-      } }, box, h('button', { class: 'btn primary', type: 'submit' }, t('cfLookup')));
-      const out = h('div');
-      root.replaceChildren(h('div', { class: 'card' }, h('h3', null, t('cfLookupTitle')), form), out, credit);
-      if (!icao) { out.append(h('div', { class: 'muted', style: 'margin-bottom:16px' }, t('cfHint'))); return; }
-
-      out.append(h('div', { class: 'muted' }, t('cfLoading')));
-      let data;
-      try { data = await api('GET', '/api/chartfox/airports/' + encodeURIComponent(icao)); } catch (e) {
-        out.replaceChildren(h('div', { class: 'card' }, h('span', { class: 'badge bad' }, e.message)));
-        return;
-      }
-
-      const picked = new Set();
-      const importBtn = h('button', { class: 'btn primary' }, '');
-      const sync = () => {
-        importBtn.textContent = t('cfImport') + ' (' + picked.size + ')';
-        importBtn.disabled = picked.size === 0;
-      };
-      importBtn.addEventListener('click', async () => {
-        const ids = [...picked];
-        importBtn.disabled = true;
-        importBtn.textContent = t('cfImporting');
-        let ok = 0, already = 0, failed = '';
-        try {
-          for (let i = 0; i < ids.length; i += CF_BATCH) {
-            const r = await api('POST', '/api/chartfox/import', { ids: ids.slice(i, i + CF_BATCH) });
-            r.results.forEach((x) => {
-              if (x.status === 'ok') ok++; else if (x.status === 'already') already++; else if (!failed) failed = x.message;
-            });
-            if (failed) break;
-          }
-        } catch (e) { failed = e.message; }
-        toast(ok + ' ' + t('cfImported') + (already ? ', ' + already + ' ' + t('cfAlready') : '') + (failed ? ' · ' + failed : ''));
-        draw();
-      });
-
-      const a = data.airport || {};
-      const groups = CF_TYPES.map(([code, label]) => ({
-        label,
-        items: data.charts.filter((c) => (c.type || '') === code).sort((p, q) => p.name.localeCompare(q.name, lang, { numeric: true })),
-      })).filter((g) => g.items.length);
-
-      const cards = groups.map((g, gi) => {
-        const rows = g.items.map((c) => {
-          const cb = h('input', { type: 'checkbox', disabled: c.imported, onchange: (e) => {
-            if (e.target.checked) picked.add(c.id); else picked.delete(c.id);
-            sync();
-          } });
-          cb.dataset.id = c.id;
-          return h('label', { class: 'row', style: 'padding:4px 0;cursor:pointer' }, cb, h('span', null, c.name),
-            c.code ? h('span', { class: 'badge' }, c.code) : null,
-            c.imported ? h('span', { class: 'badge ok' }, t('cfInLibrary')) : null);
-        });
-        const card = h('div', { class: 'card' });
-        const toggle = h('button', { class: 'btn sm', onclick: () => {
-          const boxes = [...card.querySelectorAll('input[type=checkbox]:not(:disabled)')];
-          const on = boxes.some((b) => !b.checked);
-          boxes.forEach((b) => { b.checked = on; if (on) picked.add(b.dataset.id); else picked.delete(b.dataset.id); });
-          sync();
-        } }, t('cfSelectAll'));
-        card.append(h('div', { class: 'row' }, h('h3', { style: 'margin:0' }, t(g.label) + ' (' + g.items.length + ')'), toggle), ...rows);
-        return card;
-      });
-      out.replaceChildren(
-        h('div', { class: 'row', style: 'margin-bottom:12px' }, h('strong', null, (a.ident || icao) + (a.name ? ' — ' + a.name : '')), h('span', { class: 'muted' }, data.charts.length + ' ' + t('charts')), importBtn),
-        cards.length ? h('div', null, cards) : h('div', { class: 'muted' }, t('cfNone')));
-      sync();
-    };
-    draw();
-    return root;
-  }
 
   // ---- Sources: list, then one page per source
   const sourcesView = { q: '', country: '' };
@@ -3111,134 +2717,6 @@
     setTimeout(() => map.invalidateSize(), 80);
   }
 
-  // ---- Guide: what every button of the in-simulator screen does. The simulator's browser shows no
-  // tooltips, so this page is the legend: a drawing of the screen with numbers, and the list.
-  const G = (d) => '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
-  const ICON = {
-    route: G('<path d="M5 25l8-12 6 7 8-12"/><circle cx="5" cy="25" r="2.2"/><circle cx="27" cy="8" r="2.2"/>'),
-    pin: G('<path d="M11 4h10l-1 9 4 5H8l4-5z"/><path d="M16 18v10"/>'),
-    search: G('<circle cx="14" cy="14" r="8"/><path d="M20 20l8 8"/>'),
-    strip: G('<path d="M5 9h13M5 16h13M5 23h13"/><path d="M23 7h6l-.7 6 2.7 3.4H20l2.7-3.4z"/><path d="M26 16.5V26"/>'),
-    eye: G('<path d="M3 16C6.5 10 11 7.5 16 7.5S25.5 10 29 16C25.5 22 21 24.5 16 24.5S6.5 22 3 16z"/><circle cx="16" cy="16" r="4"/>'),
-    zin: G('<path d="M16 7v18M7 16h18"/>'),
-    zout: G('<path d="M7 16h18"/>'),
-    follow: G('<circle cx="16" cy="16" r="7"/><path d="M16 3v6M16 23v6M3 16h6M23 16h6"/>'),
-    orient: G('<circle cx="16" cy="16" r="12"/><path d="M16 6l3.5 10h-7z" fill="#d32f2f" stroke="#d32f2f"/><path d="M16 26l-3.5-10h7z"/>'),
-    regional: G('<circle cx="16" cy="16" r="11"/><path d="M16 8.5l4 11-4-2.5-4 2.5z"/>'),
-    fit: G('<path d="M5 12V5h7M20 5h7v7M27 20v7h-7M12 27H5v-7"/>'),
-    reload: G('<path d="M26 16a10 10 0 1 1-3-7.1"/><path d="M24 4v6h-6"/>'),
-    close: G('<path d="M9 9l14 14M23 9L9 23"/>'),
-    overlay: G('<path d="M16 5l11 6-11 6-11-6z"/><path d="M5 17l11 6 11-6"/><path d="M5 22l11 6 11-6"/>'),
-    chart: G('<rect x="8" y="4" width="16" height="24" rx="1.5"/><path d="M11 10h10M11 15h10M11 20h6"/>'),
-    blend: G('<circle cx="16" cy="16" r="11"/><circle cx="16" cy="16" r="7.5" fill="currentColor" stroke="none" fill-opacity=".5"/>'),
-    multi: G('<rect x="4" y="9" width="17" height="17" rx="1.5"/><path d="M10 5h17.5v17.5"/><path d="M9 15h8M9 20h5"/>'),
-    updown: G('<path d="M6 12l10-8 10 8M6 20l10 8 10-8"/>'),
-    bang: '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="#f59e0b" stroke="none"/><path d="M16 9v9" stroke="#fff" stroke-width="3.2"/><circle cx="16" cy="23" r="1.8" fill="#fff" stroke="none"/></svg>',
-    dots: G('<circle cx="16" cy="7" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/><circle cx="16" cy="25" r="2" fill="currentColor"/>')
-  };
-
-  // x, y, w, h: where the button is on the 468 x 696 screen of the simulator's tablet (lists: no position)
-  const GUIDE = [
-    { key: 'box', x: 10, y: 38, w: 109, h: 44, group: 'top',
-      en: ['Route box', 'Shows the route in use (origin > destination). Tap the text to open the box where you write, paste or change the route as text.'],
-      pt: ['Caixa da rota', 'Mostra a rota em uso (origem > destino). Toque no texto para abrir a caixa onde você escreve, cola ou altera a rota como texto.'] },
-    { key: 'route', x: 125, y: 38, w: 44, h: 44, group: 'top',
-      en: ['Route places', 'Opens the list of the places of the route (each with a menu: Direct to, Remove) and, below it, your saved routes from the Routes tab of the manager: one tap loads one.'],
-      pt: ['Pontos da rota', 'Abre a lista dos pontos da rota (cada um com um menu: Direto para, Remover) e, abaixo, as suas rotas salvas na aba Rotas do gerenciador: um toque carrega uma.'] },
-    { key: 'pin', x: 175, y: 38, w: 90, h: 44, group: 'top',
-      en: ['Pin / Pinned', 'Adds the chart on screen to your list of pinned charts (the button then reads "Pinned"). Tap again to unpin.'],
-      pt: ['Fixar / Fixada', 'Coloca a carta que está na tela na sua lista de cartas fixadas (o botão passa a dizer "Fixada"). Toque de novo para desafixar.'] },
-    { key: 'search', x: 314, y: 38, w: 44, h: 44, group: 'top',
-      en: ['Search charts', 'Opens the chart search. With a route and nothing typed, it already lists the charts of the route airports (the ones for the procedures in your route come first).'],
-      pt: ['Buscar cartas', 'Abre a busca de cartas. Com uma rota e nada digitado, já lista as cartas dos aeroportos da rota (as dos procedimentos da rota vêm primeiro).'] },
-    { key: 'strip', x: 364, y: 38, w: 44, h: 44, group: 'top',
-      en: ['Pinned charts', 'Opens your list of pinned charts, grouped by airport. Tap one to open it.'],
-      pt: ['Cartas fixadas', 'Abre a sua lista de cartas fixadas, agrupadas por aeroporto. Toque numa para abrir.'] },
-    { key: 'eye', x: 414, y: 38, w: 44, h: 44, group: 'top',
-      en: ['Hide controls', 'Hides every button so only the chart or the map is left. Tap again to bring them back.'],
-      pt: ['Ocultar controles', 'Esconde todos os botões e deixa só a carta ou o mapa. Toque de novo para voltar.'] },
-    { key: 'zin', x: 10, y: 214, w: 48, h: 48, group: 'left',
-      en: ['Zoom in', 'Brings the map or chart closer.'], pt: ['Aproximar', 'Aproxima o mapa ou a carta.'] },
-    { key: 'zout', x: 10, y: 268, w: 48, h: 48, group: 'left',
-      en: ['Zoom out', 'Moves the map or chart away.'], pt: ['Afastar', 'Afasta o mapa ou a carta.'] },
-    { key: 'follow', x: 10, y: 322, w: 48, h: 48, group: 'left',
-      en: ['Follow aircraft', 'Keeps the aircraft in the centre of the screen. Dragging the map turns it off; tap to turn it on again.'],
-      pt: ['Seguir a aeronave', 'Mantém a aeronave no centro da tela. Arrastar o mapa desliga; toque para ligar de novo.'] },
-    { key: 'orient', x: 10, y: 376, w: 48, h: 48, group: 'left',
-      en: ['Map orientation', 'A compass. North up by default (the needle points up). Tap it and the map turns with the aircraft, which always points up and stays in the centre; the button then shows an arrow in a ring whose N turns to show where north is. Tap again, or turn follow off, to go back to north up. While the map turns, dragging it is off.'],
-      pt: ['Orientação do mapa', 'Uma bússola. Por padrão, norte para cima (a agulha aponta para cima). Toque e o mapa gira junto com a aeronave, que fica sempre apontando para cima e no centro; o botão passa a mostrar uma seta dentro de um anel cujo N gira para mostrar onde está o norte. Toque de novo, ou desligue o seguir, para voltar ao norte para cima. Enquanto o mapa gira, arrastar fica desligado.'] },
-    { key: 'regional', x: 10, y: 430, w: 48, h: 48, group: 'left',
-      en: ['Regional zoom', 'Frames about 30 km around the aircraft. Good for big charts that cover a whole region.'],
-      pt: ['Zoom regional', 'Enquadra cerca de 30 km em volta da aeronave. Bom para cartas grandes que cobrem uma região.'] },
-    { key: 'fit', x: 10, y: 484, w: 48, h: 48, group: 'left',
-      en: ['Whole chart', 'Shows the whole chart on the screen.'], pt: ['Carta inteira', 'Mostra a carta inteira na tela.'] },
-    { key: 'reload', x: 10, y: 538, w: 48, h: 48, group: 'left',
-      en: ['Reload', 'Reloads this screen. Use it if something looks stuck.'], pt: ['Recarregar', 'Recarrega esta tela. Use se algo parecer travado.'] },
-    { key: 'close', x: 410, y: 322, w: 48, h: 48, group: 'right',
-      en: ['Close chart', 'Takes the chart off the screen. With several charts on the map, the one below comes up.'],
-      pt: ['Fechar a carta', 'Tira a carta da tela. Com várias cartas no mapa, a que está embaixo sobe.'] },
-    { key: 'overlay', x: 410, y: 376, w: 48, h: 48, group: 'right',
-      en: ['Chart over the map', 'Shows the chart placed over the map, in its real position, with your aircraft on it.'],
-      pt: ['Carta sobre o mapa', 'Mostra a carta posicionada sobre o mapa, no lugar real, com a sua aeronave nela.'] },
-    { key: 'chart', x: 410, y: 430, w: 48, h: 48, group: 'right',
-      en: ['Chart only', 'Shows only the chart, with no map. Charts that cannot be placed on the map (view-only) always open like this.'],
-      pt: ['Só a carta', 'Mostra só a carta, sem mapa. Cartas que não podem ser posicionadas no mapa (só visualização) sempre abrem assim.'] },
-    { key: 'blend', x: 410, y: 484, w: 48, h: 48, group: 'right',
-      en: ['Chart opacity', 'Steps through how much of the chart shows over the map: 100%, 75%, 50%, 25%.'],
-      pt: ['Opacidade da carta', 'Alterna quanto da carta aparece sobre o mapa: 100%, 75%, 50%, 25%.'] },
-    { key: 'multi', x: 410, y: 538, w: 48, h: 48, group: 'right',
-      en: ['Several charts', 'When on, opening another chart keeps the previous ones on the map under it (up to 5 together). The view does not move.'],
-      pt: ['Várias cartas', 'Quando ligado, abrir outra carta mantém as anteriores no mapa por baixo dela (até 5 juntas). A vista não se mexe.'] },
-    { key: 'pin', group: 'lists',
-      en: ['Pushpin on a row', 'In the search and in the pinned list: filled means pinned. Tap to pin or unpin that chart without opening it.'],
-      pt: ['Pushpin na linha', 'Na busca e na lista de fixadas: cheio quer dizer fixada. Toque para fixar ou desafixar aquela carta sem abri-la.'] },
-    { key: 'eye', group: 'lists',
-      en: ['Eye on a row', 'Only for charts that are on the map. Moves the view to that chart. Adding a chart never moves the view by itself.'],
-      pt: ['Olho na linha', 'Só para cartas que estão no mapa. Leva a vista até aquela carta. Adicionar uma carta nunca mexe na vista sozinho.'] },
-    { key: 'updown', group: 'lists',
-      en: ['Up / down arrows', 'At the bottom of every list. They scroll the list, because touch scrolling is hard on the simulator screen.'],
-      pt: ['Setas subir / descer', 'No rodapé de toda lista. Rolam a lista, porque rolar com o toque é difícil na tela do simulador.'] },
-    { key: 'bang', group: 'lists',
-      en: ['Orange "!" on a route place', 'More than one place has that name. The closest to the previous point is already used, so you do not have to do anything; tap the mark to see the others and pick one. It turns grey once you chose.'],
-      pt: ['"!" laranja num ponto da rota', 'Mais de um lugar tem esse nome. Já está sendo usado o mais próximo do ponto anterior, então você não precisa fazer nada; toque na marca para ver os outros e escolher. Ela fica cinza depois que você escolhe.'] },
-    { key: 'dots', group: 'lists',
-      en: ['Three dots on a route place', 'In the route list: "Direct to" drops every place before this one; "Remove" takes this place out.'],
-      pt: ['Três pontos num ponto da rota', 'Na lista da rota: "Direto para" descarta tudo antes deste ponto; "Remover" tira este ponto.'] }
-  ];
-
-  function guideIcon(key, cls) {
-    const s = h('span', { class: 'gicon' + (cls ? ' ' + cls : '') });
-    if (key === 'box') s.textContent = 'KJFK > KBOS'; else s.innerHTML = ICON[key];
-    return s;
-  }
-
-  function renderGuide() {
-    const groups = [
-      ['top', t('guideTop')], ['left', t('guideLeft')], ['right', t('guideRight')], ['lists', t('guideLists')]];
-    let n = 0;
-    const numbered = GUIDE.map((g) => Object.assign({}, g, { n: g.group === 'lists' ? 0 : ++n }));
-    const W = 468, H = 696;
-    const mock = h('div', { class: 'mock' },
-      h('div', { class: 'mockband' }),
-      ...numbered.filter((g) => g.n).map((g) => {
-        const b = h('div', { class: 'mockbtn' + (g.key === 'box' ? ' mockbox' : '') + (g.group === 'right' || g.group === 'left' ? ' mockside' : ''),
-          style: `left:${g.x / W * 100}%;top:${g.y / H * 100}%;width:${g.w / W * 100}%;height:${g.h / H * 100}%` });
-        b.appendChild(guideIcon(g.key, 'mockicon'));
-        b.appendChild(h('span', { class: 'mocknum' }, String(g.n)));
-        return b;
-      }),
-      h('div', { class: 'mocknote' }, 'Open Charts'));
-    const list = h('div', null, groups.map(([id, title]) => h('div', { class: 'card' },
-      h('h3', null, title),
-      ...numbered.filter((g) => g.group === id).map((g) => h('div', { class: 'gitem' },
-        g.n ? h('span', { class: 'gnum' }, String(g.n)) : h('span', { class: 'gnum none' }),
-        guideIcon(g.key, 'gchip' + (g.key === 'box' ? ' gbox' : '')),
-        h('div', { class: 'gtext' }, h('strong', null, g[lang][0]), h('div', { class: 'muted' }, g[lang][1])))))));
-    view.replaceChildren(h('h2', null, t('guide')),
-      h('p', { class: 'muted' }, t('guideIntro')),
-      h('div', { class: 'guidepage' }, h('div', { class: 'mockwrap' }, mock), list));
-  }
-
   function renderAbout() {
     view.replaceChildren(h('h2', null, t('about')),
       h('div', { class: 'card' },
@@ -3274,12 +2752,13 @@
   const langSel = document.getElementById('lang');
   langSel.value = lang;
   langSel.addEventListener('change', () => {
-    lang = langSel.value;
+    setLang(langSel.value);
     try { localStorage.setItem('oc.lang', lang); } catch (e) { /* ignore */ }
     document.documentElement.lang = lang;
     render();
   });
   document.documentElement.lang = lang;
+  app.render = render;
   window.addEventListener('hashchange', render);
   render();
   api('GET', '/api/version').then((v) => {
