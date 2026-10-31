@@ -968,7 +968,10 @@ import { chartFoxPanel } from './pages/chartfox.js';
       h('h3', null, t('setupTitle')),
       row(t('stServer'), ok(t('stRunning') + ' ' + st.serverURL)),
       row(t('stSim'), simText),
-      row(t('stData'), h('span', { class: 'muted' }, st.dataDir)))], simulator: [], network: [], display: [], charts: [], data: [], diag: [] };
+      row(t('stData'), h('span', { class: 'muted' }, st.dataDir),
+        h('button', { class: 'btn sm', onclick: async () => {
+          try { await api('POST', '/api/setup/open-data-folder'); } catch (e) { toast(e.message); }
+        } }, t('stOpenFolder'))))], simulator: [], network: [], display: [], charts: [], data: [], diag: [] };
 
   // ---- Local network and port. The server validates and applies; this only collects and shows.
   // Returns two sections: the server port, and the local network (with its QR codes).

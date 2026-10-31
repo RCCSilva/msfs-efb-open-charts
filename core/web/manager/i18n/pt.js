@@ -102,7 +102,7 @@ export default {
   btnInstall: 'Instalar no EFB', btnUpdate: 'Atualizar', btnRemove: 'Remover',
   stAuto: 'Iniciar com o MSFS', stAutoHelp: 'O Open Charts inicia quando o simulador inicia (sem janela).', btnEnable: 'Ativar', btnDisable: 'Desativar',
   stEfbLegacy: 'Versão antiga (Local Moving Map) encontrada: instalar substitui',
-  stData: 'Pasta de dados', stRestart: 'Reinicie o simulador para a mudança no app do EFB valer.',
+  stData: 'Pasta de dados', stOpenFolder: 'Abrir pasta', stRestart: 'Reinicie o simulador para a mudança no app do EFB valer.',
   edSteam: 'Steam', edStore: 'Microsoft Store',
   reviewTitle: 'Revise antes de importar', icao: 'ICAO', ctype: 'Tipo', ctitle: 'Título', validity: 'Ciclo AIRAC ou data', cname: 'Nome exibido',
   importOne: 'Importar', importAll: 'Importar todas', notGeo: 'Este PDF não tem georreferenciamento: será adicionado só para visualização (sem a posição da aeronave).', dup: 'Já está na biblioteca como',

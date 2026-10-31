@@ -45,6 +45,7 @@ type Server struct {
 	nav         navState       // navigation data of the simulator, see nav_api.go
 	addr        string         // the address being listened on; guarded by net.mu
 	chartfox    *chartfoxState // the user's ChartFox account and catalogue, see chartfox_api.go; nil: not available
+	openPath    func(path string) // shows a folder in the file explorer of the computer, see UseOpener; nil: not available
 	// importChart is importPDF; a test swaps it so an import needs no PDF engine.
 	importChart func(data []byte, filename string, f importForm) (*store.Chart, error)
 }
