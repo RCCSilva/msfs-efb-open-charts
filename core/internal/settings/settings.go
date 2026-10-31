@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -129,6 +130,8 @@ type Settings struct {
 	// NamePatterns are file-name templates of the user's own PDFs ("{icao}_{type}_{title}_{date}"),
 	// tried in order for the "My PDFs" source (see package naming).
 	NamePatterns []string `json:"namePatterns,omitempty"`
+	// FavoriteSources are the ids of the sources the user favourited: each one gets a tab in the manager.
+	FavoriteSources []string `json:"favoriteSources,omitempty"`
 }
 
 // Default returns the settings of a fresh installation (a new key is generated).
@@ -183,6 +186,11 @@ func Load(dir string) Settings {
 			for _, p := range f.NamePatterns {
 				if p = strings.TrimSpace(p); p != "" && len(s.NamePatterns) < MaxNamePatterns {
 					s.NamePatterns = append(s.NamePatterns, p)
+				}
+			}
+			for _, id := range f.FavoriteSources {
+				if id = strings.TrimSpace(id); id != "" && !slices.Contains(s.FavoriteSources, id) {
+					s.FavoriteSources = append(s.FavoriteSources, id)
 				}
 			}
 			if f.Token != "" {

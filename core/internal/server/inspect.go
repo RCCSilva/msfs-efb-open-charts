@@ -108,6 +108,10 @@ func (s *Server) handleInspect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	source := strings.TrimSpace(r.FormValue("source"))
+	if err := checkUploadSource(source); err != nil {
+		writeErr(w, 400, err)
+		return
+	}
 	if source == "" {
 		source = "manual"
 	}

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/buildinfo"
-	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/chartfox"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/geotiff"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/importer"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/jobs"
@@ -42,10 +41,12 @@ type Server struct {
 	tiles       *tileCache
 	jobs        *jobs.Manager
 	staged      stagedStore
-	net         netState           // listening, port and network access, see access.go
-	nav         navState           // navigation data of the simulator, see nav_api.go
-	addr        string             // the address being listened on; guarded by net.mu
-	chartfox    chartfox.Connector // the user's ChartFox account, see chartfox_api.go; nil: not available
+	net         netState       // listening, port and network access, see access.go
+	nav         navState       // navigation data of the simulator, see nav_api.go
+	addr        string         // the address being listened on; guarded by net.mu
+	chartfox    *chartfoxState // the user's ChartFox account and catalogue, see chartfox_api.go; nil: not available
+	// importChart is importPDF; a test swaps it so an import needs no PDF engine.
+	importChart func(data []byte, filename string, f importForm) (*store.Chart, error)
 }
 
 // New builds a server. newRenderer may be nil (import then returns 503). The provider is what the
@@ -53,6 +54,7 @@ type Server struct {
 func New(lib Library, newRenderer RendererFactory, provider sim.Provider, addr string) *Server {
 	s := &Server{lib: lib, newRenderer: newRenderer, sim: provider, addr: addr,
 		tiles: newTileCache(filepath.Join(lib.Dir(), "tiles")), jobs: jobs.NewManager(50)}
+	s.importChart = s.importPDF
 	s.loadFAAMetadata()
 	return s
 }
@@ -76,6 +78,8 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("GET /api/position", s.handlePosition)
 	mux.HandleFunc("GET /api/chartfox", s.handleChartFoxStatus)
+	mux.HandleFunc("GET /api/chartfox/airports/{icao}", s.handleChartFoxAirport)
+	mux.HandleFunc("POST /api/chartfox/import", s.handleChartFoxImport)
 	mux.HandleFunc("POST /api/chartfox/connect", s.handleChartFoxConnect)
 	mux.HandleFunc("POST /api/chartfox/disconnect", s.handleChartFoxDisconnect)
 	mux.HandleFunc("GET /api/nav/airport/{icao}", s.handleNavAirport)
@@ -356,6 +360,10 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := checkUploadSource(r.FormValue("source")); err != nil {
+		writeErr(w, 400, err)
+		return
+	}
 	form := importForm{
 		Source:   r.FormValue("source"),
 		Name:     r.FormValue("name"),

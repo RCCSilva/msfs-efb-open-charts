@@ -140,7 +140,7 @@ type Packager interface {
 
 // ---------------------------------------------------------------- registry
 
-var registry = []Source{decea{}, faa{}, uk{}, manual{}}
+var registry = []Source{decea{}, faa{}, uk{}, chartfox{}, manual{}}
 
 // All returns the registered sources, with abilities filled in.
 func All() []Info {
