@@ -194,11 +194,12 @@ func main() {
 	srv.UseSettings(*data, defaultDataDir(), cfg, fixedAddr)
 
 	// The user's ChartFox account: the token stays in the data folder, the authorization page opens in the browser.
-	srv.UseChartFox(chartfox.NewAccount(chartfox.DefaultConfig(), &http.Client{Timeout: 30 * time.Second},
+	cfAccount := chartfox.NewAccount(chartfox.DefaultConfig(), &http.Client{Timeout: 30 * time.Second},
 		chartfox.FileStore{Path: filepath.Join(*data, "chartfox.json")}, func(authURL string) error {
 			tray.Open(authURL)
 			return nil
-		}))
+		})
+	srv.UseChartFox(cfAccount, cfAccount.Client())
 
 	// What the simulator knows about airports and procedures: asked on demand, kept in SQLite.
 	navPath := filepath.Join(*data, "navdata.db")

@@ -32,7 +32,7 @@ func TestChartFoxConnectStartsALogin(t *testing.T) {
 	acc := new(chartfoxmock.Connector)
 	acc.On("Connect").Return(nil).Once()
 	acc.On("Status").Return(chartfox.Status{Available: true, Connecting: true}).Once()
-	s.UseChartFox(acc)
+	s.UseChartFox(acc, nil)
 
 	// Act
 	w := httptest.NewRecorder()
@@ -49,7 +49,7 @@ func TestChartFoxConnectReportsWhyItCouldNotStart(t *testing.T) {
 	s := providerServer(t, sim.Provider{})
 	acc := new(chartfoxmock.Connector)
 	acc.On("Connect").Return(errors.New("port 43219 is busy")).Once()
-	s.UseChartFox(acc)
+	s.UseChartFox(acc, nil)
 
 	// Act
 	w := httptest.NewRecorder()
@@ -66,7 +66,7 @@ func TestChartFoxDisconnect(t *testing.T) {
 	acc := new(chartfoxmock.Connector)
 	acc.On("Disconnect").Return(nil).Once()
 	acc.On("Status").Return(chartfox.Status{Available: true}).Once()
-	s.UseChartFox(acc)
+	s.UseChartFox(acc, nil)
 
 	// Act
 	w := httptest.NewRecorder()
