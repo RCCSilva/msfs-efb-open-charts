@@ -24,5 +24,9 @@ each under its own license.
   cached locally and requested with an identifying user agent.
 - **SimConnect:** `SimConnect.dll` is part of the Microsoft Flight Simulator SDK and is
   redistributed under the terms of the SDK.
+- **ChartFox:** the charts and data it provides belong to ChartFox (Cobalt Grid Ltd.) and its
+  publishers, under the [API terms](https://chartfox.org/legal/api-terms). The program credits
+  ChartFox, keeps the data only in the user's data folder and does not redistribute it. The client
+  ID of the official builds is **not** covered by the MIT license: see the README.
 - **Charts:** they belong to their providers (for example DECEA/AISWEB). The application does not
   redistribute them or download them automatically; follow each provider's usage policy.

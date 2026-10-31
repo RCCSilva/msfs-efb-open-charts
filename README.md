@@ -53,6 +53,15 @@ powershell -File installer\build.ps1 -Version 0.7.0
 This runs the tests, builds `build\opencharts.exe`, and produces
 `dist\OpenCharts-Setup-<version>-open-beta.exe` and the portable ZIP.
 
+The ChartFox connection needs a client ID (see [ChartFox and its client ID](#chartfox-and-its-client-id)).
+Put your own in a `.env` file at the repository root (ignored by git) and the build picks it up:
+
+```
+CHARTFOX_CLIENT_ID=your-client-id
+```
+
+Without it the program builds and runs normally, and ChartFox shows as unavailable.
+
 To work on the web UI without rebuilding:
 
 ```powershell
@@ -89,8 +98,30 @@ Please include the log file: `%LOCALAPPDATA%\OpenCharts\opencharts.log`.
 ## Charts and providers
 
 Charts belong to their providers and are subject to their usage policies. Open Charts does not
-redistribute charts and does not download them automatically. Do not attach provider charts to
-issues unless their terms allow it.
+redistribute charts, does not scrape provider sites and does not download from a provider by
+itself. The one exception is the official [ChartFox](https://chartfox.org) API, which the project
+was granted access to: you connect your own ChartFox account, look an airport up and import the
+charts you pick, only when you ask. They stay in your data folder and are removed when you
+disconnect. Charts are for flight simulation only, never for real navigation. Do not attach
+provider charts to issues unless their terms allow it.
+
+## ChartFox and its client ID
+
+The source code is MIT. **The ChartFox client ID that the official builds (the installer and the
+portable ZIP) use to connect is not part of the source code and is not covered by the MIT
+license.** It is the identity of this project at ChartFox, registered to its author under the
+[ChartFox API terms](https://chartfox.org/legal/api-terms). It is not in this repository: it is
+added to the official builds when they are made.
+
+- Do not reuse it in a fork, a modified build or another application. Finding it in an official
+  build (anyone who can run a program can read it) is not permission to use it.
+- If you build your own version, ask ChartFox for your own client ID in their
+  [developer portal](https://chartfox.org/developers) (it needs a ChartFox account), under their terms, and put it in `.env` as
+  shown in [Build](#build). The OAuth flow is the public-client one (PKCE), so there is no secret to
+  protect.
+- The data that ChartFox sends is theirs and their publishers': the program credits ChartFox
+  ("Chart data powered by ChartFox"), keeps it only in the user's data folder and never
+  redistributes it. Do not add any of it to this repository.
 
 ## License
 
