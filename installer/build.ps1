@@ -1,11 +1,11 @@
 <#
   Builds Open Charts and, when Inno Setup 6 is installed, the installer.
 
-  Usage:  powershell -File installer\build.ps1 [-Version 0.7.0]
+  Usage:  powershell -File installer\build.ps1 [-Version 0.8.0]
 
   Output: build\opencharts.exe, build\SimConnect.dll and dist\OpenCharts-Setup-<version>.exe
 #>
-param([string]$Version = '0.7.0', [string]$Label = 'Open Beta')
+param([string]$Version = '0.8.0', [string]$Label = 'Open Beta', [switch]$SkipRealSimTest)
 
 $ErrorActionPreference = 'Stop'
 $root  = Split-Path -Parent $PSScriptRoot
@@ -17,7 +17,7 @@ Write-Host '== go build (no cgo)'
 Push-Location (Join-Path $root 'core')
 try {
   $env:CGO_ENABLED = '0'
-  go test ./... | Out-Host
+  if ($SkipRealSimTest) { go test -skip 'TestReadReal$' ./... | Out-Host } else { go test ./... | Out-Host }
   if ($LASTEXITCODE -ne 0) { throw 'tests failed' }
   # The public ChartFox client id (not a secret) comes from the ignored .env file at the repository root.
   $ldflags = '-s -w -H windowsgui -X github.com/RCCSilva/msfs-efb-open-charts/core/internal/buildinfo.Release=1'
