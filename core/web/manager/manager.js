@@ -10,7 +10,7 @@ import { confirmModal } from './core/modal.js';
 (function () {
   'use strict';
 
-  let VERSION = '0.8.0 Open Beta';   // replaced by what the running program reports (/api/version): '0.1.1-8fa9b5b' while developing
+  let VERSION = '0.9.0 Open Beta';   // replaced by what the running program reports (/api/version): '0.1.1-8fa9b5b' while developing
   const REPO = 'https://github.com/RCCSilva/msfs-efb-open-charts';
 
   // ---- helpers

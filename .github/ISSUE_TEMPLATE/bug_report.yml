@@ -49,7 +49,7 @@ body:
     attributes:
       label: Open Charts version
       description: See the About page of the manager.
-      placeholder: "0.8.0 Open Beta"
+      placeholder: "0.9.0 Open Beta"
     validations:
       required: true
 
