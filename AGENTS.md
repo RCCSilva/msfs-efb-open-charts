@@ -383,6 +383,10 @@ browser. Query parameters help: `/viewer.html?chart=<id>&mode=chart|overlay&lang
   data stays in the user's data folder (never in the installer, the zip or the repository) and
   disconnecting the account deletes it. Ask only for the scopes the feature needs (not `charts:view_source_url`,
   which points to third-party sites, nor telemetry). The simulation-only notice applies to these charts too.
+  The account is connected and disconnected on the ChartFox page of Sources (not in Setup). The switch "Search from the EFB"
+  there (`settings.chartfoxSearch`) shows a "Search on ChartFox" button in the EFB's chart search when the text has an airport
+  code: it lists that airport's charts and each download is a tap on one chart, never automatic. The ChartFox API only
+  searches airports (`GET /v2/airports?query=`); charts are listed per airport, so any chart text filter is ours.
 - **Never commit charts or provider packages** (`*.pdf`, `*.zip` are ignored on purpose), nor any
   personal data, keys or local paths.
 - Do not modify the user's simulator files (`Community`, `EXE.xml`) outside the setup flow, and

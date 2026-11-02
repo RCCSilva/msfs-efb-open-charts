@@ -1,17 +1,22 @@
 import { h } from '../core/dom.js';
 import { api, toast } from '../core/api.js';
 import { t, lang } from '../core/i18n.js';
-import { pageLink } from '../core/app.js';
+import { confirmModal } from '../core/modal.js';
 
 export const CF_TERMS_URL = 'https://chartfox.org/legal/terms';
 export const CF_PRIVACY_URL = 'https://chartfox.org/legal/privacy';
 
-// What connecting an account means: the ChartFox terms and privacy policy are theirs, and the user accepts them there.
-export function cfLegal() {
-  const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
-  return h('div', { class: 'muted', style: 'margin-top:8px' },
-    t('cfLegalLead') + ' ', link(CF_TERMS_URL, t('cfTerms')), ' ' + t('cfAnd') + ' ', link(CF_PRIVACY_URL, t('cfPrivacy')), t('cfLegalTail'));
+const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
+
+// What connecting an account means, in a few points: the ChartFox terms and privacy policy are theirs, and the user
+// accepts them there.
+function cfPoints() {
+  return h('ul', { class: 'cf-points' },
+    h('li', null, t('cfLegalLead') + ' ', link(CF_TERMS_URL, t('cfTerms')), ' ' + t('cfAnd') + ' ', link(CF_PRIVACY_URL, t('cfPrivacy')), '.'),
+    h('li', null, t('cfPoint2')), h('li', null, t('cfPoint3')), h('li', null, t('cfPoint4')));
 }
+
+const cfCredit = () => h('div', { class: 'muted', style: 'margin-top:8px' }, link('https://chartfox.org', t('cfCredit')));
 
 const CF_TYPES = [['IAC', 'cfTypeIAC'], ['SID', 'cfTypeSID'], ['STAR', 'cfTypeSTAR'], ['ADC', 'cfTypeADC'], ['', 'cfTypeOther']];
 const CF_BATCH = 20; // what one import request may carry
@@ -19,21 +24,43 @@ const CF_BATCH = 20; // what one import request may carry
 // The airport last looked up on the ChartFox page, kept while the manager stays open.
 const cfLookup = { icao: '' };
 
-// The lookup of ChartFox, shown on its page under Sources: type an airport, tick charts, import. It redraws itself in
-// place (no page of its own).
-export function chartFoxPanel() {
+// The ChartFox page under Sources: the account (connect, disconnect and what it means), the switch of the search from the
+// EFB and the lookup (type an airport, tick charts, import). The lookup redraws itself in place (no page of its own).
+// local: the page is open on the computer itself; a device of the network only reads what connecting means.
+export function chartFoxPage(local) {
   const root = h('div');
+  if (!local) { root.append(h('div', { class: 'card' }, h('h3', null, t('cfTitle')), cfPoints(), cfCredit())); return root; }
   const draw = async () => {
     const icao = cfLookup.icao;
     let st;
     try { st = await api('GET', '/api/chartfox'); } catch (e) { root.replaceChildren(h('div', { class: 'card' }, h('span', { class: 'badge bad' }, e.message))); return; }
-    const credit = h('div', { class: 'muted', style: 'margin-bottom:16px' },
-      h('a', { href: 'https://chartfox.org', target: '_blank', rel: 'noopener' }, t('cfCredit')), ' · ', t('cfSimOnly'));
-    if (!st.available) { root.replaceChildren(h('div', { class: 'card' }, h('div', { class: 'muted' }, t('cfUnavailable')))); return; }
-    if (!st.connected) {
-      root.replaceChildren(h('div', { class: 'card' }, h('h3', null, t('cfLookupTitle')), h('p', null, t('cfNeedConnect')), pageLink('#setup', 'btn primary', t('cfGoSetup'))), credit);
-      return;
-    }
+    if (st.connecting) setTimeout(() => { if (root.isConnected) draw(); }, 2000);
+
+    let account;
+    if (!st.available) account = h('div', { class: 'muted' }, t('cfUnavailable'));
+    else if (st.connecting) account = h('div', { class: 'muted' }, t('cfWaiting'));
+    else if (st.connected) account = h('div', { class: 'row' },
+      h('span', { class: 'grow' }, t('cfAs') + ' ' + (st.user || 'ChartFox')),
+      h('button', { class: 'btn sm danger', onclick: async () => {
+        if (!await confirmModal({ title: t('areYouSure'), text: t('cfConfirmDisconnect'), ok: t('cfDisconnect') })) return;
+        try { await api('POST', '/api/chartfox/disconnect'); toast(t('done')); } catch (e) { toast(e.message); }
+        draw();
+      } }, t('cfDisconnect')));
+    else account = h('div', { class: 'row' },
+      h('button', { class: 'btn primary', onclick: async () => {
+        try { await api('POST', '/api/chartfox/connect'); } catch (e) { toast(e.message); }
+        draw();
+      } }, t('cfConnect')));
+    const accountCard = h('div', { class: 'card' }, h('h3', null, t('cfTitle')), account,
+      st.error ? h('div', { class: 'muted', style: 'margin-top:8px' }, st.error) : null, cfPoints(), cfCredit());
+    if (!st.available || !st.connected) { root.replaceChildren(accountCard); return; }
+
+    const sw = h('button', { class: 'btn sm' + (st.search ? ' primary' : ''), onclick: async () => {
+      try { await api('PUT', '/api/chartfox/search', { on: !st.search }); } catch (e) { toast(e.message); }
+      draw();
+    } }, st.search ? t('cfSearchOn') : t('cfSearchOff'));
+    const searchCard = h('div', { class: 'card' }, h('div', { class: 'row' }, h('h3', { class: 'grow', style: 'margin:0' }, t('cfSearchTitle')), sw),
+      h('div', { class: 'muted', style: 'margin-top:8px' }, t('cfSearchHelp')));
 
     const box = h('input', { type: 'text', placeholder: t('cfIcao'), value: icao, maxlength: '4', style: 'text-transform:uppercase;max-width:140px' });
     const form = h('form', { class: 'row', onsubmit: (e) => {
@@ -42,7 +69,7 @@ export function chartFoxPanel() {
       draw();
     } }, box, h('button', { class: 'btn primary', type: 'submit' }, t('cfLookup')));
     const out = h('div');
-    root.replaceChildren(h('div', { class: 'card' }, h('h3', null, t('cfLookupTitle')), form), out, credit);
+    root.replaceChildren(accountCard, searchCard, h('div', { class: 'card' }, h('h3', null, t('cfLookupTitle')), form), out);
     if (!icao) { out.append(h('div', { class: 'muted', style: 'margin-bottom:16px' }, t('cfHint'))); return; }
 
     out.append(h('div', { class: 'muted' }, t('cfLoading')));

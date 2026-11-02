@@ -255,3 +255,5 @@ body.fullmap .planpanel { position: static; max-height: none; height: 100%; over
   .setuplayout { flex-direction: column; gap: 10px; }
   .setupnav { flex: none; flex-direction: row; flex-wrap: wrap; position: static; width: 100%; }
 }
+.cf-points { margin: 10px 0 0; padding-left: 18px; color: var(--muted); }
+.cf-points li { margin: 4px 0; }

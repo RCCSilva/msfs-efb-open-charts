@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"regexp"
@@ -56,12 +57,43 @@ func (s *Server) chartfoxOr404(w http.ResponseWriter) *chartfoxState {
 	return s.chartfox
 }
 
+// chartfoxStatusView is the status of the account and whether the EFB's "Search on ChartFox" button is on.
+type chartfoxStatusView struct {
+	chartfox.Status
+	Search bool `json:"search"`
+}
+
+func (s *Server) chartfoxStatusView() chartfoxStatusView {
+	v := chartfoxStatusView{Search: s.settingsSnapshot().ChartFoxSearch}
+	if s.chartfox != nil && s.chartfox.account != nil {
+		v.Status = s.chartfox.account.Status()
+	}
+	return v
+}
+
 func (s *Server) handleChartFoxStatus(w http.ResponseWriter, r *http.Request) {
-	if s.chartfox == nil || s.chartfox.account == nil {
-		writeJSON(w, 200, chartfox.Status{})
+	writeJSON(w, 200, s.chartfoxStatusView())
+}
+
+// handleChartFoxSearchSwitch turns the "Search on ChartFox" button of the EFB on or off: {"on": true}.
+func (s *Server) handleChartFoxSearchSwitch(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		On bool `json:"on"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&in); err != nil {
+		writeErr(w, http.StatusBadRequest, errors.New("expected {\"on\": true|false}"))
 		return
 	}
-	writeJSON(w, 200, s.chartfox.account.Status())
+	s.net.mu.Lock()
+	dir := s.net.dataDir
+	s.net.cfg.ChartFoxSearch = in.On
+	cfg := s.net.cfg
+	s.net.mu.Unlock()
+	if err := cfg.Save(dir); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, 200, s.chartfoxStatusView())
 }
 
 // handleChartFoxConnect starts a login: the authorization page opens in the user's browser and the answer comes back to

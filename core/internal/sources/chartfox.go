@@ -16,13 +16,13 @@ func (chartfox) Info() Info {
 			EN: "ChartFox",
 		},
 		HomepageNote: Text{
-			PT: "conecte a sua conta no Setup e procure as cartas por aeroporto",
-			EN: "connect your account in Setup and look charts up by airport",
+			PT: "conecte a sua conta e procure as cartas por aeroporto nesta página",
+			EN: "connect your account and look charts up by airport on this page",
 		},
 		Name: Text{PT: "ChartFox", EN: "ChartFox"},
 		Description: Text{
-			PT: "Cartas de muitos países, trazidas pela API oficial do ChartFox com a sua conta, só quando você pedir. Chart data powered by ChartFox.",
-			EN: "Charts of many countries, brought through the official ChartFox API with your account, only when you ask. Chart data powered by ChartFox.",
+			PT: "Cartas de muitos países, por aeroporto, pela API oficial do ChartFox.",
+			EN: "Charts of many countries, by airport, through the official ChartFox API.",
 		},
 		Policy: Policy{
 			AutomatedFetch: false, // never on its own: every download starts from the user
@@ -30,8 +30,8 @@ func (chartfox) Info() Info {
 			Redistribution: false,
 			URL:            "https://chartfox.org/legal/api-terms",
 			Notes: Text{
-				PT: "Uso pela API oficial, autorizado pelo ChartFox: sob demanda, com a sua conta, em cache só neste computador, sem redistribuir. Apenas para simulação de voo.",
-				EN: "Used through the official API, authorized by ChartFox: on demand, with your account, cached only on this computer, never redistributed. For flight simulation only.",
+				PT: "Cache só neste computador, sem redistribuir.",
+				EN: "Cached only on this computer, never redistributed.",
 			},
 		},
 	}

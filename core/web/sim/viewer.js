@@ -38,6 +38,10 @@
       pinnedTitle: 'Pinned charts', searchTitle: 'Search charts', searchPlaceholder: 'SBSP, ILS, sao paulo...',
       searchHint: 'Type to search. With a route, the charts of its airports appear here.', noResults: 'No charts found.',
       noChartsAirport: 'No charts of this airport in the library.', remove: 'Remove',
+      cfSearch: 'Search on ChartFox', cfSearching: 'Asking ChartFox...', cfFailed: 'Could not get the charts from ChartFox.', cfRetry: 'Try again',
+      cfDownload: 'Download', cfDownloading: 'Downloading...', cfInLibrary: 'In library', cfNone: 'ChartFox has no charts for this airport.',
+      cfApproach: 'Approach', cfDepartures: 'Departures', cfArrivals: 'Arrivals', cfAerodrome: 'Aerodrome', cfOther: 'Other',
+      cfCredit: 'Chart data powered by ChartFox',
       routeWorking: 'Reading the route...', routeResolve: 'Resolve', routeFailed: 'Could not read the route',
       routeClear: 'Clear', routeCancel: 'Close', routeDirect: 'Direct to', routeRemove: 'Remove', routeMenu: 'Options',
       routeBoxTitle: 'Write or paste the route: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
@@ -76,6 +80,10 @@
       pinnedTitle: 'Cartas fixadas', searchTitle: 'Buscar cartas', searchPlaceholder: 'SBSP, ILS, sao paulo...',
       searchHint: 'Digite para buscar. Com uma rota, as cartas dos aeroportos dela aparecem aqui.', noResults: 'Nenhuma carta encontrada.',
       noChartsAirport: 'Nenhuma carta deste aeroporto na biblioteca.', remove: 'Remover',
+      cfSearch: 'Buscar no ChartFox', cfSearching: 'Consultando o ChartFox...', cfFailed: 'Não foi possível obter as cartas do ChartFox.', cfRetry: 'Tentar de novo',
+      cfDownload: 'Baixar', cfDownloading: 'Baixando...', cfInLibrary: 'Na biblioteca', cfNone: 'O ChartFox não tem cartas deste aeroporto.',
+      cfApproach: 'Aproximação', cfDepartures: 'Saídas', cfArrivals: 'Chegadas', cfAerodrome: 'Aeródromo', cfOther: 'Outras',
+      cfCredit: 'Chart data powered by ChartFox',
       routeWorking: 'Lendo a rota...', routeResolve: 'Resolver', routeFailed: 'Não foi possível ler a rota',
       routeClear: 'Limpar', routeCancel: 'Fechar', routeDirect: 'Direto para', routeRemove: 'Remover', routeMenu: 'Opções',
       routeBoxTitle: 'Escreva ou cole a rota: SBSJ BOBI3A DAGUB UZ6 ... SBGR',
@@ -1566,6 +1574,8 @@
           box.appendChild(e);
         }
         list.forEach(function (c) { box.appendChild(chartRow(c, function () { runChartSearch(); }, false)); });
+        var airport = airportInQuery(q);
+        if (airport) addChartFox(box, airport, seq, again);
       });
       return;
     }
@@ -1601,8 +1611,127 @@
           sec.appendChild(none);
         }
         items.forEach(function (c) { sec.appendChild(chartRow(c, again, mine(c))); });
+        addChartFox(sec, icao, seq, again);
       });
     });
+  }
+
+  // ---- ChartFox in the chart search ----
+  // For an airport code, a button brings the airport's charts from ChartFox (when the search is on in the manager, under
+  // Sources > ChartFox, and the account is connected). Nothing is downloaded until the user taps a chart.
+  var cfOpen = null;   // the airport last opened: { icao, data }; kept so that redrawing the list does not ask ChartFox again
+  var CF_NOT_AIRPORT = { RNAV: 1, GNSS: 1, STAR: 1, TAXI: 1, PARK: 1, HOLD: 1, LNAV: 1, VNAV: 1, APCH: 1, PLAN: 1 };
+  var CF_TYPES = [['IAC', 'cfApproach'], ['SID', 'cfDepartures'], ['STAR', 'cfArrivals'], ['ADC', 'cfAerodrome'], ['', 'cfOther']];
+
+  // airportInQuery gives the first word of the search that looks like an airport code ("sbsp ils" -> "SBSP"), or "".
+  function airportInQuery(q) {
+    var words = q.toUpperCase().split(/\s+/);
+    for (var i = 0; i < words.length; i++) {
+      if (/^[A-Z][A-Z0-9]{3}$/.test(words[i]) && !CF_NOT_AIRPORT[words[i]]) return words[i];
+    }
+    return '';
+  }
+
+  function addChartFox(parent, icao, seq, onDone) {
+    getJson('/api/chartfox', function (st) {
+      if (seq !== searchSeq || !st || !st.available || !st.connected || !st.search) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'cfbox';
+      parent.appendChild(wrap);
+      if (cfOpen && cfOpen.icao === icao) drawChartFox(wrap, onDone);
+      else wrap.appendChild(button('cfbtn', t('cfSearch') + ' ' + icao, function () { loadChartFox(wrap, icao, onDone); }));
+    });
+  }
+
+  function loadChartFox(wrap, icao, onDone) {
+    clear(wrap);
+    var wait = document.createElement('div');
+    wait.className = 'empty';
+    wait.textContent = t('cfSearching');
+    wrap.appendChild(wait);
+    request('GET', '/api/chartfox/airports/' + encodeURIComponent(icao), null, function (d) {
+      if (!d || !d.charts) {
+        clear(wrap);
+        var bad = document.createElement('div');
+        bad.className = 'empty';
+        bad.textContent = t('cfFailed');
+        wrap.appendChild(bad);
+        wrap.appendChild(button('cfbtn', t('cfRetry'), function () { loadChartFox(wrap, icao, onDone); }));
+        return;
+      }
+      cfOpen = { icao: icao, data: d };
+      drawChartFox(wrap, onDone);
+    }, 60000);
+  }
+
+  function drawChartFox(wrap, onDone) {
+    var d = cfOpen.data;
+    clear(wrap);
+    var head = document.createElement('div');
+    head.className = 'dgroup';
+    head.textContent = 'ChartFox  -  ' + label((d.airport && d.airport.name) || cfOpen.icao);
+    wrap.appendChild(head);
+    var shown = 0;
+    CF_TYPES.forEach(function (g) {
+      var items = d.charts.filter(function (c) { return (c.type || '') === g[0]; });
+      if (!items.length) return;
+      var sub = document.createElement('div');
+      sub.className = 'cfsub';
+      sub.textContent = t(g[1]) + ' (' + items.length + ')';
+      wrap.appendChild(sub);
+      items.forEach(function (c) { shown++; wrap.appendChild(chartFoxRow(c, onDone)); });
+    });
+    if (!shown) {
+      var none = document.createElement('div');
+      none.className = 'empty';
+      none.textContent = t('cfNone');
+      wrap.appendChild(none);
+    }
+    var credit = document.createElement('div');
+    credit.className = 'cfcredit';
+    credit.textContent = t('cfCredit');
+    wrap.appendChild(credit);
+  }
+
+  function chartFoxRow(c, onDone) {
+    var row = document.createElement('div');
+    row.className = 'crow cfrow';
+    row.appendChild(document.createTextNode(label(c.name)));
+    if (c.code) {
+      var small = document.createElement('span');
+      small.className = 'csmall';
+      small.textContent = label(c.code);
+      row.appendChild(small);
+    }
+    if (c.imported) {
+      var tag = document.createElement('span');
+      tag.className = 'cftag';
+      tag.textContent = t('cfInLibrary');
+      row.appendChild(tag);
+      return row;
+    }
+    var err = null;
+    var dl = button('cfdl', t('cfDownload'), function () {
+      dl.disabled = true;
+      dl.textContent = t('cfDownloading');
+      request('POST', '/api/chartfox/import', { ids: [c.id] }, function (r) {
+        var res = r && r.results && r.results[0];
+        if (res && (res.status === 'ok' || res.status === 'already')) {
+          c.imported = true;
+          onDone();
+          return;
+        }
+        dl.disabled = false;
+        dl.textContent = t('cfDownload');
+        if (err) row.removeChild(err);
+        err = document.createElement('div');
+        err.className = 'cferr';
+        err.textContent = (res && res.message) || t('cfFailed');
+        row.appendChild(err);
+      }, 180000);
+    });
+    row.appendChild(dl);
+    return row;
   }
 
   function scheduleChartSearch() {

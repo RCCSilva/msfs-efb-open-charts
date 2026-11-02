@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/chartfox"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/chartfox/chartfoxmock"
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/settings"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim"
 )
 
@@ -23,7 +25,7 @@ func TestChartFoxStatusWithoutAnAccountIsNotAvailable(t *testing.T) {
 
 	// Assert
 	require.Equal(t, 200, w.Code)
-	assert.JSONEq(t, `{"available":false,"connected":false,"connecting":false}`, w.Body.String())
+	assert.JSONEq(t, `{"available":false,"connected":false,"connecting":false,"search":false}`, w.Body.String())
 }
 
 func TestChartFoxConnectStartsALogin(t *testing.T) {
@@ -83,4 +85,40 @@ func TestChartFoxEndpointsAreOnlyForThisComputer(t *testing.T) {
 	assert.True(t, localOnlyPath("/api/chartfox"))
 	assert.True(t, localOnlyPath("/api/chartfox/connect"))
 	assert.True(t, localOnlyPath("/api/chartfox/disconnect"))
+}
+
+func TestChartFoxSearchSwitchIsKeptAndShownInTheStatus(t *testing.T) {
+	// Arrange
+	s := providerServer(t, sim.Provider{})
+	dir := t.TempDir()
+	s.UseSettings(dir, dir, settings.Default(), true)
+	acc := new(chartfoxmock.Connector)
+	acc.On("Status").Return(chartfox.Status{Available: true, Connected: true})
+	s.UseChartFox(acc, nil)
+
+	// Act
+	w := httptest.NewRecorder()
+	s.handleChartFoxSearchSwitch(w, httptest.NewRequest("PUT", "/api/chartfox/search", strings.NewReader(`{"on":true}`)))
+
+	// Assert
+	require.Equal(t, 200, w.Code, w.Body.String())
+	assert.Contains(t, w.Body.String(), `"search":true`)
+	assert.True(t, settings.Load(dir).ChartFoxSearch, "it is saved")
+	st := httptest.NewRecorder()
+	s.handleChartFoxStatus(st, httptest.NewRequest("GET", "/api/chartfox", nil))
+	assert.Contains(t, st.Body.String(), `"search":true`)
+}
+
+func TestChartFoxSearchSwitchRefusesAnythingElse(t *testing.T) {
+	// Arrange
+	s := providerServer(t, sim.Provider{})
+	dir := t.TempDir()
+	s.UseSettings(dir, dir, settings.Default(), true)
+
+	// Act
+	w := httptest.NewRecorder()
+	s.handleChartFoxSearchSwitch(w, httptest.NewRequest("PUT", "/api/chartfox/search", strings.NewReader(`nope`)))
+
+	// Assert
+	assert.Equal(t, 400, w.Code)
 }

@@ -4,7 +4,7 @@ import { api, toast } from './core/api.js';
 import { lang, setLang, t, tx, fill, fmtDuration } from './core/i18n.js';
 import { state, view, app, go, pageLink } from './core/app.js';
 import { renderGuide } from './pages/guide.js';
-import { chartFoxPanel, cfLegal } from './pages/chartfox.js';
+import { chartFoxPage } from './pages/chartfox.js';
 import { confirmModal } from './core/modal.js';
 
 (function () {
@@ -496,8 +496,7 @@ import { confirmModal } from './core/modal.js';
     const linksShown = !!s.homepage || rows.length > 0;
 
     // 3. what the user downloaded goes here, PDFs and packages alike
-    view.replaceChildren(head, ...(s.id === 'chartfox' ? [h('div', { class: 'card' }, cfLegal())] : []),
-      ...(s.id === 'chartfox' && state.local ? [chartFoxPanel()] : []),
+    view.replaceChildren(head, ...(s.id === 'chartfox' ? [chartFoxPage(state.local)] : []),
       ...(s.id === 'manual' ? [await patternCard()] : []),
       ...(caps.includes('places') ? [placesCard(s)] : []), ...(linksShown ? [links] : []),
       ...(s.id === 'faa-us' ? [await faaMetadataCard()] : []),
@@ -1133,32 +1132,6 @@ import { confirmModal } from './core/modal.js';
       h('div', { class: 'muted', style: 'margin-top:8px' }, t('largeHelp')));
   }
 
-  async function chartFoxCard() {
-    let st;
-    try { st = await api('GET', '/api/chartfox'); } catch (e) { return null; } // an older program: nothing to show
-    if (st.connecting) setupTimer = setTimeout(renderSetup, 2000);
-    const credit = h('a', { href: 'https://chartfox.org', target: '_blank', rel: 'noopener' }, t('cfCredit'));
-    let body;
-    if (!st.available) body = h('div', { class: 'muted' }, t('cfUnavailable'));
-    else if (st.connecting) body = h('div', { class: 'muted' }, t('cfWaiting'));
-    else if (st.connected) body = h('div', { class: 'row' },
-      h('span', null, t('cfAs') + ' ' + (st.user || 'ChartFox')),
-      h('button', { class: 'btn sm danger', onclick: async () => {
-        if (!confirm(t('cfConfirmDisconnect'))) return;
-        try { await api('POST', '/api/chartfox/disconnect'); toast(t('done')); } catch (e) { toast(e.message); }
-        renderSetup();
-      } }, t('cfDisconnect')));
-    else body = h('div', { class: 'row' },
-      h('button', { class: 'btn sm primary', onclick: async () => {
-        try { await api('POST', '/api/chartfox/connect'); } catch (e) { toast(e.message); }
-        renderSetup();
-      } }, t('cfConnect')));
-    return h('div', { class: 'card' }, h('h3', null, t('cfTitle')), cfLegal(), body,
-      st.error ? h('div', { class: 'muted', style: 'margin-top:8px' }, st.error) : null,
-      h('div', { class: 'muted', style: 'margin-top:8px' }, t('cfHelp')),
-      h('div', { class: 'muted', style: 'margin-top:8px' }, credit));
-  }
-
   // the end of the Charts category: delete every chart of the library
   async function chartsDangerCard() {
     let n;
@@ -1202,8 +1175,6 @@ import { confirmModal } from './core/modal.js';
     if (dCard) groups.charts.push(dCard);
     const lCard = await largeChartsCard();
     if (lCard) groups.charts.push(lCard);
-    const cfCard = await chartFoxCard();
-    if (cfCard) groups.charts.push(cfCard);
     const dzCard = await chartsDangerCard();
     if (dzCard) groups.charts.push(dzCard);
 

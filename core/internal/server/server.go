@@ -82,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/chartfox/airports/{icao}", s.handleChartFoxAirport)
 	mux.HandleFunc("POST /api/chartfox/import", s.handleChartFoxImport)
 	mux.HandleFunc("POST /api/chartfox/connect", s.handleChartFoxConnect)
+	mux.HandleFunc("PUT /api/chartfox/search", s.handleChartFoxSearchSwitch)
 	mux.HandleFunc("POST /api/chartfox/disconnect", s.handleChartFoxDisconnect)
 	mux.HandleFunc("GET /api/nav/airport/{icao}", s.handleNavAirport)
 	mux.HandleFunc("GET /api/nav/airports", s.handleNavAirports)

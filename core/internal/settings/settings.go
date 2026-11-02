@@ -132,6 +132,8 @@ type Settings struct {
 	NamePatterns []string `json:"namePatterns,omitempty"`
 	// FavoriteSources are the ids of the sources the user favourited: each one gets a tab in the manager.
 	FavoriteSources []string `json:"favoriteSources,omitempty"`
+	// ChartFoxSearch turns on the "Search on ChartFox" button of the chart search in the EFB, for an airport code.
+	ChartFoxSearch bool `json:"chartfoxSearch,omitempty"`
 }
 
 // Default returns the settings of a fresh installation (a new key is generated).
@@ -168,6 +170,7 @@ func Load(dir string) Settings {
 				s.Port = f.Port
 			}
 			s.LAN = f.LAN
+			s.ChartFoxSearch = f.ChartFoxSearch
 			if f.Detail == DetailHigh {
 				s.Detail = DetailHigh
 			}
