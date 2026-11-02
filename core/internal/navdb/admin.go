@@ -636,9 +636,13 @@ type SavedRoute struct {
 	// Result is the route as it was resolved when it was saved (route.Result as JSON): the places
 	// with their positions. The store does not look inside. Whoever loads the route uses it as it
 	// is, instead of resolving the text again.
-	Result    json.RawMessage `json:"result,omitempty"`
-	CreatedAt string          `json:"createdAt"`
-	UpdatedAt string          `json:"updatedAt"`
+	Result json.RawMessage `json:"result,omitempty"`
+	// ProfileID is the aircraft profile the route is planned with (nil for none) and CruiseFt the
+	// cruise altitude (0 for none).
+	ProfileID *int64 `json:"profileId"`
+	CruiseFt  int    `json:"cruiseFt"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 const savedRouteSchema = `
@@ -660,6 +664,9 @@ func cleanRoute(r *SavedRoute) error {
 	case len(r.Text) > 4000:
 		return errors.Join(ErrInvalid, errors.New("the route is too long"))
 	}
+	if r.CruiseFt < 0 || r.CruiseFt > 70000 {
+		return errors.Join(ErrInvalid, errors.New("the cruise altitude must be between 0 and 70000 ft"))
+	}
 	if len(r.Choices) == 0 || string(r.Choices) == "null" {
 		r.Choices = json.RawMessage("[]")
 	}
@@ -672,7 +679,7 @@ func cleanRoute(r *SavedRoute) error {
 
 // SavedRoutes lists the saved routes, the most recently changed first.
 func (d *DB) SavedRoutes() ([]SavedRoute, error) {
-	rows, err := d.db.Query(`SELECT id, name, text, choices, result, created_at, updated_at FROM saved_route ORDER BY updated_at DESC, id DESC`)
+	rows, err := d.db.Query(`SELECT id, name, text, choices, result, profile_id, cruise_ft, created_at, updated_at FROM saved_route ORDER BY updated_at DESC, id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -681,9 +688,14 @@ func (d *DB) SavedRoutes() ([]SavedRoute, error) {
 	for rows.Next() {
 		var r SavedRoute
 		var c, u, ch, rs sql.NullString
-		if err := rows.Scan(&r.ID, &r.Name, &r.Text, &ch, &rs, &c, &u); err != nil {
+		var pid, cruise sql.NullInt64
+		if err := rows.Scan(&r.ID, &r.Name, &r.Text, &ch, &rs, &pid, &cruise, &c, &u); err != nil {
 			return nil, err
 		}
+		if pid.Valid {
+			r.ProfileID = &pid.Int64
+		}
+		r.CruiseFt = int(cruise.Int64)
 		if rs.Valid && rs.String != "" {
 			r.Result = json.RawMessage(rs.String)
 		}
@@ -704,7 +716,7 @@ func (d *DB) CreateSavedRoute(r SavedRoute) (SavedRoute, error) {
 	}
 	r.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	r.UpdatedAt = r.CreatedAt
-	res, err := d.db.Exec(`INSERT INTO saved_route (name, text, choices, result, created_at, updated_at) VALUES (?,?,?,?,?,?)`, r.Name, r.Text, string(r.Choices), string(r.Result), r.CreatedAt, r.UpdatedAt)
+	res, err := d.db.Exec(`INSERT INTO saved_route (name, text, choices, result, profile_id, cruise_ft, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)`, r.Name, r.Text, string(r.Choices), string(r.Result), r.ProfileID, r.CruiseFt, r.CreatedAt, r.UpdatedAt)
 	if err != nil {
 		return r, err
 	}
@@ -718,7 +730,7 @@ func (d *DB) UpdateSavedRoute(r SavedRoute) (SavedRoute, error) {
 		return r, err
 	}
 	r.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	res, err := d.db.Exec(`UPDATE saved_route SET name = ?, text = ?, choices = ?, result = ?, updated_at = ? WHERE id = ?`, r.Name, r.Text, string(r.Choices), string(r.Result), r.UpdatedAt, r.ID)
+	res, err := d.db.Exec(`UPDATE saved_route SET name = ?, text = ?, choices = ?, result = ?, profile_id = ?, cruise_ft = ?, updated_at = ? WHERE id = ?`, r.Name, r.Text, string(r.Choices), string(r.Result), r.ProfileID, r.CruiseFt, r.UpdatedAt, r.ID)
 	if err != nil {
 		return r, err
 	}

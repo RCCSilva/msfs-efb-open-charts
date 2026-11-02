@@ -52,6 +52,7 @@ var migrations = []migration{
 	{version: 1, name: "baseline: the schema of 0.3 and 0.4", up: migrateBaseline},
 	{version: 2, name: "seed identifiers keep the classes of their fixes", up: migrateSeedClasses},
 	{version: 3, name: "fixes say where they came from", up: migrateFixSource},
+	{version: 4, name: "aircraft profiles, and the aircraft and altitude of a saved route", up: migrateAircraftProfiles},
 }
 
 // migrateFixSource adds where a fix came from: the simulator (every fix stored until now) or the
