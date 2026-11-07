@@ -47,7 +47,7 @@ export default {
   tabCatalog: 'Visual charts (catalog)', tabPackage: 'Aerodromes (package)', tabFiles: 'Add files',
   stepsFiles: 'Add what you downloaded', capCatalog: 'Catalog', capPackage: 'Package', capLocate: 'By date', capUpload: 'Upload',
   efbTitle: "The screen the simulator's EFB shows, in its own tab",
-  about: 'About', setup: 'Setup', efb: 'EFB', guide: 'Guide', nav: 'Navigation', routes: 'Routes', mapTab: 'Map',
+  about: 'About', setup: 'Setup', efb: 'EFB', guide: 'Guide', nav: 'Navigation', routes: 'Routes', aircraft: 'Aircraft', mapTab: 'Map',
   whyManualTitle: 'Why do I have to download the charts myself?',
   whyManual: 'Most chart providers do not allow redistribution, so we cannot offer the charts already processed and ready. Many also forbid any kind of bulk download or scraping script. To stay within the terms of use, we are being conservative for now: you download the files yourself and Open Charts processes them on your computer. We may look for a better way in the future.',
   guideIntro: 'The simulator screen shows no hints when you hover a button, so here is what each one does. The numbers on the drawing match the list.',

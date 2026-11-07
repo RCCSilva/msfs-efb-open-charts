@@ -5,6 +5,7 @@ import { lang, setLang, t, tx, fill, fmtDuration } from './core/i18n.js';
 import { state, view, app, go, pageLink } from './core/app.js';
 import { renderGuide } from './pages/guide.js';
 import { chartFoxPage } from './pages/chartfox.js';
+import { renderAircraft, planPanel } from './pages/aircraft.js';
 import { confirmModal } from './core/modal.js';
 
 (function () {
@@ -57,7 +58,7 @@ import { confirmModal } from './core/modal.js';
       try { state.local = (await api('GET', '/api/health')).local !== false; } catch (e) { state.local = true; }
     }
     const tab = r.name === 'source' ? 'sources' : (r.name === 'chart' ? 'library' : r.name);
-    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'routes', 'map', 'nav', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
+    document.getElementById('tabs').replaceChildren(...['library', 'sources', 'groups', 'routes', 'aircraft', 'map', 'nav', 'guide', 'setup', 'about'].filter((id) => id !== 'setup' || state.local).map((id) =>
       pageLink('#' + id, id === tab ? 'on' : '', t(id === 'map' ? 'mapTab' : id))).concat([
         // The EFB screen (same page the simulator shows) opens in its own tab, outside the simulator too.
         h('a', { class: 'navlink', href: '/viewer.html?lang=' + lang, target: '_blank', rel: 'noopener', title: t('efbTitle') }, t('efb') + ' \u2197')]));
@@ -65,19 +66,20 @@ import { confirmModal } from './core/modal.js';
       await loadGroups();
       drawGroupBar();
       drawFooter();
-      if (dbBad && (r.name === 'routes' || r.name === 'map' || r.name === 'nav')) view.replaceChildren(h('h2', null, t(r.name === 'map' ? 'mapTab' : r.name)), dbBanner(dbst));
+      if (dbBad && (r.name === 'routes' || r.name === 'aircraft' || r.name === 'map' || r.name === 'nav')) view.replaceChildren(h('h2', null, t(r.name === 'map' ? 'mapTab' : r.name)), dbBanner(dbst));
       else if (r.name === 'sources') await renderSources();
       else if (r.name === 'source') await renderSource(r.arg);
       else if (r.name === 'chart') await renderChart(r.arg);
       else if (r.name === 'groups') await renderGroups();
       else if (r.name === 'setup') await renderSetup();
       else if (r.name === 'routes') await renderRoutes();
+      else if (r.name === 'aircraft') await renderAircraft(view);
       else if (r.name === 'map') await renderMap();
       else if (r.name === 'nav') await renderNav();
       else if (r.name === 'guide') renderGuide();
       else if (r.name === 'about') renderAbout();
       else await renderLibrary();
-      if (dbBad && r.name !== 'setup' && !['routes', 'map', 'nav'].includes(r.name)) view.prepend(dbBanner(dbst));
+      if (dbBad && r.name !== 'setup' && !['routes', 'aircraft', 'map', 'nav'].includes(r.name)) view.prepend(dbBanner(dbst));
     } catch (e) {
       view.replaceChildren(h('div', { class: 'card' }, h('span', { class: 'badge bad' }, e.message)));
     }
@@ -1737,7 +1739,8 @@ import { confirmModal } from './core/modal.js';
     }
   };
   const rt = (k) => (RT[lang] && RT[lang][k]) || RT.en[k] || k;
-  const routesState = { id: 0, name: '', text: '', choices: [], result: null, working: false };
+  const routesState = { id: 0, name: '', text: '', choices: [], result: null, working: false, profileId: null, cruiseFt: 0, windKt: 0 };
+  const routeLegs = (res) => (res && res.points ? res.points.map((p) => ({ nm: p.legNm || 0, ident: p.ident })) : []);
   let overviewMap = null;
 
   function loadLeaflet() {
@@ -1780,6 +1783,7 @@ import { confirmModal } from './core/modal.js';
     if (overviewMap) { overviewMap.remove(); overviewMap = null; }
     const data = await api('GET', '/api/routes');
     const list = data.routes;
+    const aircraft = (await api('GET', '/api/aircraft')).aircraft;
     const sel = list.find((r) => r.id === routesState.id);
     if (routesState.id && !sel) { routesState.id = 0; routesState.name = ''; routesState.text = ''; routesState.result = null; }
 
@@ -1806,6 +1810,7 @@ import { confirmModal } from './core/modal.js';
     const status = h('div', { class: 'muted', style: 'margin:8px 0' });
     const resultHost = h('div');
     const mapHost = h('div', { class: 'overview' });
+    const plan = planPanel(routesState, aircraft, () => routeLegs(routesState.result));
 
     const showResult = (res) => {
       routesState.result = res;
@@ -1856,6 +1861,7 @@ import { confirmModal } from './core/modal.js';
         : h('p', { class: 'muted' }, rt('empty'));
       resultHost.replaceChildren(...[head, problems, table].filter(Boolean));
       drawOverview(mapHost, res);
+      plan.refresh();
     };
 
     const validate = async () => {
@@ -1872,7 +1878,7 @@ import { confirmModal } from './core/modal.js';
       routesState.text = textIn.value;
       routesState.name = nameIn.value;
       try {
-        const body = { name: nameIn.value, text: textIn.value, choices: routesState.choices };
+        const body = { name: nameIn.value, text: textIn.value, choices: routesState.choices, profileId: routesState.profileId, cruiseFt: routesState.cruiseFt };
         const r = routesState.id ? await api('PUT', '/api/routes/' + routesState.id, body) : await api('POST', '/api/routes', body);
         routesState.id = r.id;
         routesState.name = r.name;
@@ -1911,10 +1917,10 @@ import { confirmModal } from './core/modal.js';
     const listCard = h('div', { class: 'card' },
       h('div', { class: 'row', style: 'margin-bottom:8px' },
         h('h3', { style: 'margin:0', class: 'grow' }, rt('mine')),
-        h('button', { class: 'btn sm primary', onclick: () => { Object.assign(routesState, { id: 0, name: '', text: '', choices: [], result: null, lastAuto: '' }); renderRoutes(); } }, '+ ' + rt('newRoute'))),
+        h('button', { class: 'btn sm primary', onclick: () => { Object.assign(routesState, { id: 0, name: '', text: '', choices: [], result: null, lastAuto: '', profileId: null, cruiseFt: 0, windKt: 0 }); renderRoutes(); } }, '+ ' + rt('newRoute'))),
       list.length === 0 ? h('p', { class: 'muted' }, rt('none')) : list.map((r) => h('div', {
         class: 'routeitem' + (r.id === routesState.id ? ' on' : ''),
-        onclick: () => { Object.assign(routesState, { id: r.id, name: r.name, text: r.text, choices: r.choices || [], result: r.result || null }); renderRoutes(); }
+        onclick: () => { Object.assign(routesState, { id: r.id, name: r.name, text: r.text, choices: r.choices || [], result: r.result || null, profileId: r.profileId || null, cruiseFt: r.cruiseFt || 0 }); renderRoutes(); }
       }, h('strong', null, r.name), h('div', { class: 'muted' }, r.summary || r.text))));
 
     const editor = h('div', { class: 'card' },
@@ -1934,7 +1940,7 @@ import { confirmModal } from './core/modal.js';
         h('button', { class: 'btn', onclick: sendIvao }, rt('ivao')),
         h('button', { class: 'btn', onclick: savePln }, rt('savePln'))),
       h('p', { class: 'muted', style: 'margin:6px 0 0; font-size:12px' }, rt('sendHint')),
-      status, mapHost, resultHost);
+      plan.node, status, mapHost, resultHost);
 
     view.replaceChildren(h('h2', null, rt('title')), h('p', { class: 'muted' }, rt('intro')),
       h('div', { class: 'routespage' }, listCard, editor));

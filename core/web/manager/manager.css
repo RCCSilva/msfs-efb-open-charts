@@ -160,6 +160,13 @@ nav .navlink:hover { background: var(--bg); text-decoration: none; }
 /* ---- Routes page ---- */
 .routespage { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start; }
 @media (max-width: 800px) { .routespage { grid-template-columns: 1fr; } }
+.ac-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; align-items: end; }
+.ac-stats { display: flex; flex-wrap: wrap; gap: 20px; margin: 10px 0; }
+.ac-stat strong { font-size: 20px; }
+.ac-result table { margin-top: 10px; }
+.ac-result td.num, .ac-result th.num { text-align: right; }
+.planpanel { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 4px; }
+.bad { color: var(--bad); }
 .routeitem { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
 .routeitem:hover { background: var(--bg); }
 .routeitem.on { border-color: var(--accent); }

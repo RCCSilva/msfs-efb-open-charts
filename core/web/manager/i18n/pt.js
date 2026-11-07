@@ -47,7 +47,7 @@ export default {
   tabCatalog: 'Cartas visuais (catálogo)', tabPackage: 'Aeródromos (pacote)', tabFiles: 'Adicionar arquivos',
   stepsFiles: 'Adicione o que você baixou', capCatalog: 'Catálogo', capPackage: 'Pacote', capLocate: 'Por data', capUpload: 'Envio',
   efbTitle: 'A tela que o EFB do simulador mostra, em uma aba própria',
-  about: 'Sobre', setup: 'Configuração', efb: 'EFB', guide: 'Guia', nav: 'Navegação', routes: 'Rotas', mapTab: 'Mapa',
+  about: 'Sobre', setup: 'Configuração', efb: 'EFB', guide: 'Guia', nav: 'Navegação', routes: 'Rotas', aircraft: 'Aviões', mapTab: 'Mapa',
   whyManualTitle: 'Por que eu tenho que baixar as cartas manualmente?',
   whyManual: 'A maior parte dos provedores não permite a redistribuição, o que impede a gente de já entregar as cartas processadas e prontas. Muitos também proíbem qualquer tipo de download em massa ou script de extração automática. Para não infringir os termos de uso, vamos ser conservadores por enquanto: você baixa os arquivos e o Open Charts os processa no seu computador. No futuro podemos avaliar uma alternativa melhor.',
   guideIntro: 'A tela do simulador não mostra dicas ao passar o mouse nos botões, então aqui está o que cada um faz. Os números do desenho batem com a lista.',
