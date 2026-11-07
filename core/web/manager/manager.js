@@ -1740,7 +1740,7 @@ import { confirmModal } from './core/modal.js';
   };
   const rt = (k) => (RT[lang] && RT[lang][k]) || RT.en[k] || k;
   const routesState = { id: 0, name: '', text: '', choices: [], result: null, working: false, profileId: null, cruiseFt: 0, windKt: 0 };
-  const routeLegs = (res) => (res && res.points ? res.points.map((p) => ({ nm: p.legNm || 0, ident: p.ident })) : []);
+  const routeLegs = (res) => (res && res.points ? res.points.map((p) => ({ nm: p.legNm || 0, ident: p.ident, kind: p.kind })) : []);
   let overviewMap = null;
 
   function loadLeaflet() {

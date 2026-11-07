@@ -50,8 +50,11 @@ type Result struct {
 	// TopOfClimbNm and TopOfDescentNm are measured from the start of the route.
 	TopOfClimbNm   float64 `json:"topOfClimbNm"`
 	TopOfDescentNm float64 `json:"topOfDescentNm"`
+	// DepartureFt and DestinationFt are the elevations the estimate climbed from and descended to.
+	DepartureFt   float64 `json:"departureFt"`
+	DestinationFt float64 `json:"destinationFt"`
 
-	Minutes     float64 `json:"minutes"`
+	Minutes    float64 `json:"minutes"`
 	TripFuel    float64 `json:"tripFuel"`
 	TaxiFuel    float64 `json:"taxiFuel"`
 	Contingency float64 `json:"contingency"`
@@ -116,7 +119,8 @@ func (p Profile) Estimate(f Flight) (Result, error) {
 	flows := []float64{p.Climb.FuelFlow, p.Cruise.FuelFlow, p.Descent.FuelFlow}
 	speeds := []float64{gsClimb, gsCruise, gsDescent}
 	r := Result{FuelUnit: p.FuelUnit, TotalNm: round(total, 1), CruiseFt: round(alt, 0), Truncated: truncated,
-		TopOfClimbNm: round(climbNm, 1), TopOfDescentNm: round(total-descentNm, 1)}
+		TopOfClimbNm: round(climbNm, 1), TopOfDescentNm: round(total-descentNm, 1),
+		DepartureFt: round(f.DepartureFt, 0), DestinationFt: round(f.DestinationFt, 0)}
 	for i := range phases {
 		phases[i].Fuel = phases[i].Minutes / 60 * flows[i]
 		r.Minutes += phases[i].Minutes

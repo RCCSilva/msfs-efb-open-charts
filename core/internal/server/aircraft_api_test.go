@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdata"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/sim"
 )
 
@@ -119,6 +120,28 @@ func TestTheEstimateUsesTheAircraftAndTheAltitude(t *testing.T) {
 	assert.Greater(t, r.Required, 9.0, "more than the reserve and the taxi")
 	assert.Len(t, r.Legs, 3)
 	assert.Len(t, r.Phases, 3)
+}
+
+func TestTheEstimateClimbsFromTheElevationOfTheDepartureAirport(t *testing.T) {
+	// Arrange
+	s, _ := exportServer(t, sim.Provider{})
+	a := importAircraft(t, s, lnmFile)
+	require.NoError(t, s.navDB().SaveAirport(&navdata.Airport{ICAO: "SBHI", Name: "High", AltitudeM: 1000}))
+	id := strconv.FormatInt(a.ID, 10)
+
+	// Act
+	high := post(s.handleRouteEstimate, `{"profileId":`+id+`,"legsNm":[0,150],"cruiseFt":9000,"departure":"SBHI","destination":"SBSP"}`)
+	low := post(s.handleRouteEstimate, `{"profileId":`+id+`,"legsNm":[0,150],"cruiseFt":9000,"departure":"SBSP","destination":"SBSP"}`)
+
+	// Assert
+	require.Equal(t, 200, high.Code, high.Body.String())
+	var h, l struct{ DepartureFt, DestinationFt, Minutes float64 }
+	require.NoError(t, json.Unmarshal(high.Body.Bytes(), &h))
+	require.NoError(t, json.Unmarshal(low.Body.Bytes(), &l))
+	assert.InDelta(t, 3281, h.DepartureFt, 1, "1000 m in feet")
+	assert.Zero(t, h.DestinationFt, "an airport without elevation counts as sea level")
+	assert.Zero(t, l.DepartureFt)
+	assert.Less(t, h.Minutes, l.Minutes, "a shorter climb from an airport that is already high")
 }
 
 func TestTheEstimateRefusesWhatItCannotUse(t *testing.T) {

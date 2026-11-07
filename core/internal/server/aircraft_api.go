@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/navdb"
 	"github.com/RCCSilva/msfs-efb-open-charts/core/internal/perf"
@@ -159,7 +161,11 @@ func (s *Server) handleRouteEstimate(w http.ResponseWriter, r *http.Request) {
 		CruiseFt      float64   `json:"cruiseFt"`
 		DepartureFt   float64   `json:"departureFt"`
 		DestinationFt float64   `json:"destinationFt"`
-		AlternateNm   float64   `json:"alternateNm"`
+		// Departure and Destination are airports (ICAO): their elevation, from the navigation database,
+		// is used when the elevation itself is not given. An airport that is not known counts as sea level.
+		Departure   string  `json:"departure"`
+		Destination string  `json:"destination"`
+		AlternateNm float64 `json:"alternateNm"`
 		WindKt        float64   `json:"windKt"`
 	}
 	if err := readJSON(r, &body); err != nil {
@@ -180,6 +186,17 @@ func (s *Server) handleRouteEstimate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err)
 		return
 	}
+	elevation := func(icao string, given float64) float64 {
+		if given != 0 || strings.TrimSpace(icao) == "" {
+			return given
+		}
+		if a, err := db.Airport(icao); err == nil {
+			return math.Max(a.AltitudeM/0.3048, 0)
+		}
+		return 0
+	}
+	body.DepartureFt = elevation(body.Departure, body.DepartureFt)
+	body.DestinationFt = elevation(body.Destination, body.DestinationFt)
 	res, err := p.Estimate(perf.Flight{LegsNm: body.LegsNm, CruiseFt: body.CruiseFt, DepartureFt: body.DepartureFt,
 		DestinationFt: body.DestinationFt, AlternateNm: body.AlternateNm, WindKt: body.WindKt})
 	if err != nil {

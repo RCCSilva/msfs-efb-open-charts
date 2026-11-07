@@ -18,7 +18,7 @@ const AC = {
     phases: 'Phases', climb: 'Climb', cruise: 'Cruise', descent: 'Descent', alternate: 'Alternate', speed: 'Speed (kt TAS)', flow: 'Fuel flow', rate: 'Rate (ft/min)',
     unitPerHour: '/h',
     // route planning
-    plan: 'Flight estimate', aircraft: 'Aircraft', noAircraft: '- none -', cruiseAlt: 'Cruise altitude (ft)', wind: 'Wind (kt, - = headwind)', estimate: 'Estimate',
+    plan: 'Flight estimate', elev: 'Airport elevations', aircraft: 'Aircraft', noAircraft: '- none -', cruiseAlt: 'Cruise altitude (ft)', wind: 'Wind (kt, - = headwind)', estimate: 'Estimate',
     needRoute: 'Validate the route to estimate it.', needChoice: 'Choose an aircraft and an altitude.', noneToChoose: 'No aircraft yet: add one in the Aircraft tab.',
     time: 'Time', distance: 'Distance', trip: 'Trip fuel', required: 'Fuel to carry', usableFuel: 'Usable', enough: 'It fits in the tanks.', notEnough: 'It does not fit: more fuel is needed than the tanks hold.',
     truncated: 'The route is too short to climb to that altitude and come down: the estimate uses', topClimb: 'Top of climb', topDescent: 'Top of descent', from: 'from the start',
@@ -34,7 +34,7 @@ const AC = {
     fuelTitle: 'Combustível', usable: 'Utilizável', taxi: 'Táxi', reserve: 'Reserva', extra: 'Extra', contingency: 'Contingência (% da viagem)',
     phases: 'Fases', climb: 'Subida', cruise: 'Cruzeiro', descent: 'Descida', alternate: 'Alternativa', speed: 'Velocidade (kt TAS)', flow: 'Consumo', rate: 'Razão (ft/min)',
     unitPerHour: '/h',
-    plan: 'Estimativa do voo', aircraft: 'Avião', noAircraft: '- nenhum -', cruiseAlt: 'Altitude de cruzeiro (ft)', wind: 'Vento (kt, - = de proa)', estimate: 'Estimar',
+    plan: 'Estimativa do voo', elev: 'Elevação dos aeroportos', aircraft: 'Avião', noAircraft: '- nenhum -', cruiseAlt: 'Altitude de cruzeiro (ft)', wind: 'Vento (kt, - = de proa)', estimate: 'Estimar',
     needRoute: 'Valide a rota para estimar.', needChoice: 'Escolha um avião e uma altitude.', noneToChoose: 'Nenhum avião ainda: cadastre na aba Aviões.',
     time: 'Tempo', distance: 'Distância', trip: 'Combustível da viagem', required: 'Combustível a embarcar', usableFuel: 'Utilizável', enough: 'Cabe nos tanques.', notEnough: 'Não cabe: precisa de mais combustível do que os tanques levam.',
     truncated: 'A rota é curta demais para subir até essa altitude e descer: a estimativa usa', topClimb: 'Topo de subida', topDescent: 'Início da descida', from: 'desde o início',
@@ -182,7 +182,11 @@ export function planPanel(st, aircraft, legs) {
     if (lens.length < 2) { host.replaceChildren(h('p', { class: 'muted' }, at('needRoute'))); return; }
     if (!st.profileId || st.cruiseFt <= 0) { host.replaceChildren(h('p', { class: 'muted' }, at('needChoice'))); return; }
     try {
-      const r = await api('POST', '/api/route/estimate', { profileId: st.profileId, legsNm: lens.map((l) => l.nm), cruiseFt: st.cruiseFt, windKt: st.windKt });
+      const first = lens[0], last = lens[lens.length - 1];
+      const r = await api('POST', '/api/route/estimate', {
+        profileId: st.profileId, legsNm: lens.map((l) => l.nm), cruiseFt: st.cruiseFt, windKt: st.windKt,
+        departure: first.kind === 'airport' ? first.ident : '', destination: last.kind === 'airport' ? last.ident : '',
+      });
       host.replaceChildren(...resultNodes(r, lens));
     } catch (e) { host.replaceChildren(h('p', { class: 'muted' }, at('failed') + ': ' + e.message)); }
   };
@@ -208,6 +212,7 @@ function resultNodes(r, lens) {
     stat(at('required'), fmt(r.required) + ' ' + u + (u === 'gal' ? ' (' + Math.round(r.requiredLb) + ' lb)' : ''))));
   if (r.usable > 0) out.push(h('p', { class: r.enoughFuel ? 'muted' : 'bad' }, at('usableFuel') + ': ' + fmt(r.usable) + ' ' + u + '. ' + (r.enoughFuel ? at('enough') : at('notEnough'))));
   if (r.truncated) out.push(h('p', { class: 'bad' }, at('truncated') + ' ' + Math.round(r.cruiseFt) + ' ' + at('ft') + '.'));
+  out.push(h('p', { class: 'muted' }, at('elev') + ': ' + fmt(r.departureFt) + ' ' + at('ft') + ' > ' + fmt(r.destinationFt) + ' ' + at('ft')));
   out.push(h('p', { class: 'muted' }, at('topClimb') + ': ' + fmt(r.topOfClimbNm) + ' nm - ' + at('topDescent') + ': ' + fmt(r.topOfDescentNm) + ' nm (' + at('from') + ')'));
   out.push(h('table', null,
     h('thead', null, h('tr', null, ['phase', 'nm', 'min', 'fuel'].map((k) => h('th', null, k === 'phase' ? at('phase') : (k === 'fuel' ? at('fuel') + ' (' + u + ')' : at(k)))))),
